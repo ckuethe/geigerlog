@@ -1,0 +1,3762 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+"""
+GeigerLog - A program to handle Geiger counters with a Graphical User Interface
+
+start as 'geigerlog -h' for help on available options and commands
+"""
+
+
+import sys
+import os
+import re                       # regex
+import getopt                   # parse command line for options and commands
+import ConfigParser             # parse configuration file geigerlog.cfg
+
+from PyQt4 import QtGui, QtCore
+from PyQt4.phonon import Phonon # used only for an error sound
+
+from matplotlib import __version__ as mplVersion
+import matplotlib.backends.backend_qt4agg
+from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
+
+import matplotlib.pyplot as plt
+import matplotlib.dates  as mpld
+#import matplotlib.mlab   as mlab
+import numpy as np
+
+import signal
+signal.signal(signal.SIGINT, signal.SIG_DFL) # to allow shut down with ctrl-c when IN THE TERMINAL
+
+import gglobs
+import gcommands
+import ghist
+import gplot
+from   gutils import *
+
+__author__          = "ullix"
+__copyright__       = "Copyright 2016"
+__credits__         = [""]
+__license__         = "GPL"
+
+
+
+class ggeiger(QtGui.QMainWindow):
+
+    def __init__(self):
+        super(ggeiger, self).__init__()
+        self.notePad           = None
+        self.initUI()
+
+    def initUI(self):
+
+# theme
+        #QtGui.QIcon.setThemeSearchPaths([gglobs.ThemeSearchPath])
+        #for p in QtGui.QIcon.themeSearchPaths():
+        #    dprint(gglobs.debug, "ThemeSearchPath:", p)
+        #QtGui.QIcon.setThemeName(gglobs.ThemeName)
+        #dprint(gglobs.debug, "ThemeName:      ", QtGui.QIcon.themeName())
+
+# font standard
+        self.fontstd = QtGui.QFont()
+        self.fontstd.setFamily('Monospace')
+        #self.fontstd.StyleHint(QtGui.QFont.TypeWriter)
+        #self.fontstd.StyleHint(QtGui.QFont.Monospace)
+        #self.fontstd.StyleHint(QtGui.QFont.Courier)
+        #self.fontstd.setFamily('Lucida')
+        self.fontstd.setFixedPitch(True)
+        self.fontstd.setPointSize(10)
+        self.fontstd.setBold(False)
+        self.fontstd.setWeight(50)
+        #self.fontstd.setStyleStrategy(QtGui.QFont.PreferMatch)
+        #self.fontstd.setBold(True)
+        #self.fontstd.Weight(QtGui.QFont.Normal)
+        #self.fontstd.Weight(QtGui.QFont.DemiBold)
+        #self.fontstd.Weight(QtGui.QFont.Bold)
+        #self.fontstd.Weight(QtGui.QFont.Black)
+
+# window
+        screen_available = QtGui.QDesktopWidget().availableGeometry()
+        #print "screen_available", screen_available, , screen_available.width(), screen_available.height()
+
+        #screen = QtGui.QDesktopWidget().screenGeometry() # total hardware screen
+        #print "screen", screen
+
+        sw = min(gglobs.window_width  -  2, screen_available.width() ) # Frame of 1 pixel left and right
+        sh = min(gglobs.window_height - 29, screen_available.height()) # Frame top + bottom + Window bar of 29 pixel
+        x  = max(screen_available.width() - sw, 0)                     # should be >0 anyway
+        y  = 0
+        self.setGeometry(x, y, sw, sh) # position window in upper right corner of screen
+        self.setWindowTitle('GeigerLog')
+        self.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+
+#figure and its toolbar
+        # a figure instance to plot on
+        #self.figure = plt.figure(facecolor = "#F9F4C9", edgecolor='lightgray', linewidth = 0.0) # light yellow face
+        self.figure = plt.figure(facecolor = "#DFDEDD") # lighter gray
+
+        # canvas - this is the Canvas Widget that displays the `figure`
+        # it takes the `figure` instance as a parameter to __init__
+        self.canvas = FigureCanvas(self.figure)
+        #self.canvas.setFixedSize(1000,400)
+
+        self.canvas.mpl_connect('motion_notify_event', self.updatecursorposition) # where the cursor is
+        self.canvas.mpl_connect('button_press_event' , self.onclick)              # send a mouse click
+
+        # this is the figure Navigation widget; it takes the Canvas widget and a parent
+        self.navtoolbar = NavigationToolbar(self.canvas, self)
+        self.navtoolbar.setIconSize(QtCore.QSize(32,32))
+
+#menubar and statusbar and toolbar
+        menubar     = self.menuBar()
+        menubar.setFocus()
+        dprint(gglobs.debug, "Fonts: menubar -", strFontInfo("", menubar.fontInfo()))
+
+        self.statusBar = QtGui.QStatusBar()
+        self.setStatusBar(self.statusBar)
+
+        toolbar     = self.addToolBar('Main')
+        toolbar.setOrientation(QtCore.Qt.Horizontal) # is default; alt: Qt.Vertical
+        toolbar.setIconSize(QtCore.QSize(32,32))  # standard size is too small
+        #print "toolbar.iconSize()", toolbar.iconSize()
+        toolbar.setToolTip("Main Toolbar")
+
+# buttons connected to stuff (may not be in use)
+        #self.qbtn = QtGui.QPushButton('Quit')
+        self.qbtn = QtGui.QPushButton('Spare Button')
+        #self.qbtn.setIcon(QtGui.QIcon.fromTheme("messagebox_warning"))
+        #self.qbtn.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_plug_open.png')))
+        #self.qbtn.clicked.connect(QtCore.QCoreApplication.instance().quit)
+        self.qbtn.clicked.connect(self.qbtntest)
+        layout2 = QtGui.QHBoxLayout()
+        layout2.addWidget(self.qbtn)
+
+#file menu
+        PlotLogAction = QtGui.QAction('Plot Log', self)
+        #PlotLogAction.setShortcut('Ctrl+P')
+        PlotLogAction.setStatusTip('Plots the Log file')
+        PlotLogAction.triggered.connect(lambda: self.plotGraph('Log'))
+
+        PlotHisAction = QtGui.QAction('Plot History', self)
+        #PlotHisAction.setShortcut('Ctrl+H')
+        PlotHisAction.setStatusTip('Plots the History file')
+        PlotHisAction.triggered.connect(lambda: self.plotGraph('His'))
+
+        PrintFileStatsAction =  QtGui.QAction('Print File Stats', self)
+        #PrintFileStatsAction.setShortcut('Ctrl+H')
+        PrintFileStatsAction.setStatusTip("Print the Statistics of all the data in the file")
+        PrintFileStatsAction.triggered.connect(self.printFileStats)
+
+        PrintPlotStatsAction =  QtGui.QAction('Print Plot Stats', self)
+        #PrintPlotStatsAction.setShortcut('Ctrl+H')
+        PrintPlotStatsAction.setStatusTip("Print the Statistics of all the data in the current plot")
+        PrintPlotStatsAction.triggered.connect(self.printPlotStats)
+
+        HistogramFileAction =  QtGui.QAction('Show File Histogram', self)
+        #HistogramFileAction.setShortcut('Ctrl+H')
+        HistogramFileAction.setStatusTip("Shows the histogram of all the data in the file")
+        HistogramFileAction.triggered.connect(lambda: self.plotHistogram('all'))
+
+        HistogramPlotAction =  QtGui.QAction('Show Plot Histogram', self)
+        #HistogramPlotAction.setShortcut('Ctrl+H')
+        HistogramPlotAction.setStatusTip("Shows the histogram of the data in the current plot")
+        HistogramPlotAction.triggered.connect(lambda: self.plotHistogram('plot'))
+
+        FFTFileAction =  QtGui.QAction('Show File FFT', self)
+        #FFTFileAction.setShortcut('Ctrl+H')
+        FFTFileAction.setStatusTip("Shows the FFT Spectra of all the data in the file")
+        FFTFileAction.triggered.connect(lambda: self.plotFFT('all'))
+
+        FFTPlotAction =  QtGui.QAction('Show Plot FFT', self)
+        #FFTPlotAction.setShortcut('Ctrl+H')
+        FFTPlotAction.setStatusTip("Shows the FFT Spectra of the data in the current plot")
+        FFTPlotAction.triggered.connect(lambda: self.plotFFT('plot'))
+
+        exitAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_exit.png')), 'Exit', self)
+        exitAction.setShortcut('Ctrl+Q')
+        exitAction.setStatusTip('Exit the GeigerLog program')
+        exitAction.triggered.connect(self.close)
+
+        fileMenu = menubar.addMenu('&File')
+        fileMenu.addAction(PlotLogAction)
+        fileMenu.addAction(PlotHisAction)
+        fileMenu.addAction(PrintFileStatsAction)
+        fileMenu.addAction(PrintPlotStatsAction)
+        fileMenu.addAction(HistogramFileAction)
+        fileMenu.addAction(HistogramPlotAction)
+        fileMenu.addAction(FFTFileAction)
+        fileMenu.addAction(FFTPlotAction)
+        fileMenu.addAction(exitAction)
+        #fileMenu.triggered[QtGui.QAction].connect(self.processtrigger)
+
+        toolbar.addAction(exitAction)
+
+# Device menu
+        self.toggleDeviceConnectionAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_plug_open.png')), 'Connect / Disconnect Device', self)
+        #self.toggleDeviceConnectionAction.setShortcut('Ctrl+C')
+        self.toggleDeviceConnectionAction.setStatusTip('Toggle connection of the computer with the Geiger counter device via the Serial Port')
+        self.toggleDeviceConnectionAction.triggered.connect(self.toggleDeviceConnection)
+
+        self.DeviceConnectAction = QtGui.QAction('Connect Device', self)
+        self.DeviceConnectAction.setShortcut('Ctrl+C')
+        self.DeviceConnectAction.setStatusTip('Connect the computer to the Geiger counter device via the Serial Port')
+        self.DeviceConnectAction.triggered.connect(lambda : self.switchDeviceConnection("ON"))
+
+        self.DeviceDisconnectAction = QtGui.QAction('Disconnect Device', self, enabled = False)
+        self.DeviceDisconnectAction.setShortcut('Ctrl+D')
+        self.DeviceDisconnectAction.setStatusTip('Disconnect the computer from the Geiger counter device via the Serial Port')
+        self.DeviceDisconnectAction.triggered.connect(lambda : self.switchDeviceConnection("OFF"))
+
+        self.DevicePowerAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_off.png')), 'Switch Device Power', self, enabled=False)
+        #self.DevicePowerAction.setShortcut('Ctrl+C')
+        self.DevicePowerAction.setStatusTip('Toggle Device Power On / OFF - Requires Connection to the Serial Port (gray: button disabled; red: Power OFF; yellow: Power ON)')
+        self.DevicePowerAction.triggered.connect(self.toggleDevicePower)
+
+        self.DeviceInfoAction = QtGui.QAction('Show Device Info', self, enabled=False)
+        self.DeviceInfoAction.setShortcut('Ctrl+I')
+        self.DeviceInfoAction.setStatusTip('Show general Info on device')
+        self.DeviceInfoAction.triggered.connect(self.printDevInfo)
+
+        self.DeviceConfigAction = QtGui.QAction('Show Device Con&figuration', self, enabled=False)
+        self.DeviceConfigAction.setShortcut('Ctrl+G')
+        self.DeviceConfigAction.setStatusTip('Show the device configuration as binary in human readable format')
+        self.DeviceConfigAction.triggered.connect(self.printDevConfig)
+
+        self.DeviceONAction = QtGui.QAction('Switch Power ON', self, enabled=False)
+        #self.DeviceONAction.setShortcut('Ctrl+F')
+        self.DeviceONAction.setStatusTip('Switch the device power to ON')
+        self.DeviceONAction.triggered.connect(lambda: self.switchDevicePower("ON"))
+
+        self.DeviceOFFAction = QtGui.QAction('Switch Power OFF', self, enabled=False)
+        #self.DeviceOFFAction.setShortcut('Ctrl+F')
+        self.DeviceOFFAction.setStatusTip('Switch the device power to OFF')
+        self.DeviceOFFAction.triggered.connect(lambda: self.switchDevicePower("OFF"))
+
+        self.AlarmONAction = QtGui.QAction('Switch Alarm ON', self, enabled=False)
+        #self.AlarmONAction.setShortcut('Ctrl+F')
+        self.AlarmONAction.setStatusTip('Switch the device alarm ON')
+        self.AlarmONAction.triggered.connect(lambda: self.switchDeviceAlarm("ON"))
+
+        self.AlarmOFFAction = QtGui.QAction('Switch Alarm OFF', self, enabled=False)
+        #self.AlarmOFFAction.setShortcut('Ctrl+F')
+        self.AlarmOFFAction.setStatusTip('Switch the device alarm OFF')
+        self.AlarmOFFAction.triggered.connect(lambda: self.switchDeviceAlarm("OFF"))
+
+        self.SpeakerONAction = QtGui.QAction('Switch Speaker ON', self, enabled=False)
+        #self.SpeakerONAction.setShortcut('Ctrl+F')
+        self.SpeakerONAction.setStatusTip('Switch the device speaker ON')
+        self.SpeakerONAction.triggered.connect(lambda: self.switchDeviceSpeaker("ON"))
+
+        self.SpeakerOFFAction = QtGui.QAction('Switch Speaker OFF', self, enabled=False)
+        #self.SpeakerOFFAction.setShortcut('Ctrl+F')
+        self.SpeakerOFFAction.setStatusTip('Switch the device speaker OFF')
+        self.SpeakerOFFAction.triggered.connect(lambda: self.switchDeviceSpeaker("OFF"))
+
+        self.DeviceSavingStateAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + '')), 'Switch Saving Mode of Device', self, enabled=False)
+        #self.DeviceSavingStateAction.setShortcut('Ctrl+V')
+        self.DeviceSavingStateAction.setStatusTip('Switch Saving Mode of Device between OFF, CPS, CPM, and hourly as CPM')
+        self.DeviceSavingStateAction.triggered.connect(self.switchSaveDataType)
+
+        self.DeviceSetTimeAction = QtGui.QAction('Set Date+Time of Device', self, enabled=False)
+        #self.DeviceSetTimeAction.setShortcut('Ctrl+F')
+        self.DeviceSetTimeAction.setStatusTip('Set the Date + Time of the device to the computer time')
+        self.DeviceSetTimeAction.triggered.connect(self.deviceSetTime)
+
+        self.DeviceREBOOTAction = QtGui.QAction('Reboot Device', self, enabled=False)
+        #self.DeviceREBOOTAction.setShortcut('Ctrl+F')
+        self.DeviceREBOOTAction.setStatusTip('Send REBOOT command to the device')
+        self.DeviceREBOOTAction.triggered.connect(self.doREBOOT)
+
+        self.DeviceFACTORYRESETAction = QtGui.QAction('FACTORYRESET Device', self, enabled=False)
+        #self.DeviceFACTORYRESETAction.setShortcut('Ctrl+F')
+        self.DeviceFACTORYRESETAction.setStatusTip('Send FACTORYRESET command to the device')
+        self.DeviceFACTORYRESETAction.triggered.connect(self.doFACTORYRESET)
+
+        deviceMenu = menubar.addMenu('&Device')
+        deviceMenu.addAction(self.DeviceConnectAction)
+        deviceMenu.addAction(self.DeviceDisconnectAction)
+        deviceMenu.addAction(self.DeviceInfoAction)
+        deviceMenu.addAction(self.DeviceConfigAction)
+        deviceMenu.addAction(self.DeviceONAction)
+        deviceMenu.addAction(self.DeviceOFFAction)
+        deviceMenu.addAction(self.AlarmONAction)
+        deviceMenu.addAction(self.AlarmOFFAction)
+        deviceMenu.addAction(self.SpeakerONAction)
+        deviceMenu.addAction(self.SpeakerOFFAction)
+        deviceMenu.addAction(self.DeviceSavingStateAction)
+        deviceMenu.addAction(self.DeviceSetTimeAction)
+        deviceMenu.addAction(self.DeviceREBOOTAction)
+        deviceMenu.addAction(self.DeviceFACTORYRESETAction)
+        #deviceMenu.triggered[QtGui.QAction].connect(self.processtrigger)
+
+        self.device = QtGui.QComboBox()
+        self.device.setToolTip("Device Selector")
+        self.device.addItems(gglobs.devices)
+        self.device.setCurrentIndex(gglobs.devicesIndex)
+        self.device.currentIndexChanged.connect(self.selectionchange)
+        self.device.setStatusTip("Select Geiger counter device in use")
+
+        toolbar     = self.addToolBar('Device')
+        toolbar.setToolTip("Device Toolbar")
+        toolbar.setIconSize(QtCore.QSize(32,32))  # standard size is too small
+        toolbar.addWidget(self.device)
+        toolbar.addAction(self.toggleDeviceConnectionAction)
+        toolbar.addAction(self.DevicePowerAction)
+
+#Log Menu
+        self.logLoadFileAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_log_get.png')), 'Get Log File or Create New One', self)
+        self.logLoadFileAction.setShortcut('Ctrl+F')
+        self.logLoadFileAction.setStatusTip('Load file for logging or create new one. Plot data if there are any in the loaded file')
+        self.logLoadFileAction.triggered.connect(self.getLogFile)
+
+        self.startloggingAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_log_start.png')), 'Start Logging', self, enabled=False)
+        self.startloggingAction.setShortcut('Ctrl+L')
+        self.startloggingAction.setStatusTip('Start logging from device. Requires: 1) Connection, 2) Device is powered, 3) Log file is loaded')
+        self.startloggingAction.triggered.connect(self.startTimer)
+
+        self.stoploggingAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_log_stop.png')), 'Stop Logging', self, enabled=False)
+        self.stoploggingAction.setShortcut('Ctrl+S')
+        self.stoploggingAction.setStatusTip('Stop logging from device')
+        self.stoploggingAction.triggered.connect(self.stopTimer)
+
+        self.addCommentAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + '')), 'Add Comment to Log', self, enabled=False)
+        self.addCommentAction.setShortcut('Ctrl+A')
+        self.addCommentAction.setStatusTip('Add a comment to the current log file')
+        self.addCommentAction.triggered.connect(self.addComment)
+
+        self.showLogDataAction = QtGui.QAction('Show Log Data', self)
+        #self.showLogDataAction.setShortcut('Ctrl+S')
+        self.showLogDataAction.setStatusTip('Show all log data from current log file')
+        self.showLogDataAction.triggered.connect(self.showLogData)
+
+        self.quickLogAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_quick_log.png')), 'Quick Log', self, enabled=False)
+        self.quickLogAction.setShortcut('Ctrl+K')
+        self.quickLogAction.setStatusTip('One-click log always into file file default.log, overwritten on restart')
+        self.quickLogAction.triggered.connect(self.quickLog)
+
+        self.showLogTagsAction = QtGui.QAction('Show Log Comments', self)
+        #self.showLogTagsAction.setShortcut('Ctrl+S')
+        self.showLogTagsAction.setStatusTip('Show only lines from log containing comments')
+        self.showLogTagsAction.triggered.connect(self.showLogTags)
+
+        self.showLogExcerptAction = QtGui.QAction('Show Log Data as Excerpt', self)
+        #self.showLogExcerptAction.setShortcut('Ctrl+S')
+        self.showLogExcerptAction.setStatusTip('Show log data as excerpt (i.e. first and last records) from current log file')
+        self.showLogExcerptAction.triggered.connect(self.showLogDataExcerpt)
+
+        self.countUnit = QtGui.QComboBox()
+        self.countUnit.setToolTip(u"Selector for Count Rate Units")
+        self.countUnit.addItems([u"CPM:", u"CPS:", u"µSv/h:", u"mSv/d:", u"mSv/a:"])
+        self.countUnit.setFont(QtGui.QFont("", weight=QtGui.QFont.Bold))
+        self.countUnit.setStatusTip(u'Selects the type of count rate to show when loggin: CPM, CPS, µSv/h')
+        self.countUnit.currentIndexChanged.connect(self.changedCountUnit)
+
+        self.labelCPM = QtGui.QLabel("---")
+        self.labelCPM.setToolTip("Count Rate in Selected Units")
+        self.labelCPM.setMinimumWidth(100)
+        self.labelCPM.setFont(QtGui.QFont('sans', 20, QtGui.QFont.Bold))
+        self.labelCPM.setStyleSheet('color:darkgray;')
+        #self.labelCPM.setAlignment(QtCore.Qt.AlignLeft)
+        self.labelCPM.setAlignment(QtCore.Qt.AlignCenter)
+        self.labelCPM.setStatusTip('Shows the count rate when logging is active')
+
+        countLabel = QtGui.QHBoxLayout()
+        countLabel.addWidget(self.countUnit)
+        countLabel.addWidget(self.labelCPM)
+        #countLabel.addStretch(10)
+
+
+        countGroup = QtGui.QGroupBox()
+        countGroup.setLayout(countLabel)
+        # next: required to correct for gtk alignment problem
+        # border is made invisible by setting to background color
+        # background-color: rgb(255, 255,255);
+        countGroup.setStyleSheet("""
+                                   QGroupBox
+                                   {
+                                       border:1px solid rgb(242,241,240);
+                                   }
+                                   """
+                                    )
+
+        loggingMenu = menubar.addMenu('&Log')
+        loggingMenu.addAction(self.logLoadFileAction)
+        loggingMenu.addAction(self.startloggingAction)
+        loggingMenu.addAction(self.stoploggingAction)
+        loggingMenu.addAction(self.quickLogAction)
+        loggingMenu.addAction(self.addCommentAction)
+        loggingMenu.addAction(self.showLogDataAction)
+        loggingMenu.addAction(self.showLogTagsAction)
+        loggingMenu.addAction(self.showLogExcerptAction)
+        #loggingMenu.triggered[QtGui.QAction].connect(self.processtrigger)
+
+        toolbar     = self.addToolBar('Log')
+        toolbar.setToolTip("Log Toolbar")
+        toolbar.setIconSize(QtCore.QSize(32,32))  # standard size is too small
+        toolbar.addAction(self.logLoadFileAction)
+        toolbar.addAction(self.startloggingAction)
+        toolbar.addAction(self.quickLogAction)
+        toolbar.addWidget(countGroup)
+        toolbar.addAction(self.stoploggingAction)
+
+#History Menu
+        self.histLoadBinAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_hist_bin_active.png')), 'Get History from Binary File', self)
+        self.histLoadBinAction.setShortcut('Ctrl+B')
+        self.histLoadBinAction.setStatusTip('Load history data from binary file and plot')
+        self.histLoadBinAction.triggered.connect(lambda: self.getHistory("Binary File"))
+
+        self.histLoadHisAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_hist_his_active.png')), 'Get History from Parsed File', self)
+        self.histLoadHisAction.setShortcut('Ctrl+P')
+        self.histLoadHisAction.setStatusTip('Load history data from parsed history file and plot')
+        self.histLoadHisAction.triggered.connect(lambda: self.getHistory("Parsed File"))
+
+        self.histDeviceAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_hist_device_active.png')), 'Get History from Device ', self, enabled=False)
+        self.histDeviceAction.setShortcut('Ctrl+H')
+        self.histDeviceAction.setStatusTip('Load history data from device and plot; requires Device connection')
+        self.histDeviceAction.triggered.connect(lambda: self.getHistory("Device"))
+
+        self.showHistHisDataAction = QtGui.QAction('Show History Parsed Data', self)
+        #self.showHistHisDataAction.setShortcut('Ctrl+S')
+        self.showHistHisDataAction.setStatusTip('Show history data parsed from binary data')
+        self.showHistHisDataAction.triggered.connect(self.showHistHisData)
+
+        self.showHistHisTagsAction = QtGui.QAction('Show History Tags/Comments', self)
+        #self.showHistHisTagsAction.setShortcut('Ctrl+S')
+        self.showHistHisTagsAction.setStatusTip('Show only lines from history containing tags or comments')
+        self.showHistHisTagsAction.triggered.connect(self.showHistHisTags)
+
+        self.showHistBinDataAction = QtGui.QAction('Show History Binary Data', self)
+        #self.showHistBinDataAction.setShortcut('Ctrl+L')
+        self.showHistBinDataAction.setStatusTip('Show history binary data in human readable form')
+        self.showHistBinDataAction.triggered.connect(self.showHistBinData)
+
+        self.showHistExcerptAction = QtGui.QAction('Show History Data Excerpt', self)
+        #self.showHistExcerptAction.setShortcut('Ctrl+S')
+        self.showHistExcerptAction.setStatusTip('Show first and last few lines of both binary and parsed data')
+        self.showHistExcerptAction.triggered.connect(self.showHistExcerpt)
+
+        historyMenu = menubar.addMenu('Histor&y')
+        historyMenu.addAction(self.histDeviceAction)
+        historyMenu.addAction(self.histLoadBinAction)
+        historyMenu.addAction(self.histLoadHisAction)
+        historyMenu.addAction(self.showHistBinDataAction)
+        historyMenu.addAction(self.showHistHisDataAction)
+        historyMenu.addAction(self.showHistHisTagsAction)
+        historyMenu.addAction(self.showHistExcerptAction)
+        #historyMenu.triggered[QtGui.QAction].connect(self.processtrigger)
+
+        toolbar     = self.addToolBar('History')
+        toolbar.setToolTip("History Toolbar")
+        toolbar.setIconSize(QtCore.QSize(32,32))  # standard size is too small
+        toolbar.addAction(self.histDeviceAction)
+        toolbar.addAction(self.histLoadBinAction)
+        toolbar.addAction(self.histLoadHisAction)
+
+#Help Menu
+        self.helpAboutAction = QtGui.QAction('About GeigerLog', self)
+        #self.helpAboutAction.setShortcut('Ctrl+S')
+        self.helpAboutAction.setStatusTip('About the GeigerLog program')
+        self.helpAboutAction.triggered.connect(self.helpAbout)
+
+        self.helpOptionsAction = QtGui.QAction('Options', self)
+        #self.helpOptionsAction.setShortcut('Ctrl+S')
+        self.helpOptionsAction.setStatusTip('Show command line options')
+        self.helpOptionsAction.triggered.connect(self.helpOptions)
+
+        self.helpQickStartAction = QtGui.QAction('Quickstart', self)
+        #self.helpQickStartAction.setShortcut('Ctrl+S')
+        self.helpQickStartAction.setStatusTip('Guidance for an easy start')
+        self.helpQickStartAction.triggered.connect(self.helpQuickStart)
+
+        self.DeviceUSBDiscoveryAction = QtGui.QAction('USB Autodiscovery', self)
+        #self.DeviceUSBDiscoveryAction.setShortcut('Ctrl+F')
+        self.DeviceUSBDiscoveryAction.setStatusTip('Finding the USB Port and the Baudrate automatically')
+        #self.DeviceUSBDiscoveryAction.triggered.connect(self.doPortAutoDiscovery)
+        self.DeviceUSBDiscoveryAction.triggered.connect(self.selectUSB)
+
+
+        self.helpSystemInfoAction = QtGui.QAction('System Info', self)
+        #self.helpSystemInfoAction.setShortcut('Ctrl+F')
+        self.helpSystemInfoAction.setStatusTip('Show Details on the Current Program Settings and Environment')
+        self.helpSystemInfoAction.triggered.connect(self.showSystemInfo)
+
+        self.helpManualUrlAction = QtGui.QAction('GeigerLog Manual', self)
+        #self.helpManualUrlAction.setShortcut('Ctrl+F')
+        self.helpManualUrlAction.setStatusTip('Open the GeigerLog Manual (locally if available, or online)')
+        self.helpManualUrlAction.triggered.connect(self.openUrl)
+
+        helpMenu = menubar.addMenu('&Help')
+        helpMenu.addAction(self.helpQickStartAction)
+        helpMenu.addAction(self.helpManualUrlAction)
+        helpMenu.addAction(self.helpOptionsAction)
+        helpMenu.addAction(self.helpSystemInfoAction)
+        helpMenu.addAction(self.DeviceUSBDiscoveryAction)
+        helpMenu.addSeparator()
+        helpMenu.addAction(self.helpAboutAction)
+        #helpMenu.triggered[QtGui.QAction].connect(self.processtrigger)
+
+# DataOptions
+        # labels and entry fields
+        dltitle  = QtGui.QLabel("Data")
+        dltitle.setFont(QtGui.QFont("system", weight=QtGui.QFont.Bold))
+        dlcf     = QtGui.QLabel("Files")
+        dlcf.setAlignment(QtCore.Qt.AlignCenter)
+        dlcy     = QtGui.QLabel("Cycle(s)")
+        dlcy.setAlignment(QtCore.Qt.AlignCenter)
+        dlunit   = QtGui.QLabel("CPM/CPS")
+        dlunit.setAlignment(QtCore.Qt.AlignCenter)
+
+        dllog=QtGui.QLabel("Log:")
+        self.dcfLog=QtGui.QLineEdit()
+        self.dcfLog.setReadOnly(True)
+        #self.dcfLog.setStyleSheet("QLineEdit { background-color : lightgray; color : rgb(80,80,80); }")
+        self.dcfLog.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
+        #self.dcfLog.setStyleSheet("QLineEdit { background-color : #F9F4C9; color : rgb(80,80,80); }")
+        self.dcfLog.setStatusTip('The full path of the Log-File if any is loaded')
+
+        self.dcycl  = QtGui.QLineEdit()
+        self.dcycl.setStatusTip('The logging cycle to be used in seconds')
+        self.dcycl.setMaximumWidth(60)
+
+        self.dcunit = QtGui.QComboBox()
+        self.dcunit.addItems(["CPM", "CPS"])
+        self.dcunit.setStatusTip('The count rate logged as CPM or CPS')
+        self.dcunit.setMaximumWidth(70)
+
+        dlhist=QtGui.QLabel("History:")
+        self.dcfHis=QtGui.QLineEdit()
+        self.dcfHis.setReadOnly(True)
+        #self.dcfHis.setStyleSheet("QLineEdit { background-color : #F9F4C9; color : rgb(80,80,80); }")
+        #self.dcfHis.setStyleSheet("QLineEdit { background-color : lightgray; color : rgb(80,80,80); }")
+        self.dcfHis.setStyleSheet("QLineEdit { background-color : #DFDEDD; color : rgb(80,80,80); }")
+        self.dcfHis.setStatusTip('The full path of the History-File if any is loaded')
+
+        #data buttons
+        dbtnPlotLog =  QtGui.QPushButton('Plot')
+        dbtnPlotLog.clicked.connect(lambda: self.plotGraph('Log'))
+        dbtnPlotLog.setMaximumWidth(36)
+        dbtnPlotLog.setStatusTip("Plot the Logging Data")
+
+        dbtnPlotHis =  QtGui.QPushButton('Plot')
+        dbtnPlotHis.clicked.connect(lambda: self.plotGraph('His'))
+        dbtnPlotHis.setMaximumWidth(36)
+        dbtnPlotHis.setStatusTip("Plot the History Data")
+
+        dbtnApplyData = QtGui.QPushButton('Apply')
+        dbtnApplyData.clicked.connect(self.applyDataOptions)
+        dbtnApplyData.setStyleSheet("background-color: lightblue")
+        #dbtnApplyData.setFont(QtGui.QFont("system", weight=QtGui.QFont.Bold))
+        dbtnApplyData.setStatusTip("Apply the Data Options to the logging settings")
+        dbtnApplyData.setMaximumWidth(60)
+
+        # button clear notepad
+        clearbutton    =  QtGui.QPushButton('Clear NotePad')
+        clearbutton.clicked.connect(self.clearNotePad)
+        clearbutton.setStatusTip('Delete all content of the NotePad')
+        #clearbutton.setStyleSheet("background-color: #F7FDFF")
+
+        #layout the Data Options
+        dOptions=QtGui.QGridLayout()
+        dOptions.setColumnMinimumWidth (2, 80)
+        dOptions.setColumnMinimumWidth (3, 50)
+
+        #dOptions.setColumnStretch (1,1000)
+        dOptions.addWidget(dltitle,          0, 0)
+        dOptions.addWidget(dlcf,             0, 2)
+        dOptions.addWidget(dlcy,             0, 3)
+        dOptions.addWidget(dlunit,           0, 4)
+        dOptions.addWidget(dbtnPlotLog,      1, 1)
+        dOptions.addWidget(dbtnPlotHis,      2, 1)
+        dOptions.addWidget(dllog,            1, 0)
+        dOptions.addWidget(self.dcfLog,      1, 2)
+        dOptions.addWidget(self.dcycl,       1, 3)
+        dOptions.addWidget(self.dcunit,      1, 4)
+        dOptions.addWidget(dlhist,           2, 0)
+        dOptions.addWidget(self.dcfHis,      2, 2)
+        dOptions.addWidget(dbtnApplyData,    1, 5)
+        dOptions.addWidget(clearbutton,      2, 3, 1, 3)
+
+        # group Data Options into box
+        dataGroup = QtGui.QGroupBox()
+        dataGroup.setLayout(dOptions)
+        dataGroup.setMinimumHeight(130)
+        dataGroup.setMaximumHeight(130)
+
+# GraphOptions
+        # labels and entry fields
+        ltitle  = QtGui.QLabel("Graph")
+        ltitle.setFont(QtGui.QFont("system", weight=QtGui.QFont.Bold))
+        lmin    = QtGui.QLabel("Min")
+        lmin.setAlignment(QtCore.Qt.AlignCenter)
+        lmax    = QtGui.QLabel("Max")
+        lmax.setAlignment(QtCore.Qt.AlignCenter)
+        lunit   = QtGui.QLabel("Unit")
+        lunit.setAlignment(QtCore.Qt.AlignCenter)
+        lmode   = QtGui.QLabel("Scale")
+        lmode.setAlignment(QtCore.Qt.AlignCenter)
+        lavg    = QtGui.QLabel("Avg")
+        lavg.setAlignment(QtCore.Qt.AlignCenter)
+        lmav    = QtGui.QLabel("MovAvg(s)")
+        lmav.setAlignment(QtCore.Qt.AlignCenter)
+
+        ewidth = 120
+        lcounts=QtGui.QLabel("Counts:")
+        self.ymin=QtGui.QLineEdit()
+        self.ymin.setMaximumWidth(ewidth)
+        self.ymin.setStatusTip('Minimum setting for Count-axis (effective only when Scale is set to Fix)')
+
+        self.ymax=QtGui.QLineEdit()
+        self.ymax.setMaximumWidth(ewidth)
+        self.ymax.setStatusTip('Maximum setting for Count-axis (effective only when Scale is set to Fix)')
+
+        self.yunit = QtGui.QComboBox()
+        self.yunit.addItems([u"CPM", u"CPS", u"µSv/h"])
+        self.yunit.setMaximumWidth(80)
+        self.yunit.setStatusTip(u'Select a plot of CPM or CPS or µSv/h vs. time - does NOT depend on the data being collected by CPM or CPS')
+
+        self.ymode = QtGui.QComboBox()
+        self.ymode.addItems(["auto", "fix"])
+        self.ymode.setMaximumWidth(65)
+        self.ymode.setStatusTip('On auto the graph will select min and max of Count axis, on fix the entered values will be used; then both min and max must be given')
+
+        chk_width = 20
+
+        self.avgbox = QtGui.QCheckBox()
+        self.avgbox.setLayoutDirection(QtCore.Qt.RightToLeft)
+        self.avgbox.setChecked(gglobs.avgChecked)
+        self.avgbox.setTristate (False)
+        self.avgbox.setStatusTip("If checked Average and ±95% lines will be shown")
+        self.avgbox.setMaximumWidth(chk_width)
+        self.avgbox.setMinimumWidth(chk_width)
+
+        self.mavbox = QtGui.QCheckBox()
+        self.mavbox.setLayoutDirection(QtCore.Qt.RightToLeft)
+        self.mavbox.setChecked(gglobs.mavChecked)
+        self.mavbox.setTristate (False)
+        self.mavbox.setStatusTip('If checked a Moving Average line will be drawn')
+        self.mavbox.setMaximumWidth(chk_width)
+        self.mavbox.setMinimumWidth(chk_width)
+
+        self.mav=QtGui.QLineEdit()
+        self.mav.setMaximumWidth(60)
+        self.mav.setStatusTip('Enter the Moving Average smoothing period in seconds')
+        self.mav.setText(str(gglobs.mav_initial))
+
+        ltime=QtGui.QLabel("Time:")
+        self.xmin=QtGui.QLineEdit()
+        self.xmin.setMaximumWidth(ewidth)
+        self.xmin.setStatusTip('The minimum (left) limit of the time to be shown. Enter manuallly or by left-mouse-click on the graph')
+
+        self.xmax=QtGui.QLineEdit()
+        self.xmax.setMaximumWidth(ewidth)
+        self.xmax.setStatusTip('The maximum (right) limit of the time to be shown. Enter manuallly or by right-mouse-click on the graph')
+
+        self.xunit = QtGui.QComboBox()
+        self.xunit.addItems(["Time", "auto", "second", "minute", "hour", "day"])
+        self.xunit.setMaximumWidth(80)
+        self.xunit.currentIndexChanged.connect(self.changedTimeUnit)
+        self.xunit.setStatusTip('The time axis to be shown as Time-of-Day (Time) or time since first record in seconds, minutes, hours, days; auto selects most appropriate period')
+
+        self.xmode = QtGui.QComboBox()
+        self.xmode.addItems(["auto", "fix"])
+        self.xmode.setMaximumWidth(65)
+        self.xmode.setStatusTip('On auto the graph will determine the limits; on fix the entered values will be used; then both min and max must be given')
+
+        btn_width = 36
+
+        btnHistogram =  QtGui.QPushButton('Hist')
+        btnHistogram.clicked.connect(lambda: self.plotHistogram('plot'))
+        btnHistogram.setMaximumWidth(btn_width)
+        btnHistogram.setMinimumWidth(btn_width)
+        btnHistogram.setStatusTip("Show a histogram of the data in the plot")
+
+        btnFFT =  QtGui.QPushButton('FFT')
+        btnFFT.clicked.connect(lambda: self.plotFFT('plot'))
+        btnFFT.setMaximumWidth(btn_width)
+        btnFFT.setMinimumWidth(btn_width)
+        btnFFT.setStatusTip("Show the FFT spectra of the data in the plot")
+
+        btnPlotStats =  QtGui.QPushButton('Statistics')
+        btnPlotStats.clicked.connect(self.printPlotStats)
+        btnPlotStats.setMaximumWidth(80)
+        btnPlotStats.setStatusTip("Print the Statistics of the data points currently plotted")
+
+        btnMoveLegend = QtGui.QPushButton('Move Lgd')
+        btnMoveLegend.clicked.connect(self.moveLegend)
+        btnMoveLegend.setMaximumWidth(80)
+        btnMoveLegend.setStatusTip("Move the Graphs Legend to a different place on the Graph")
+
+        btnReset  = QtGui.QPushButton('Reset')
+        btnReset.clicked.connect(self.resetGraph)
+        btnReset.setMaximumWidth(50)
+        btnReset.setStatusTip("Reset the Graph Options to the Default condisions")
+
+        btnApplyGraph = QtGui.QPushButton('Apply')
+        btnApplyGraph.clicked.connect(self.applyGraphOptions)
+        btnApplyGraph.setStyleSheet("background-color: lightblue")
+        #btnApplyGraph.setFont(QtGui.QFont("system", weight=QtGui.QFont.Bold))
+        btnApplyGraph.setMaximumWidth(60)
+        btnApplyGraph.setStatusTip("Apply the Graph Options and replot")
+        btnApplyGraph.setAutoDefault(True)
+
+        #layout the GraphOptions
+        gOptions=QtGui.QGridLayout()
+        gOptions.addWidget(ltitle,          0, 0)
+        gOptions.addWidget(lmin,            0, 1)
+        gOptions.addWidget(lmax,            0, 2)
+        gOptions.addWidget(lunit,           0, 3)
+        gOptions.addWidget(lmode,           0, 4)
+        gOptions.addWidget(lavg,            0, 5)
+        gOptions.addWidget(lmav,            0, 6, 1, 2)
+
+        gOptions.addWidget(lcounts,         1, 0)
+        gOptions.addWidget(self.ymin,       1, 1)
+        gOptions.addWidget(self.ymax,       1, 2)
+        gOptions.addWidget(self.yunit,      1, 3)
+        gOptions.addWidget(self.ymode,      1, 4)
+        gOptions.addWidget(self.avgbox,     1, 5)
+        gOptions.addWidget(self.mavbox,     1, 6)
+        gOptions.addWidget(self.mav,        1, 7)
+
+        gOptions.addWidget(ltime,           2, 0)
+        gOptions.addWidget(self.xmin,       2, 1)
+        gOptions.addWidget(self.xmax,       2, 2)
+        gOptions.addWidget(self.xunit,      2, 3)
+        gOptions.addWidget(self.xmode,      2, 4)
+
+        #gOptions.addWidget(btnFileStats,    0, 7)
+        gOptions.addWidget(btnHistogram,    0, 8)
+        gOptions.addWidget(btnFFT,          0, 9)
+
+        gOptions.addWidget(btnPlotStats,    1, 8, 1, 2)
+
+        gOptions.addWidget(btnApplyGraph,   2, 7)
+        gOptions.addWidget(btnReset,        2, 5, 1, 2)
+        gOptions.addWidget(btnMoveLegend,   2, 8, 1, 2)
+
+
+        #gOptions.setColumnMinimumWidth (1, 50)
+        #gOptions.setColumnMinimumWidth (2, 50)
+        #gOptions.setColumnStretch      (1, 1000)
+        #gOptions.setColumnStretch      (2, 1000)
+
+        #hLine = QtGui.QFrame()
+        #hLine.setFrameShape(QtGui.QFrame.HLine)
+        #gOptions.addWidget(hLine,           3, 0, 1, 7)
+
+        # group Graph Options into box
+        group = QtGui.QGroupBox()
+        group.setLayout(gOptions)
+        group.setMinimumHeight(130)
+        group.setMaximumHeight(130)
+
+# NotePad, to be added below data
+        self.notePad = QtGui.QTextEdit()
+        self.notePad.setReadOnly(True)
+        self.notePad.setFont(self.fontstd)
+        self.notePad.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        #self.notePad.setLineWrapMode(QtGui.QTextEdit.WidgetWidth)
+        #self.notePad.setStyleSheet("color:black; weight: bold;")
+        #self.notePad.setColor(QtGui.QColor("#000000"))
+        #self.notePad.setMinimumWidth(600)
+        #self.notePad.setStyleSheet("background-color: #f8f8f8;")  # off white
+        #self.notePad.setStyleSheet("background-color: #F7FDFF;") # very light blue
+        #self.notePad.setTextBackgroundColor(QColor(/rgb(0xF7, 0xFD, 0xFF))
+        #self.notePad.setBackgroundColor(QtGui.QColor("#a7FDFF"))
+        dprint(gglobs.debug, "Fonts: notePad -", strFontInfo("", self.notePad.fontInfo()))
+
+# LogPad, to be added below graph
+        self.logPad = QtGui.QTextEdit()
+        self.logPad.setReadOnly(True)
+        self.logPad.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        #self.logPad.setLineWrapMode(QtGui.QTextEdit.WidgetWidth)
+        self.logPad.setFont(self.fontstd)
+        dprint(gglobs.debug, "Fonts: logPad  -", strFontInfo("", self.logPad.fontInfo()))
+        #self.logPad.setMinimumWidth(800)
+        #self.logPad.setColor(0xFFFFFF)
+        #self.logPad.setStyleSheet("color:black;")
+        #self.logPad.setStyleSheet("background-color: #F7FDFF;")
+        #self.logPad.setStyleSheet("background-color: #f8f8f8;")
+        #self.logPad.setStyleSheet("background-color: yellow;")
+        #self.logPad.setStyleSheet("color:blue;padding:2px; margin:3px;background-color: yellow;")
+        #self.logPad.setStyleSheet("background-color: lightyellow;")
+        #self.logPad.setStyleSheet("font-family:Monospace;")
+
+# set the layout - left
+        layoutPad = QtGui.QVBoxLayout()
+        layoutPad.addWidget(dataGroup)
+        layoutPad.addWidget(self.notePad)
+        #layoutPad.addLayout(layout2)  # only Spare button, keep for tests
+
+# set the layout - right
+        graphbox = QtGui.QVBoxLayout()
+        graphbox.addWidget(self.canvas)
+        graphbox.setMargin(0)
+
+        graphgroup = QtGui.QGroupBox()
+        graphgroup.setLayout(graphbox)
+
+        layoutGraph = QtGui.QVBoxLayout()
+        layoutGraph.addWidget(group)
+        layoutGraph.addWidget(graphgroup)
+        layoutGraph.addWidget(self.logPad)
+        #layoutGraph.addStretch(10)
+
+# set the layout - both
+        grid = QtGui.QGridLayout()
+        grid.addLayout(layoutPad,   0, 0)
+        grid.addLayout(layoutGraph, 0, 1)
+        #grid.addLayout(layout2, 1, 0, 1, 2)  # only Quit button, keep for tests
+
+# add navigation toolbar as last toolbar
+        self.addToolBar(self.navtoolbar)
+        self.navtoolbar.setToolTip("Graph Toolbar")
+
+# centralwidget
+        centralwidget = QtGui.QWidget()
+        centralwidget.setLayout(grid)
+        self.setCentralWidget(centralwidget)
+
+#set gglobs (still used for fprint in utils)
+        gglobs.NotePad = self.notePad
+
+#timer for logging
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.makeLOG)
+
+#show
+        self.dcfLog.setText(str(gglobs.logFilePath))     # default is None
+        self.dcfHis.setText(str(gglobs.hisFilePath))
+        self.dcycl. setText(str(gglobs.logcycle))
+
+        self.show()
+
+        if gglobs.test:
+            self.getLogFileTest()
+
+        # redirection of output
+        #print "sys.stdout.isatty():", sys.stdout.isatty()
+        #sys.stdout = open('stdoutfile', 'w', buffering=0)
+        #print "sys.stdout.isatty():", sys.stdout.isatty()
+
+        dprint(gglobs.debug, "Screen Dimensions: ", QtGui.QDesktopWidget().screenGeometry()) # gives screen dimensions
+        dprint(gglobs.debug, "Screen Available:  ", screen_available)                        # gives screen dimensions available
+
+        # Note on Windows sizes:
+        # "On X11, a window does not have a frame until the window manager decorates it."
+        # see: http://doc.qt.io/qt-4.8/application-windows.html#window-geometry
+        dprint(gglobs.debug, "Windows Dimensions w/o Frame:", self.geometry()) # gives Windows dimensions but has the frame EXCLUDED!
+
+        #screen = QtGui.QDesktopWidget().screenGeometry()
+        #self.resize(screen.width(), screen.height()) # Full Window
+        #self.resize(sw, sh) # small window
+        #dprint(gglobs.debug, "Windows Dimensions wth Frame:", self.frameGeometry()) # gives Windows dimensions including frame, but not on X11!
+
+
+#####===========Class Functions================================================
+
+#Data Options
+    def applyDataOptions(self):
+
+        oldlogcycle = gglobs.logcycle
+        oldcpmflag  = gglobs.cpmflag
+        if oldcpmflag == True:
+            oldunitIndex = 0
+        else:
+            oldunitIndex = 1
+
+        logcycle  = self.dcycl.text().replace(",", ".")  #replace comma with dot
+        unitIndex = self.dcunit.currentIndex() # Index=0-> CPM; =1->CPS
+
+        try:
+            lc = float(logcycle)
+        except:
+            lc = 0
+
+        if lc < 0.1:
+            self.print2NotePad("ERROR: Log cycle must be a number and at least 0.1 sec")
+            self.dcycl.setText(str(oldlogcycle))
+            self.dcunit.setCurrentIndex(oldunitIndex)
+            return
+        else:
+            gglobs.logcycle = lc
+            if unitIndex == 0:
+                gglobs.cpmflag = True
+            else:
+                gglobs.cpmflag = False
+
+        vprint(gglobs.verbose, "New Data Options: Cycle={}sec, mode={}".format(gglobs.logcycle, "CPM" if gglobs.cpmflag else "CPS"))
+
+        if gglobs.logging:              # if ongoing logging
+            self.stopTimer()            # stop/start to set timer
+            self.startTimer()           # for new cycle
+
+
+#GraphOptions
+    def applyGraphOptions(self):
+
+        if gglobs.currentFilePath == None: return
+
+        #replace comma with dot, strip outer whitespace
+        xmin  = (str(self.xmin.text()).replace(",", ".")).strip()
+        xmax  = (str(self.xmax.text()).replace(",", ".")).strip()
+        xunit = str(self.xunit.currentText())
+        xmode = str(self.xmode.currentText())
+
+        ymin  = (str(self.ymin.text()).replace(",", ".")).strip()
+        ymax  = (str(self.ymax.text()).replace(",", ".")).strip()
+        #yunit = str(self.yunit.currentText())
+        yunit = unicode(self.yunit.currentText())
+        ymode = str(self.ymode.currentText())
+
+        mav   = (str(self.mav.text()).replace(",", ".") ).strip()
+
+        #print "X:", xmin, xmax, xunit, xmode
+        #print "Y:", ymin, ymax, yunit, ymode, mav
+
+        if  xmin == "":
+            gglobs.Xleft  = None
+        else:
+            if gglobs.Xunit == "Time":
+                try:
+                    gglobs.Xleft = mpld.datestr2num(str(xmin))
+                except:
+                    gglobs.Xleft = None
+                    self.error2NotePad("Did not recognize Time Min")
+            else:
+                try:
+                    gglobs.Xleft     = float(xmin)
+                except:
+                    gglobs.Xleft     = None
+                    self.error2NotePad("Did not recognize Time Min")
+
+        if  xmax == "":
+            gglobs.Xright = None
+        else:
+            if gglobs.Xunit == "Time":
+                try:
+                    gglobs.Xright = mpld.datestr2num(str(xmax))
+                except:
+                    gglobs.Xright = None
+                    self.error2NotePad("Did not recognize Time Max")
+            else:
+                try:
+                    gglobs.Xright    = float(xmax)
+                except:
+                    gglobs.Xright    = None
+                    self.error2NotePad("Did not recognize Time Max")
+
+        #print "Xleft ", gglobs.Xleft
+        #print "Xright", gglobs.Xright
+
+        if gglobs.Xleft != None and gglobs.Xright != None:
+            if gglobs.Xleft >= gglobs.Xright:
+                self.error2NotePad("Wrong numbers: Time Min must be less than Time Max")
+                return
+
+        gglobs.Xunit     = xunit
+        gglobs.Xscale    = xmode
+
+        try:
+            gglobs.Ymin      = float(ymin)
+        except:
+            gglobs.Ymin      = None
+
+        try:
+            gglobs.Ymax      = float(ymax)
+        except:
+            gglobs.Ymax      = None
+
+        if gglobs.Ymin != None and gglobs.Ymax != None:
+            if gglobs.Ymin >= gglobs.Ymax:
+                self.error2NotePad("Wrong numbers: Count Rate min must be less than Count Rate max")
+                return
+
+        gglobs.Yunit     = yunit
+        gglobs.Yscale    = ymode
+
+        try:
+            gglobs.mav     = float(mav)
+        except:
+            gglobs.mav     = gglobs.mav_initial
+
+        gglobs.mavChecked  = self.mavbox.isChecked()
+
+        gglobs.avgChecked  = self.avgbox.isChecked()
+
+        self.plotCurrent()
+
+
+    def moveLegend(self):
+        """Reposition Legend in one of the outer positions"""
+
+        if gglobs.currentFilePath == None:
+            self.showStatusMessage("No graph displayed")
+            return
+        if not (gglobs.avgChecked or gglobs.mavChecked):
+            self.showStatusMessage("No legend displayed")
+            return
+
+        gglobs.legendPos = (gglobs.legendPos + 1) % 9
+        gplot.plotLegend()
+
+
+    def printFileStats(self):
+
+        if gglobs.currentFilePath == None:
+            self.showStatusMessage("No file available")
+            return
+
+        self.print2NotePad(header("Data Properties - All Data from File"))
+        self.print2NotePad(u"from: {}\n".format(gglobs.currentFilePath))
+        gplot.printDataProp()
+
+
+    def printPlotStats(self):
+
+        if gglobs.currentFilePath == None:
+            self.showStatusMessage("No file available")
+            return
+
+        self.print2NotePad(header("Data Properties - Data as selected in Plot"))
+        self.print2NotePad(u"from: {}\n".format(gglobs.currentFilePath))
+        gplot.printDataProp(False)
+
+
+    def plotGraph(self, current = None):
+
+        msg = "No file available"
+        if current == None:
+            if gglobs.currentFilePath == None:
+                self.showStatusMessage(msg)
+                return
+
+        elif current == "Log":
+            if gglobs.logFilePath == None:
+                self.showStatusMessage(msg)
+                return
+            else:
+                gglobs.currentFilePath = gglobs.logFilePath
+                gglobs.currentFileData = gglobs.logFileData
+                self.dcfLog.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
+                self.dcfHis.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
+
+        elif current == 'His':
+            if gglobs.hisFilePath == None:
+                self.showStatusMessage(msg)
+                return
+            else:
+                gglobs.currentFilePath = gglobs.hisFilePath
+                gglobs.currentFileData = gglobs.hisFileData
+                self.dcfHis.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
+                self.dcfLog.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
+
+        else:
+            dprint(True, "PROGRAMMING ERROR in plotGraph - var current is:", current)
+            sys.exit(1)
+
+        self.print2NotePad(header("Plot Data"))
+        self.print2NotePad(u"from: {}".format(gglobs.currentFilePath))
+
+        self.plotCurrent()      # does NOT do a graph option reset
+
+        return
+
+
+    def resetGraph(self):
+        """resets all graph options to start conditions and plots the graph"""
+
+        self.xmin.setText("")
+        self.xmax.setText("")
+        self.ymin.setText("")
+        self.ymax.setText("")
+        self.mav.setText (str(gglobs.mav_initial))
+        self.xunit.setCurrentIndex(0)
+        self.yunit.setCurrentIndex(0)
+        self.xmode.setCurrentIndex(0)
+        self.ymode.setCurrentIndex(0)
+
+        self.clearPlotDefaults()
+
+        self.mavbox.setChecked(gglobs.mavChecked)
+
+        self.avgbox.setChecked(gglobs.avgChecked)
+
+        plt.clf()
+        self.plotCurrent()
+
+
+    def plotCurrent(self):
+        """plots the graph with busy cursor"""
+
+        self.setBusyCursor()
+        self.figure.set_facecolor('#F9F4C9') # change color from gray to light yellow
+        gplot.makePlot(fprintMAV = True)
+        self.setNormalCursor()
+
+
+    def changedTimeUnit(self, i):
+        """recalc xmin, xmax on Time unit changes"""
+
+        #print "i:", i
+
+        oldXunit = gglobs.XunitCurrent
+        #print "oldXunit", oldXunit
+
+        self.applyGraphOptions()
+
+        if oldXunit == "Time":
+            if gglobs.Xleft != None:
+                gglobs.Xleft = gglobs.Xleft - gglobs.logTimeFirst
+            if gglobs.Xright != None:
+                gglobs.Xright = gglobs.Xright - gglobs.logTimeFirst
+
+        elif oldXunit == "day": # no changes all in days
+            if gglobs.Xleft != None:
+                gglobs.Xleft = gglobs.Xleft
+            if gglobs.Xright != None:
+                gglobs.Xright = gglobs.Xright
+
+        elif oldXunit == "hour":
+            if gglobs.Xleft != None:
+                gglobs.Xleft = gglobs.Xleft / 24.
+            if gglobs.Xright != None:
+                gglobs.Xright = gglobs.Xright / 24.
+
+        elif oldXunit == "minute":
+            if gglobs.Xleft != None:
+                gglobs.Xleft = gglobs.Xleft / 1440.
+            if gglobs.Xright != None:
+                gglobs.Xright = gglobs.Xright / 1440.
+
+        elif oldXunit == "second":
+            if gglobs.Xleft != None:
+                gglobs.Xleft = gglobs.Xleft / 86400.
+            if gglobs.Xright != None:
+                gglobs.Xright = gglobs.Xright / 86400.
+
+
+        #print " gglobs.logTimeFirst", gglobs.logTimeFirst
+        #print " gglobs.Xleft",  gglobs.Xleft
+        #print " gglobs.Xright", gglobs.Xright
+
+        gglobs.XunitCurrent = str(self.xunit.currentText())
+        newXunit            = gglobs.XunitCurrent
+
+        if newXunit == "auto":
+            l = gglobs.logTime.max() - gglobs.logTime.min()
+            #print "l=", l
+            if l > 3:
+                Xunit = "day"
+            elif l * 24. > 3:
+                #print l * 24.
+                Xunit = "hour"
+            elif l * 1440. > 3:
+                #print l *1440.
+                Xunit = "minute"
+            else:
+                Xunit = "second"
+
+            newXunit = Xunit
+
+
+        gglobs.XunitCurrent = newXunit
+        gglobs.Xunit        = newXunit
+        #print "newXunit", newXunit
+
+        if newXunit == "Time":
+            if gglobs.Xleft != None:
+                gglobs.Xleft =  (str(mpld.num2date((gglobs.Xleft  + gglobs.logTimeFirst))))[:19]
+            if gglobs.Xright != None:
+                gglobs.Xright = (str(mpld.num2date((gglobs.Xright + gglobs.logTimeFirst))))[:19]
+
+        elif newXunit == "day": # no changes all in days
+            if gglobs.Xleft != None:
+                gglobs.Xleft = gglobs.Xleft
+            if gglobs.Xright != None:
+                gglobs.Xright = gglobs.Xright
+
+        elif newXunit == "hour":
+            if gglobs.Xleft != None:
+                gglobs.Xleft = gglobs.Xleft * 24.
+            if gglobs.Xright != None:
+                gglobs.Xright = gglobs.Xright * 24.
+
+        elif newXunit == "minute":
+            if gglobs.Xleft != None:
+                gglobs.Xleft = gglobs.Xleft * 1440.
+            if gglobs.Xright != None:
+                gglobs.Xright = gglobs.Xright * 1440.
+
+        elif newXunit == "second":
+            if gglobs.Xleft != None:
+                gglobs.Xleft = gglobs.Xleft * 86400.
+            if gglobs.Xright != None:
+                gglobs.Xright = gglobs.Xright * 86400.
+
+        #print " gglobs.Xleft",  gglobs.Xleft
+        #print " gglobs.Xright", gglobs.Xright
+        #print " newXunit", newXunit
+
+        if gglobs.Xleft == None:
+            self.xmin.setText("")
+        else:
+            self.xmin.setText(str(gglobs.Xleft))
+
+        if gglobs.Xright == None:
+            self.xmax.setText("")
+        else:
+            self.xmax.setText(str(gglobs.Xright))
+
+        self.applyGraphOptions()
+
+
+    def clearPlotDefaults(self):
+        """Graphic Options"""
+
+        gglobs.legendPos           = 0                 # upper left
+        gglobs.Xleft               = None
+        gglobs.Xright              = None
+        gglobs.Xunit               = "Time"
+        gglobs.Xscale              = "auto"
+        gglobs.Ymin                = None
+        gglobs.Ymax                = None
+        gglobs.Yunit               = "CPM"
+        gglobs.Yscale              = "auto"
+        gglobs.mav                 = gglobs.mav_initial # length of Moving Average period in seconds
+        gglobs.mavChecked          = False
+        gglobs.avgChecked          = True
+        self.xmin.setText("")
+        self.xmax.setText("")
+
+
+    def updatecursorposition(self, event):
+        """when cursor inside plot, get position and print to statusbar"""
+
+        if event.inaxes:
+            x = event.xdata
+            y = event.ydata
+            #print x,y
+
+            if gglobs.Xunit == "Time":
+                tod = (str(mpld.num2date(x)))[:19]
+                t   = gplot.getTsr(gglobs.logTimeFirst, x)
+                message = "Time since 1st record: {}, Time: {}, CPM:{:0.1f}".format(t, tod, y)
+            else:
+                tod = gplot.getToD(gglobs.logTimeFirst, x, gglobs.XunitCurrent)
+                t   = "{:0.3f} {}s".format(x, gglobs.XunitCurrent)
+                message = "Time since 1st record: {}, Time: {}, CPM:{:0.1f}".format(t, tod, y)
+
+            self.statusBar.showMessage(message, 0)
+
+
+    def onclick(self, event):
+        """on mouseclick in graph enter time coords into xmin, xmax
+        left click = xmin, right click = xmax"""
+
+        if event.inaxes:
+            x = event.xdata
+            y = event.ydata
+            b = event.button
+            #print event, x,y,b
+
+            if gglobs.Xunit == "Time":
+                t = (str(mpld.num2date(x)))[:19]
+            else:
+                t = str(x)
+
+            if b == 1:                  # left click, xmin
+                self.xmin.setText(t)
+            elif b == 3:                # right click, xmax
+                self.xmax.setText(t)
+            else:
+                pass
+
+
+#history
+    def getHistory(self, source = "Binary File"):
+        """getHistory either from binary file or from parsed file or from device"""
+
+        if source == "Binary File":
+            # there must be an existing '*.bin' file and must be allowed to write .lst, .his files
+            dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption = "Get History from existing Binary File")
+            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+            dlg.setFileMode(QtGui.QFileDialog.ExistingFile)
+            dlg.setFilter("History Files (*.bin)")
+
+        elif source == "Parsed File":
+            # there must be an existing '*.his' file
+            dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption= "Get History from Parsed File")
+            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+            dlg.setFileMode(QtGui.QFileDialog.ExistingFile)
+            dlg.setFilter("History Files (*.his)")
+
+        else: # source is device
+            # may use existing or new file, but must be allowed to write new files (.bin, .lst, .his)
+            dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption = "Get History from Device - enter new filename or select from existing")
+            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+            dlg.setFileMode(QtGui.QFileDialog.AnyFile)
+            dlg.setFilter("History Files (*.bin)")
+
+        if dlg.exec_() == QtGui.QDialog.Accepted:
+            fnames  = dlg.selectedFiles()
+            #fn      = str(fnames[0])
+            fn = unicode(fnames[0])
+            #print "fn=", fn
+            ext     = os.path.splitext(fn)[1]
+            #print "extension=", ext
+            fn_base     = os.path.splitext(fn)[0]
+            #print "fn_base=", fn_base
+
+            if ext not in  (".bin", ".his", "lst"):
+                # if neither ext is given, attach ext to all 3 files
+                gglobs.binFilePath = fn + ".bin"
+                gglobs.lstFilePath = fn + ".lst"
+                gglobs.hisFilePath = fn + ".his"
+            else:
+                # if either is given, assume basename for all 3 files
+                gglobs.binFilePath = fn_base + ".bin"
+                gglobs.lstFilePath = fn_base + ".lst"
+                gglobs.hisFilePath = fn_base + ".his"
+        else: # QtGui.QDialog.Rejected =    0
+            return
+
+        #dprint(gglobs.debug, "gglobs.binFilePath:", gglobs.binFilePath)
+        #dprint(gglobs.debug, "gglobs.lstFilePath:", gglobs.lstFilePath)
+        #dprint(gglobs.debug, "gglobs.hisFilePath:", gglobs.hisFilePath)
+
+        if source == "Binary File":
+
+            lheader = header("Get History from Binary File")
+
+            # Reading ok?
+            if not os.access(gglobs.binFilePath, os.R_OK) :
+                err_mesg = u"Cannot read file - check permission of file: {}".format(gglobs.binFilePath)
+                self.print2NotePad(lheader)
+                self.error2NotePad(err_mesg)
+                return
+
+            # writing into directory ok?
+            if not os.access(gglobs.dataPath,    os.W_OK) :
+                err_mesg = u"Cannot write files - check permission of directory: {}".format(gglobs.dataPath)
+                self.print2NotePad(lheader)
+                self.error2NotePad(err_mesg)
+                return
+
+            # writing *.lst file ok?
+            if os.path.isfile(gglobs.lstFilePath) and not os.access(gglobs.lstFilePath, os.W_OK) :
+                err_mesg = u"Cannot write file - check permission of file: {}".format(gglobs.lstFilePath)
+                self.print2NotePad(lheader)
+                self.error2NotePad(err_mesg)
+                return
+
+            # writing *.his file ok?
+            if os.path.isfile(gglobs.hisFilePath) and not os.access(gglobs.hisFilePath, os.W_OK) :
+                err_mesg = u"Cannot write file - check permission of file: {}".format(gglobs.hisFilePath)
+                self.print2NotePad(lheader)
+                self.error2NotePad(err_mesg)
+                return
+
+        elif source == "Parsed File":
+            lheader = header("Get History from Parsed File")
+            if not os.access(gglobs.hisFilePath, os.R_OK) :
+                err_mesg = u"Cannot read file - check permission of file: {}".format(gglobs.hisFilePath)
+                self.print2NotePad(lheader)
+                self.error2NotePad(err_mesg)
+                return
+
+            gglobs.currentFilePath = gglobs.hisFilePath
+            gglobs.binFilePath = None
+            gglobs.lstFilePath = None
+
+        else:
+            lheader = header("Get History from Device")
+            if os.path.isfile(gglobs.binFilePath):
+                msg = QtGui.QMessageBox()
+                msg.setIcon(QtGui.QMessageBox.Critical)
+                msg.setWindowTitle("CAUTION")
+                critical  = """You selected an existing file, which will be <b>OVERWRITTEN</b> if you continue. Please confirm with OK.
+<br><br>Otherwise click Cancel and enter a new filename in the Get History from Device dialog."""
+                msg.setText(critical)
+                msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+                msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+                msg.setEscapeButton(QtGui.QMessageBox.Cancel)
+                retval = msg.exec_()
+
+                if retval == 1024:
+                    if not os.access(gglobs.binFilePath, os.W_OK):
+                        err_mesg = u"Cannot write file - check permission of file: " + gglobs.binFilePath
+                        self.print2NotePad(lheader)
+                        self.error2NotePad(err_mesg)
+                        return
+                else:
+                    return
+            # writing to directory ok?
+            if not os.access(gglobs.dataPath,    os.W_OK) :
+                err_mesg = u"Cannot write files - check permission of directory: {}".format(gglobs.dataPath)
+                self.print2NotePad(lheader)
+                self.error2NotePad(err_mesg)
+                return
+
+            # writing bin file ok?
+            if os.path.isfile(gglobs.binFilePath) and not os.access(gglobs.binFilePath, os.W_OK) :
+                err_mesg = u"Cannot write file - check permission of file: {}".format(gglobs.binFilePath)
+                self.print2NotePad(lheader)
+                self.error2NotePad(err_mesg)
+                return
+
+            # writing lst file ok?
+            if os.path.isfile(gglobs.lstFilePath) and not os.access(gglobs.lstFilePath, os.W_OK) :
+                err_mesg = u"Cannot write file - check permission of file: {}".format(gglobs.lstFilePath)
+                self.print2NotePad(lheader)
+                self.error2NotePad(err_mesg)
+                return
+
+            # writing his file ok?
+            if os.path.isfile(gglobs.hisFilePath) and not os.access(gglobs.hisFilePath, os.W_OK) :
+                err_mesg = u"Cannot write file - check permission of file: {}".format(gglobs.hisFilePath)
+                self.print2NotePad(lheader)
+                self.error2NotePad(err_mesg)
+                return
+
+        self.print2NotePad(lheader)
+
+        dprint(gglobs.debug, u"getHistory: history file basename:{} (*.bin, *.lst, *.his)".format(os.path.splitext(gglobs.hisFilePath)[0]))
+        self.setBusyCursor()
+        error, message = ghist.makeHIST(gglobs.ser, source, gglobs.binFilePath, gglobs.lstFilePath, gglobs.hisFilePath)
+        self.setNormalCursor()
+
+        if message > "": self.print2NotePad(message)
+        if error == 0 or error == 1:
+            gglobs.currentFilePath = gglobs.hisFilePath
+            self.dcfHis.setText(gglobs.currentFilePath)
+            self.dcfHis.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
+            self.dcfLog.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
+            gglobs.hisFileData     = self.getFileData()
+            gglobs.currentFileData = gglobs.hisFileData
+
+            self.plotGraph()
+
+        self.clearLogPad()
+
+
+    def getFileData(self):
+        """
+        read the data from currentFilePath into numpy array per numpy-genfromtxt,
+        then split off ByteIndex column, and return timestamp and CPM as 2-column array
+        may fail when too few data in file, hence try
+        """
+
+        start = time.time()
+
+        self.setBusyCursor()
+
+        try:
+            origFileData = np.genfromtxt(gglobs.currentFilePath, delimiter=",", converters = {1:mpld.datestr2num})
+        except:
+            dprint(gglobs.debug, "getFileData - np.genfromtxt - " + str(sys.exc_info()))
+            self.setNormalCursor()
+            return None
+
+        self.setNormalCursor()
+
+        vprint(gglobs.verbose, "getFileData: {:6.1f}ms file loading and parsing into numpy array, ".format((time.time() - start) * 1000.))
+
+        #print "getFileData", origFileData[:,1:3]
+        return origFileData[:,1:3]
+
+
+    def showHistExcerpt(self):
+
+        if gglobs.lstFilePath == None and gglobs.hisFilePath == None:
+            self.showStatusMessage("No file available")
+            return
+
+        self.print2NotePad(header("Show Excerpt of History Data"))
+
+        if gglobs.lstFilePath == None:
+            self.print2NotePad("Binary History data not available")
+        else:
+            self.print2NotePad(u"from: {}\n".format(gglobs.lstFilePath))
+            self.printExcerptLines(gglobs.lstFilePath)
+
+        if gglobs.hisFilePath == None:
+            self.print2NotePad("Parsed History data not available")
+        else:
+            self.print2NotePad(u"\nfrom: {}\n".format(gglobs.hisFilePath))
+            self.printExcerptLines(gglobs.hisFilePath)
+
+
+    def showHistHisData(self):
+        """print HIST parsed data"""
+
+        if gglobs.hisFilePath == None:
+            self.showStatusMessage("No file available")
+            return
+
+        self.setBusyCursor()
+
+        f = open(gglobs.hisFilePath, "r")
+        data = f.read()
+        f.close
+
+        self.print2NotePad(header("Show Parsed History Data"))
+        self.print2NotePad(u"from: {}\n".format(gglobs.hisFilePath))
+        self.print2NotePad(data)
+
+        self.setNormalCursor()
+
+
+    def showHistHisTags(self):
+        """print comments only from HIST parsed data"""
+
+        if gglobs.hisFilePath == None:
+            self.showStatusMessage("No file available")
+            return
+
+        self.setBusyCursor()
+        data = readFileLines(gglobs.hisFilePath)
+
+        self.print2NotePad(header("Show Parsed History Tags and Comments"))
+        self.print2NotePad(u"from: {}\n".format(gglobs.hisFilePath))
+        for a in data:
+            if a[0] == '#':
+                self.print2NotePad(a[:-1])
+
+        self.setNormalCursor()
+
+
+    def showHistBinData(self):
+        """print HIST binary data in human readable form:'bytenumber: hex = dec'"""
+
+        if gglobs.lstFilePath == None:
+            self.showStatusMessage("No file available")
+            return
+
+        self.setBusyCursor()
+
+        data = readFile(gglobs.lstFilePath)
+
+        self.print2NotePad(header("Show Binary History Data"))
+        self.print2NotePad(u"from: {}\n".format(gglobs.lstFilePath))
+        self.print2NotePad(data)
+
+        self.setNormalCursor()
+
+
+    def printExcerptLines(self, path, lmax = 5):
+        """print first and last lines of the file"""
+
+        if path == None:
+            self.showStatusMessage("No file available")
+            return
+
+        self.setBusyCursor()
+
+        lines_all = readFileLines(path)
+
+        if "ERROR" in lines_all[0][:6]:  # error message instead of data
+            self.print2NotePad(lines_all[0])
+            return
+
+        recs_found = False
+        for i in range(0, len(lines_all)):
+            if lines_all[i][0] != "#": # any records other than comments?
+                recs_found = True
+                break
+
+        if recs_found :
+            for i in lines_all[0:lmax]:
+                self.print2NotePad(i[:-1]) # omit the closing '/n'
+
+            self.print2NotePad("...")
+
+            for i in lines_all[-lmax:]:
+                self.print2NotePad(i[:-1])
+        else:
+            self.print2NotePad("No records")
+
+        self.setNormalCursor()
+
+
+#logging
+    def startTimer(self):
+        """Starts the logging"""
+
+        self.print2NotePad(header("Start Logging"))
+
+        # NOTE: the first 4 if should never be executed, as Start Logging should
+        # not be enabled unless all those conditions are met. Leaving them anyway
+
+        if gglobs.ser == None:
+            self.error2NotePad("ALERT: Cannot log; Device is not connected")
+
+        elif gglobs.powerstate == "OFF":
+            self.error2NotePad("ALERT: Cannot log; Device is switched OFF")
+
+        elif gglobs.logFilePath == None:
+            self.error2NotePad("ALERT: Cannot log; Logfile is not loaded")
+
+        elif not os.access(gglobs.logFilePath, os.W_OK):
+            # cannot write to file
+            self.error2NotePad("ALERT: Cannot log; Logfile is not available for writing!")
+
+        else:
+            if gglobs.powerstate != "ON":
+                self.error2NotePad("ALERT: Cannot determine power state of device; maybe switched OFF; observe logging output")
+
+            writestring  = "#LOGGING,{}, Start: cycle {} sec, mode '{}', device '{}'".format(stime(), gglobs.logcycle, "CPM" if gglobs.cpmflag else "CPS", gglobs.device)
+            writeFileA(gglobs.logFilePath, writestring)
+            self.print2LogPad(writestring)
+            self.print2NotePad(writestring)
+
+            self.timer.start(gglobs.logcycle * 1000.0) # time is on ms
+            gglobs.logging              = True
+            gglobs.cpm_counter          = 0
+            gglobs.currentFilePath      = gglobs.logFilePath
+            self.dcfLog.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
+            self.dcfHis.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
+
+            self.checkLoggingState()
+            self.makeLOG()  # first call now; timer fires only AFTER 1st period!
+
+
+    def stopTimer(self):
+        """Stops the logging"""
+
+        self.print2NotePad(header("Logging stopped"))
+        self.timer.stop()
+        gglobs.logging = False
+
+        writestring  = "#LOGGING,{}, Stop".format(stime())
+        writeFileA(gglobs.logFilePath, writestring)
+        self.print2LogPad(writestring)
+        self.print2NotePad(writestring)
+
+        self.checkLoggingState()
+        self.labelCPM.setStyleSheet('color:darkgray;')
+
+
+    def makeLOG(self):
+        """Reads CPM or CPS from device, saves in log file, and
+        prints record into LogPad.
+        Called by the timer, once the timer is started"""
+
+        if not gglobs.logging: return
+        if gglobs.logFilePath == None: return
+
+        #print "makeLOG()", stime(), gglobs.logFilePath
+
+        timetag              = stime()
+        cpm, err, errmessage = gcommands.getCPMS(gglobs.ser, gglobs.cpmflag)  # counts per MINUTE with cpmflag=True, else CPS
+        #print "makeLOG: cpm, err, errmessage", cpm, type(cpm), err, errmessage
+        gglobs.cpm_counter   += 1
+
+        if err == 0 or err == 1:
+            # count rate always stored in CPM even if CPS requested
+            if gglobs.cpmflag == False:             # we requested CPS
+                cpscnt      = "(measured as CPS: {:0.0f})".format(cpm / 60)
+            else:                                   # we requested CPM
+                cpscnt      = ""
+
+            if err == 0:
+                printstring = "#{:<6d}  {:19s}  CPM: {:<6.0f} {}".format(gglobs.cpm_counter, timetag, cpm, cpscnt)
+                writestring = " {:6d},{:19s}, {:}".format(gglobs.cpm_counter, timetag, cpm)
+
+            else: #err == 1
+                printstring = "#{:<6d}  {:19s}  CPM: {:<6.0f}, WARNING: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
+                writestring = " {:6d},{:19s}, {:}\n".format(gglobs.cpm_counter, timetag, cpm)
+                writestring += "#{:6d},{:19s}, {:}, WARNING: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
+
+        else: # err == -1 (or else)
+            printstring = "#{:<6d}  {:19s}  CPM: {}, ERROR: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
+            writestring = "#{:6d},{:19s}, {:}, ERROR: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
+            self.stopTimer()
+            self.toggleDeviceConnection()
+            self.print2NotePad("Check USB Port and Baudrate settings!")
+
+        gglobs.lastCPM = cpm
+        self.updateCountLabel(cpm)
+
+        writeFileA(gglobs.logFilePath, writestring)
+        self.print2LogPad(printstring)            # print cpm on logPad
+
+        # update the logFileData array
+        gglobs.logFileData      = np.append(gglobs.logFileData, [[mpld.datestr2num(timetag), cpm]], axis=0)
+
+        #update graph only if it is the current one!
+        #print "gglobs.currentFilePath", gglobs.currentFilePath
+        if gglobs.logFilePath == gglobs.currentFilePath:
+            gglobs.currentFileData  = gglobs.logFileData
+            #print "gglobs.logFileData:\n", gglobs.logFileData
+
+            # for now ALWAYS do a full plot, not just an update
+            if True or (gglobs.cpm_counter < 10 and gglobs.sizePlotSlice < 10) or (gglobs.cpm_counter % 10 == 0):
+                gplot.makePlot()
+            else:
+                gplot.updatePlot(gglobs.logFilePath, timetag, cpm)
+
+
+    def changedCountUnit(self, i):
+        """counter unit combo in Toolbar was changed"""
+
+        self.updateCountLabel(gglobs.lastCPM)
+
+
+    def updateCountLabel(self, cpm):
+        """update the CPM/CPS/µSv/h counts in the toolbar"""
+        #self.countUnit.addItems([u"CPM:", u"CPS:", u"µSv/h:", u"mSv/d", u"mSv/a"])
+        if gglobs.lastCPM == None: return
+
+        if gglobs.logging:
+            self.labelCPM.setStyleSheet('color: black; background-color: #F4D345;')
+
+        #if "CPM" in str(self.countUnit.currentText()):
+        if "CPM" in unicode(self.countUnit.currentText()):
+            labelCPMText = str(cpm)
+
+        #elif "CPS" in str(self.countUnit.currentText()):
+        elif "CPS" in unicode(self.countUnit.currentText()):
+            labelCPMText = "{:0.1f}".format(cpm / 60.)
+
+        elif u"µSv/h" in unicode(self.countUnit.currentText()):
+            labelCPMText = "{:0.2f}".format(cpm * gglobs.calibration)
+
+        elif u"mSv/d" in unicode(self.countUnit.currentText()):
+            labelCPMText = "{:0.1f}".format(cpm * gglobs.calibration / 1000.0 * 24)
+
+        else: #u"mSv/a"
+            labelCPMText = "{:0.0f}".format(cpm * gglobs.calibration / 1000.0 * 24 * 365.25)
+
+
+        self.labelCPM.setText(labelCPMText)
+
+
+    def quickLog(self):
+        """Reads CPM or CPS from device and displays in Toolbar
+        Called by the timer, once the timer is started"""
+
+        gglobs.logFilePath      = gglobs.dataPath + "default.log"
+        #print "gglobs.logFilePath:", gglobs.logFilePath
+        gglobs.currentFilePath = gglobs.logFilePath
+
+        gglobs.logFileData      = np.empty([0,2])
+        gglobs.currentFileData  = gglobs.logFileData
+        #print "gglobs.logFileData:", gglobs.logFileData
+
+        gglobs.currentFilePath = gglobs.logFilePath
+        self.dcfLog.setText(gglobs.currentFilePath)
+        self.dcfLog.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
+        self.dcfHis.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
+
+        self.print2NotePad(header("Quick-Log Default"))
+        self.print2NotePad(u"Logfile: {}".format(gglobs.currentFilePath))
+        self.clearLogPad()
+
+        fig = plt.figure(1)
+        plt.clf()                                    # clear figure
+        fig.canvas.draw_idle()
+
+        line = u"#HEADER , using Quick-log file: default.log"
+        self.print2LogPad(line)
+        writeFileW(gglobs.logFilePath, line)
+        self.clearPlotDefaults()
+        self.resetGraph()
+
+        dprint(gglobs.debug, "quickLog: Quick-log filename:", gglobs.logFilePath)
+
+        self.checkLoggingState()
+
+        self.startTimer()
+
+
+    def getLogFileTest(self):
+        """Load predefined log file use for testing only"""
+
+        gglobs.logFilePath = "/home/ullix/geigerlog/data/background-11hours-CPM.log"
+
+        if gglobs.logging:
+            self.stopTimer()
+
+        gglobs.currentFilePath = gglobs.logFilePath
+        self.dcfLog.setText(gglobs.currentFilePath)
+        self.dcfLog.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
+        self.dcfHis.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
+
+        self.print2NotePad(header("Get Logfile"))
+        self.print2NotePad(u"Logfile: {}".format(gglobs.currentFilePath))
+        self.clearLogPad()
+
+        fig = plt.figure(1)
+        plt.clf()                                    # clear figure
+        fig.canvas.draw_idle()
+
+        if not os.path.isfile(gglobs.logFilePath):
+            # File does not exist; create new one
+            self.print2NotePad("Logfile newly created - available for writing")
+            line = u"#HEADER ,{}, Logfile newly created as '{}'".format(stime(), os.path.basename(gglobs.logFilePath))
+            self.print2LogPad(line)
+            writeFileW(gglobs.logFilePath, line)
+            self.clearPlotDefaults()
+            gglobs.logFileData      = np.empty([0,2])
+            gglobs.currentFileData  = gglobs.logFileData
+
+        else:
+            if os.access(gglobs.logFilePath, os.W_OK):
+                # can read and write
+                self.print2NotePad("Logfile opened - available for writing")
+
+            elif os.access(gglobs.logFilePath, os.R_OK):
+                # can read only
+                self.error2NotePad("Logfile opened - ALERT: available ONLY FOR READING")
+
+            gglobs.logFileData      = self.getFileData()
+            gglobs.currentFileData  = gglobs.logFileData
+
+        self.resetGraph()
+
+        dprint(gglobs.debug, "getLogFile: log filename:", gglobs.logFilePath)
+
+        self.checkLoggingState()
+
+
+    def getLogFile(self):
+        """Load existing file for logging, or create new one"""
+
+        dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption= "Get Log File - enter new filename or select from existing")
+        dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        dlg.setFileMode(QtGui.QFileDialog.AnyFile)
+        dlg.setFilter("Logging Files (*.log)")
+
+        if dlg.exec_() == QtGui.QDialog.Accepted: # (=1)
+            fnames  = dlg.selectedFiles()
+            fn      = unicode(fnames[0])
+            ext     = os.path.splitext(fn)[1]
+            if ext != ".log":  fn += ".log"      # forces the ".log" extension
+
+        else: # QtGui.QDialog.Rejected (= 0)
+            return
+
+        #if os.path.isfile(gglobs.logFilePath):
+        if os.path.isfile(fn):
+            msg = QtGui.QMessageBox()
+            msg.setIcon(QtGui.QMessageBox.Warning)
+            msg.setWindowTitle("CAUTION")
+            critical  = """You selected an existing file, which will be modified \
+when logging by <b>APPENDING</b> new data to it.Please confirm with OK.
+<br><br>Otherwise click Cancel and enter a new filename in the Get Log File dialog."""
+            msg.setText(critical)
+            msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+            msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+            msg.setEscapeButton(QtGui.QMessageBox.Cancel)
+            retval = msg.exec_()
+
+            if retval != 1024:  return
+
+        if gglobs.logging:
+            self.stopTimer()
+
+        gglobs.logFilePath      = fn
+        gglobs.currentFilePath  = gglobs.logFilePath
+        self.dcfLog.setText       (gglobs.currentFilePath)
+        self.dcfLog.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
+        self.dcfHis.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
+
+        self.print2NotePad(header("Get Logfile"))
+        self.print2NotePad(u"Logfile: {}".format(gglobs.currentFilePath))
+        self.clearLogPad()
+
+        fig = plt.figure(1)
+        plt.clf()                                    # clear figure
+        fig.canvas.draw_idle()
+
+        if not os.path.isfile(gglobs.logFilePath):
+            # File does not exist; create new one
+            self.print2NotePad("Logfile newly created - available for writing")
+            line = u"#HEADER ,{}, Logfile newly created as '{}'".format(stime(), os.path.basename(gglobs.logFilePath))
+            self.print2LogPad(line)
+            writeFileW(gglobs.logFilePath, line)
+            self.clearPlotDefaults()
+            gglobs.logFileData      = np.empty([0,2])
+            gglobs.currentFileData  = gglobs.logFileData
+
+        else:
+            if os.access(gglobs.logFilePath, os.W_OK):
+                # can read and write
+                self.print2NotePad("Logfile opened - available for writing")
+
+            elif os.access(gglobs.logFilePath, os.R_OK):
+                # can read only
+                self.error2NotePad("Logfile opened - ALERT: available ONLY FOR READING")
+
+            gglobs.logFileData      = self.getFileData()
+            gglobs.currentFileData  = gglobs.logFileData
+
+        self.resetGraph()
+
+        dprint(gglobs.debug, "getLogFile: log filename:", gglobs.logFilePath)
+
+        self.checkLoggingState()
+
+
+    def addComment(self):
+        """Adds a comment in the current log file"""
+
+        d = QtGui.QInputDialog()
+        info = "Enter your comment:" + " "*100
+        text, ok = d.getText(self, 'Add a Comment', info)
+        text = unicode(text)
+
+        if ok:
+            line = u"#COMMENT,{}, {}".format(stime(), text)
+            self.print2LogPad(line)
+            writeFileA(gglobs.logFilePath, line)
+
+        vprint(gglobs.verbose, "Add a Comment:", "text=", text, ",  ok=", ok)
+
+
+    def showLogData(self):
+        """ print logged data to notepad"""
+
+        if gglobs.logFilePath == None:
+            self.showStatusMessage("No file available")
+            return
+
+        self.setBusyCursor()
+
+        #f = open(gglobs.logFilePath, "r")
+        f = codecs.open(gglobs.logFilePath, "r", 'utf-8')
+        data = f.read()
+        f.close
+        #data = readFileLines(gglobs.logFilePath)
+
+        self.print2NotePad(header("Show Log Data"))
+        self.print2NotePad(u"from: {}\n".format(gglobs.logFilePath))
+        #for a in data:
+        #    self.print2NotePad(a[:-1]) # remove \n at end
+        self.print2NotePad(data)
+
+        self.setNormalCursor()
+
+
+    def showLogTags(self):
+        """print comments only from log data"""
+
+        if gglobs.logFilePath == None:
+            self.showStatusMessage("No file available")
+            return
+
+        data = readFileLines(gglobs.logFilePath)
+
+        self.print2NotePad(header("Show Log Comments"))
+        self.print2NotePad(u"from: {}\n".format(gglobs.logFilePath))
+        for a in data:
+            if a[0] == '#':
+                self.print2NotePad(a[:-1]) # remove \n at end
+
+
+    def showLogDataExcerpt(self):
+        """show first and last lmax lines of the log file"""
+
+        if gglobs.logFilePath == None:
+            self.showStatusMessage("No file available")
+            return
+
+        self.print2NotePad(header("Show Log Data Excerpt"))
+        self.print2NotePad(u"from: {}\n".format(gglobs.logFilePath))
+        self.printExcerptLines(gglobs.logFilePath, lmax = 12)
+
+
+#device
+    def doREBOOT(self):
+        """reboot the device"""
+
+        msg = QtGui.QMessageBox()
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        msg.setIcon(QtGui.QMessageBox.Warning)
+        msg.setWindowTitle("Reboot Device")
+        msg.setText("Rebooting your device.\nPlease confirm with OK, or Cancel")
+        msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+        msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+        msg.setEscapeButton(QtGui.QMessageBox.Cancel)
+        retval = msg.exec_()
+
+        if retval != 1024:   return
+
+        rec, err, errmessage = gcommands.setREBOOT(gglobs.ser)
+        if err == 0 or err == 1:
+            self.print2NotePad("REBOOT completed")
+        else:
+            self.print2NotePad("ERROR in REBOOT: " + errmessage)
+
+
+    def doFACTORYRESET(self):
+        """Does a FACTORYRESET of the device"""
+
+        d = QtGui.QInputDialog()
+        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        warning ="""
+CAUTION - You are about to reset the device to factory condition!
+All data and your changes of settings will be lost. \n
+If you want to proceed, enter the word 'FACTORYRESET' (in all capital)
+and press OK"""
+
+        text, ok = d.getText(self, 'FACTORYRESET', warning)
+
+        vprint(gglobs.verbose, "Factory Reset:", "text=", text, ",  ok=", ok)
+        if ok:
+            if text == "FACTORYRESET":
+                rec, err, errmessage = gcommands.setFACTORYRESET(gglobs.ser)
+                #rec, err, errmessage = 0, 0, ""
+                if err == 0 or err == 1:
+                    self.print2NotePad("FACTORYRESET completed")
+                else:
+                    self.print2NotePad("ERROR in FACTORYRESET: " + message)
+            else:
+                self.print2NotePad("Entry '{}' not matching 'FACTORYRESET' - Reset NOT done".format(text))
+
+
+    def toggleDeviceConnection(self):
+        """if no connection exists, then make connection else disconnect"""
+
+        if gglobs.ser == None:
+            self.switchDeviceConnection(new_connection = "ON")
+        else:
+            self.switchDeviceConnection(new_connection = "OFF")
+
+
+    def switchDeviceConnection(self, new_connection = "ON"):
+        """
+        if new_connection = ON and no connection exists, then try to make
+        USB connection (with verification of communication with device)
+        else disconnect (unless already disconnected)
+        """
+
+        if new_connection == "ON" :
+            strheader = "Connect Device"
+        else:
+            strheader = "Disconnect Device"
+
+        self.print2NotePad(header(strheader))
+        QtGui.QApplication.processEvents()
+
+        if new_connection == "ON":
+            if gglobs.ser != None:
+                return # is already connected
+
+            else:
+                self.setBusyCursor()
+
+                dprint(gglobs.debug, "switchDeviceConnection(ON): begin open port ------------------------")
+                # try to open the port
+                gglobs.ser, errmessage = gcommands.serialOPEN(gglobs.usbport, gglobs.baudrate, gglobs.timeout)
+                if gglobs.ser != None:
+                    # stop heartbeat
+                    rec = gcommands.turnHeartbeatOFF(gglobs.ser)
+                    dprint(gglobs.debug, "switchDeviceConnection: turnHeartbeatOFF:", rec)
+
+                    #
+                    # Cleaning pipeline - relevant at least for GMC-500
+                    #
+                    # are there extra bytes coming after Heartbeat OFF?
+                    if gglobs.cleanPipelineFlag  == True:
+                        dprint(gglobs.debug, "switchDeviceConnection: Cleaning pipeline")
+                        extra = gcommands.getExtraByte(gglobs.ser)
+                        dprint(gglobs.debug, "switchDeviceConnection: getExtraBytes: {} bytes".format(len(extra)))
+
+                    self.print2NotePad("Device is connected (port:'{}', baudrate:{}, timeout:{} sec)".format(gglobs.ser.name, gglobs.ser.baudrate, gglobs.ser.timeout))
+                    self.print2NotePad("Powerstate of device is:", "{}".format(gglobs.powerstate))
+
+                    self.setEnableDeviceActions(new_enable = True)
+
+                    if gglobs.powerstate == "ON":
+                        self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_on.png')))
+                    elif gglobs.powerstate == "OFF":
+                        self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_off.png')))
+
+                    #media.play()
+                    #time.sleep(0.5) # wait for the end of sound
+
+                else:
+                    self.error2NotePad(errmessage)
+                    #self.error2NotePad("Connection failed, running 'USB Autodiscovery' (see Help Menu)")
+                    #self.doPortAutoDiscovery()
+                    self.error2NotePad("Connection failed, please run 'USB Autodiscovery' from menu Help")
+
+                self.setNormalCursor()
+
+        else: # new_connection == OFF
+            if gglobs.ser == None:
+                return # is already dis-connected == OFF
+
+            else:
+                self.print2NotePad("Device is disconnected")
+                self.print2NotePad("Powerstate of device is:", "unknown")
+                dprint(gglobs.debug, "Device is disconnected")
+
+                if gglobs.logging:
+                    self.stopTimer()
+                    gglobs.logging = False
+
+                gglobs.ser.close()
+                gglobs.ser          = None
+                gglobs.powerstate   = None
+                self.setEnableDeviceActions(new_enable = False)
+
+        self.checkLoggingState()
+
+
+    def checkLoggingState(self):
+        """some cleanup of status"""
+
+        if gglobs.ser == None or gglobs.logFilePath == None or gglobs.powerstate == "OFF":
+            self.startloggingAction.    setEnabled(False)
+            self.stoploggingAction.     setEnabled(False)
+        else:
+            self.startloggingAction.    setEnabled(True)
+
+        if gglobs.ser == None or gglobs.powerstate == "OFF":
+            pass
+        else:
+            self.quickLogAction.       setEnabled(True)
+
+        if gglobs.ser != None:
+            self.toggleDeviceConnectionAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_plug_closed.png')))
+        else:
+            self.toggleDeviceConnectionAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_plug_open.png')))
+
+        if gglobs.logFilePath != None:
+            self.addCommentAction.      setEnabled(True)
+        else:
+            self.addCommentAction.      setEnabled(False)
+
+        if gglobs.logging == True:
+            self.stoploggingAction.     setEnabled(True)
+            self.startloggingAction.    setEnabled(False)
+            self.quickLogAction.       setEnabled(False)
+        else:
+            self.stoploggingAction.     setEnabled(False)
+
+
+    def setEnableDeviceActions(self, new_enable = True):
+
+        self.DeviceConnectAction.       setEnabled(not new_enable)
+        self.DeviceDisconnectAction.    setEnabled(new_enable)
+        self.DeviceInfoAction.          setEnabled(new_enable)
+        self.DeviceConfigAction.        setEnabled(new_enable)
+        self.DeviceONAction.            setEnabled(new_enable)
+        self.DeviceOFFAction.           setEnabled(new_enable)
+        self.SpeakerONAction.           setEnabled(new_enable)
+        self.SpeakerOFFAction.          setEnabled(new_enable)
+        self.AlarmONAction.             setEnabled(new_enable)
+        self.AlarmOFFAction.            setEnabled(new_enable)
+        self.DeviceSavingStateAction.   setEnabled(new_enable)
+        self.DeviceSetTimeAction.       setEnabled(new_enable)
+        self.DeviceREBOOTAction.        setEnabled(new_enable)
+        self.DeviceFACTORYRESETAction.  setEnabled(new_enable)
+        self.DevicePowerAction.         setEnabled(new_enable)
+
+        self.histDeviceAction.          setEnabled(new_enable)
+
+
+    def toggleDevicePower(self):
+        """Toggle Device Power ON / OFF"""
+
+        if gglobs.powerstate == "OFF" or gglobs.powerstate == None:
+            self.switchDevicePower("ON")
+        else:
+            self.switchDevicePower("OFF")
+
+
+    def switchDevicePower(self, newstate = "ON"):
+        """Switch Device power to ON or OFF"""
+
+        self.print2NotePad(header("Switch Device Power {}".format(newstate)))
+
+        self.setBusyCursor()
+        if newstate == "ON":
+            if gcommands.isPowerOn() != "ON":
+                gcommands.setPOWERON(gglobs.ser)
+                time.sleep(3) # takes some time to settle!
+        else:
+            if gcommands.isPowerOn() == "ON":
+                if gglobs.logging:
+                    self.stopTimer()
+                gcommands.setPOWEROFF(gglobs.ser)
+                time.sleep(3) # takes some time to settle!
+
+        ipo = gcommands.isPowerOn()
+        gglobs.powerstate = ipo
+        self.print2NotePad("Power State of device is: ",  ipo)
+
+        if ipo == "ON":
+            self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_on.png')))
+        elif ipo == "OFF":
+            self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_off.png')))
+        else:
+            self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_on.png')))
+
+        self.checkLoggingState()
+        self.setNormalCursor()
+
+
+    def printDevInfo(self):
+        """prints basic info on the device"""
+
+        self.setBusyCursor()
+        gcommands.fprintDeviceInfo()
+        self.setNormalCursor()
+
+
+    def printDevConfig(self):
+        """prints the 256 bytes of device configuration"""
+
+        self.setBusyCursor()
+        self.notePad.append(gcommands.ftextCFG())
+        self.setNormalCursor()
+
+
+    def deviceSetTime(self):
+        """ set date and time on device to computer date and time"""
+
+        self.print2NotePad(header("Set Date+Time of Device"))
+        rec, error, errmessage = gcommands.getDATETIME(gglobs.ser)
+        if error < 0:
+            self.print2NotePad("Communication problem with device:", errmessage)
+            return
+
+        computerTime = stime()
+        deviceTime      = str(rec)
+        deltat       = datestr2num(computerTime) - datestr2num(deviceTime)
+        if deltat == 0:
+            dtxt = "Device time is same as computer time"
+        elif deltat > 0:
+            dtxt = "Device is slower than computer by {:0.0f} sec".format(deltat)
+        else:
+            dtxt = "Device is faster than computer by {:0.0f} sec".format(abs(deltat))
+
+        self.print2NotePad("Date and Time from device is:", deviceTime)
+        self.print2NotePad("Date and Time from computer is:", "{}".format(computerTime))
+        self.print2NotePad("", "{}\n".format(dtxt))
+
+        self.print2NotePad("Setting device time to computer time")
+        gcommands.setDATETIME(gglobs.ser)
+        rec, error, errmessage = gcommands.getDATETIME(gglobs.ser)
+        deviceTime = str(rec)
+        self.print2NotePad("New Date and Time from device is:", str(deviceTime))
+
+
+    def switchSaveDataType(self):
+        """Switches the Saving State"""
+
+        # get current config
+        cfg, error, errmessage = gcommands.getCFG(gglobs.ser)
+        #print "after getCFG : cfg[30:35], error, errmessage:", cfg[30:35], error, errmessage
+        if error < 0:
+            self.print2NotePad("Error:" + errmessage)
+            return
+        SDT, SDTtxt = gcommands.getSaveDataType(cfg)
+        gglobs.savedatatype = SDTtxt
+
+        # setup dialog and get new config setting
+        selection   = gglobs.savedatatypes
+        text, ok    = QtGui.QInputDialog().getItem(self, 'Switch Saving Mode', "Select new saving mode and press ok:   ", selection, SDT, False )
+        vprint(gglobs.verbose, "Switch Saving Mode:", "text=", text, ",  ok=", ok)
+
+        if not ok: return      # user has selected Cancel
+
+        self.print2NotePad(header("Switch Saving Mode"))
+
+        newSDT = selection.index(text)
+        #print "newSDT:", newSDT
+        self.setBusyCursor()
+
+        # write the new config data
+        rec, error, errmessage = gcommands.writeConfigData(gglobs.ser, cfg, gglobs.cfgOffsetSDT, newSDT)
+        if error < 0:
+            self.error2NotePad("Error:" + errmessage)
+            return
+
+        # read the config to verify
+        #beep()
+        cfg, error, errmessage = gcommands.getCFG(gglobs.ser)
+        #print "after getCFG : cfg[30:35], error, errmessage:", cfg[30:35], error, errmessage
+        if error < 0:
+            self.error2NotePad("Error:" + errmessage)
+            return
+
+        self.setNormalCursor()
+        SDT, SDTtxt = gcommands.getSaveDataType(cfg)
+        self.print2NotePad("Device Saving Mode:", "{}".format(SDTtxt))
+        gglobs.savedatatype = SDTtxt
+
+
+    def switchDeviceSpeaker(self, newstate = "ON"):
+        """Switch Device Speaker to ON or OFF"""
+
+        self.setBusyCursor()
+        self.print2NotePad(header("Switch Device Speaker {}".format(newstate)))
+
+        while True: # to allow jumping to exit
+            # get current config
+            cfg, error, errmessage = gcommands.getCFG(gglobs.ser)
+            #print "after getCFG : cfg[30:35], error, errmessage:", cfg[30:35], error, errmessage
+            if error < 0:
+                self.error2NotePad("Error:" + errmessage)
+                break
+
+            if newstate == "ON":
+                st = 1
+            else:
+                st = 0
+
+            # write the new config data
+            rec, error, errmessage = gcommands.writeConfigData(gglobs.ser, cfg, gglobs.cfgOffsetSpeaker, st)
+            if error < 0:
+                self.error2NotePad("Error:" + errmessage)
+                break
+
+            # check config for success
+            cfg, error, errmessage = gcommands.getCFG(gglobs.ser)
+            #print "after getCFG : cfg[30:35], error, errmessage:", cfg[30:35], error, errmessage
+            if error < 0:
+                self.error2NotePad("Error:" + errmessage)
+                break
+
+            if cfg[gglobs.cfgOffsetSpeaker] == 1:
+                ipo = "ON"
+            else:
+                ipo = "OFF"
+
+            self.print2NotePad("Device Speaker State is: ",  ipo)
+            break
+
+        self.setNormalCursor()
+
+
+    def switchDeviceAlarm(self, newstate = "ON"):
+        """Switch Device Alarm to ON or OFF"""
+
+        self.setBusyCursor()
+        self.print2NotePad(header("Switch Device Alarm {}".format(newstate)))
+
+        while True: # to allow jumping to exit
+            # get current config
+            cfg, error, errmessage = gcommands.getCFG(gglobs.ser)
+            #print "after getCFG : cfg[30:35], error, errmessage:", cfg[30:35], error, errmessage
+            if error < 0:
+                self.error2NotePad("Error:" + errmessage)
+                break
+
+            if newstate == "ON":
+                st = 1
+            else:
+                st = 0
+
+            # write the new config data
+            rec, error, errmessage = gcommands.writeConfigData(gglobs.ser, cfg, gglobs.cfgOffsetAlarm, st)
+            if error < 0:
+                self.error2NotePad("Error:" + errmessage)
+                break
+
+            time.sleep(1.0)
+
+            # check config for success
+            cfg, error, errmessage = gcommands.getCFG(gglobs.ser)
+            #print "after getCFG : cfg[30:35], error, errmessage:", cfg[30:35], error, errmessage
+            if error < 0:
+                self.error2NotePad("Error:" + errmessage)
+                break
+
+            if cfg[gglobs.cfgOffsetAlarm] == 1:
+                ipo = "ON"
+            else:
+                ipo = "OFF"
+
+            self.print2NotePad("Device Alarm State is: ",  ipo)
+            break
+
+        self.setNormalCursor()
+
+
+#help
+    def doPortAutoDiscovery(self):
+        """Autodiscover the available Serial Ports and baudrates"""
+
+        self.print2NotePad(header("Autodiscover Ports and Baudrates"))
+        rec, errmessage = gcommands.autoPORT(gglobs.usbport, gglobs.baudrates)
+
+        if rec == None:
+            self.error2NotePad(errmessage)
+            self.print2NotePad("Is device connected? Check cable and plugs!")
+        else:
+            self.print2NotePad("The following ports and baudrates have connected Geiger Counters:")
+            for i in rec:
+                self.print2NotePad("Port:" + i[0], "baudrate:" + str(i[1]))
+            self.print2NotePad("\nThe current settings of GeigerLog are:")
+            self.print2NotePad("Port:" + gglobs.usbport, "baudrate:" + str(gglobs.baudrate))
+
+            self.print2NotePad("\nCheck Quickstart in the Help Menu for guidance on starting GeigerLog\nwith new port and/or baudrate settings" )
+
+
+    def helpQuickStart(self):
+        """Quickstart item on the Help menu"""
+
+        qs = """
+<style>h3 { color: darkblue; margin:5px 0px 5px 0px; padding:0px; } p, ol, ul { margin:4px 0px 4px 0px; padding:0px;} </style>
+<p><b><big>Note:</big></b> pointing your mouse cursor over an item of the window shows a status message<br>
+in the <b>Statusbar</b> (bottom of the window) providing info on the item!
+<br><br>Assuming a USB cable is connecting computer and device:</p>
+<h3>USB Port and Baudrate</h3>
+<p>Start GeigerLog with command <span style="font-family:'Courier';">geigerlog</span>
+ and in the Help menu select <b>USB Autodiscovery</b>. Take a note of the discovered <b>Port</b> and <b>Baudrate</b> settings. Click OK to use them for the current session.</p>
+
+<p>Once you know the settings use them with your device by starting GeigerLog with these options:<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+<span style="font-family:'Courier';margin:30px;">geigerlog -p yourport -b yourbaudrate</span>
+<br>On a Linux system e.g.:
+&nbsp;&nbsp;&nbsp;&nbsp;<span style="font-family:'Courier';margin:30px;">geigerlog -p /dev/ttyUSB0 -b 57600</span>
+
+<br>On a Windows system e.g.:
+&nbsp;&nbsp;<span style="font-family:'Courier';margin:30px;">geigerlog -p COM3 -b 57600</span></p>
+
+<p>If these settings will be your standard settings, you might want to modify the configuration file <b>geigerlog.cfg</b>
+in section <b>Serial Port</b> accordingly, and start GeigerLog without options as <span style="font-family:'Courier';">geigerlog</span>.</p>
+
+<h3>Start Logging</h3>
+<ol>
+<li>Connect the computer with the device (menu: Device -> Connect Device)</li>
+<li>Switch device on (menu: Device -> Switch Device ON)</li>
+<li>Load a log file (menu: Logging -> Get Log File or Create New One)<br>
+In the Get Log File dialog enter a new filename and press Enter,
+<br>or select an existing file to <b>APPEND</b> new data to this file</li>
+<li>Start logging (menu: Logging -> Start Logging, or click the 'Start Log' toolbar icon)</li>
+</ol>
+
+<h3>Get History from Device</h3>
+<ol>
+<li>Connect the computer with the device (menu: Device -> Connect Device)</li>
+<li>Get history from device (menu: History  -> Get History from Device)</li>
+<li>Enter a new filename (e.g. enter 'myfile' and press Enter) or select an existing file
+<br>Note: selecting an existing file will <b>OVERWRITE</b> this file!</li>
+</ol>
+&nbsp;&nbsp;This will download all data from the internal storage of the device and create three files:
+<ul>
+<li>a binary file 'myfile.bin' containing a duplicate of the internal data</li>
+<li>a text file &nbsp;&nbsp;'myfile.lst' containing the binary data in a human readable format</li>
+<li>a text file &nbsp;&nbsp;'myfile.his' containing data parsed from the binary</li>
+</ul>
+<h3>Graphical Analysis</h3>
+<p>To enlarge and analyse a feature of the graph either enter the Time Min and
+Time Max values manually, or much easier, do a mouse-left-click to the left
+of the feature in the graph and right-click to the right, and then click the Apply button. Use other features as detailed in the manual.</p>
+
+<h3>More in the GeigerLog Manual</h3>
+<p>Available locally (menu: Help -> GeigerLog Manual) and <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf">online</a>
+at SourceForge project GeigerLog: <a href="https://sourceforge.net/projects/geigerlog/">https://sourceforge.net/projects/geigerlog/</a></p>
+"""
+
+        msg = QtGui.QMessageBox()
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        msg.setWindowTitle("Help - Quickstart")
+        msg.setFont(self.fontstd)
+        msg.setText(qs)
+        msg.setStandardButtons(QtGui.QMessageBox.Ok)
+        msg.setDefaultButton(QtGui.QMessageBox.Ok)
+        msg.setEscapeButton(QtGui.QMessageBox.Ok)
+        msg.setWindowModality(QtCore.Qt.WindowModal)
+
+        # none of this size stuff works; looks like a bug
+        #msg.resize(800, 800)
+        #msg.setSizePolicy(QtGui.QSizePolicy.Expanding, QtGui.QSizePolicy.Expanding)
+        #msg.updateGeometry()
+        #msg.setMinimumWidth(900)
+        #msg.setBaseSize(900,900)
+        #msg.setFixedSize(900, 900)
+        #size does not work; use invisible button as spacer instead
+
+        btn = QtGui.QPushButton()# to become invisible button
+        btn.setMinimumWidth(750) # determines width of box
+        btn.setMaximumHeight(0)  # invisible at height zero!
+
+        msg.addButton(btn, QtGui.QMessageBox.YesRole)
+        msg.exec_()
+
+
+    def helpOptions(self):
+        """Options item on the Help menu"""
+
+        msg = QtGui.QMessageBox()
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        msg.setWindowTitle("Help - Options")
+        msg.setFont(self.fontstd)
+        msg.setText(usage)
+        msg.setStandardButtons(QtGui.QMessageBox.Ok)
+        msg.setDefaultButton(QtGui.QMessageBox.Ok)
+        msg.setEscapeButton(QtGui.QMessageBox.Ok)
+        msg.setWindowModality(QtCore.Qt.WindowModal)
+
+        btn = QtGui.QPushButton()# invisible button
+        btn.setMinimumWidth(450) # determines width of box
+        btn.setMaximumHeight(0)  # invisible at height zero!
+
+        msg.addButton(btn, QtGui.QMessageBox.YesRole)
+        msg.exec_()
+
+
+    def showSystemInfo(self):
+        """System Info on the Help Menu"""
+
+        screen           = QtGui.QDesktopWidget().screenGeometry()
+        screen_available = QtGui.QDesktopWidget().availableGeometry()
+        geom             = self.geometry()
+        geom_frame       = self.frameGeometry()
+
+        fmt              = u"\n{:35s}{}"
+        si               = u""
+        si += fmt.format(u"Device:",                           "")
+        si += fmt.format(u"   Model selected:",                str(gglobs.device))
+        si += fmt.format(u"   Internal Memory (bytes):",       "{:,} ({})".format(gglobs.memory, gglobs.memoryMode))
+        si += fmt.format(u"   Memory Page Size (bytes):",      "{:,}"     .format(gglobs.page))
+        si += fmt.format(u"   Calibration (µSv/h / CPM):",     str(gglobs.calibration))
+        si += fmt.format(u"   Saving Mode:",                   str(gglobs.savedatatype))
+        si += fmt.format(u"USB Port Settings:",                "")
+        si += fmt.format(u"   Port:",                          str(gglobs.usbport))
+        si += fmt.format(u"   Baudrate:",                      "{:,}".format(int(gglobs.baudrate)))
+        si += fmt.format(u"   Timeout:",                       str(gglobs.timeout))
+        si += fmt.format(u"Runtime settings:",                 "")
+        si += fmt.format(u"   Flag Debug:",                    str(gglobs.debug))
+        si += fmt.format(u"   Flag Verbose:",                  str(gglobs.verbose))
+        si += fmt.format(u"   Flag Test:",                     str(gglobs.test))
+        si += fmt.format(u"   Flag KeepFF:",                   str(gglobs.keepFF))
+        si += fmt.format(u"   GeigerLog Data Directory:",      str(gglobs.dataPath))
+        si += fmt.format(u"   GeigerLog Resource Directory:",  str(gglobs.sharePath))
+        si += fmt.format(u"   GeigerLog Program Directory:",   str(getProgPath() + "/"))
+        si += fmt.format(u"   GeigerLog Manual:",              str(gglobs.manual_filename))
+        si += fmt.format(u"GUI:",                              "")
+        si += fmt.format(u"  Monitor:",                        "")
+        si += fmt.format(u"   Screen size:",                   "{}x{}  (available:{}x{})".format(screen.width(), screen.height(), screen_available.width(), screen_available.height()))
+        si += fmt.format(u"   Current window size:",           "{}x{} including window frame ({}x{} w/o frame)".format(geom_frame.width(), geom_frame.height(), geom.width(), geom.height()))
+        si += fmt.format(u"  Styles:",                         "")
+        si += fmt.format(u"   Styles available on System:",    styles)
+        si += fmt.format(u"   Active Style (internal name):",  str(gglobs.style))
+        si += fmt.format(u"  Fonts:",                          "")
+        si += fmt.format(u"   Active Font - Application:",     strFontInfo("", app.font()))
+        si += fmt.format(u"   Active Font - NotePad:",         strFontInfo("", self.notePad.fontInfo()))
+
+        msg = QtGui.QMessageBox()
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        msg.setWindowTitle("Help - System Info")
+        msg.setFont(self.fontstd)
+        msg.setText(si)
+        msg.setStandardButtons(QtGui.QMessageBox.Ok)
+        msg.setDefaultButton(QtGui.QMessageBox.Ok)
+        msg.setEscapeButton(QtGui.QMessageBox.Ok)
+        msg.setWindowModality(QtCore.Qt.WindowModal)
+        #msg.setMinimumWidth(1600) #not working
+
+        btn = QtGui.QPushButton() # to become invisible button
+        btn.setMinimumWidth(1000) # determines width of box; width is limited by other stuff
+        btn.setMaximumHeight(0)   # invisible at height zero!
+
+        msg.addButton(btn, QtGui.QMessageBox.YesRole)
+        msg.exec_()
+
+
+    def openUrl(self):
+        """Show the GeigerLog Manual, either the local version, or if not
+        possble, then the version on SourceForge"""
+
+        manual_file = None
+
+        if gglobs.manual_filename != None:
+            # if filename defined in config file, use that name
+            # but if file does not exist, it has already been overwritten with
+            # None when reading the config
+            manual_file = getProgPath() + "/" + gglobs.manual_filename
+        else:
+            # if NOT defined in config file, use first found file which begins
+            # with 'GeigerLog-Manual'
+            path = getProgPath() + "/"
+            for filename in os.listdir(path):
+                #print filename
+                if re.match("GeigerLog-Manual", filename):
+                    #print "filename", filename
+                    manual_file = getProgPath() + "/" + filename
+                    break
+        #print "manual_file", manual_file
+
+        if manual_file != None:
+
+            try:
+                #a = 1/0
+                import subprocess
+                if sys.platform.startswith('linux'):
+                    subprocess.call(["xdg-open", manual_file])
+                    dprint(gglobs.debug, "Showing '{}' via xdg-open on Linux".format(manual_file))
+                else:
+                    os.startfile(manual_file)
+                    dprint(gglobs.debug, "Showing '{}' via os.startfile on other OS".format(manual_file))
+
+                return
+            except:
+                print sys.exc_info()
+                dprint(gglobs.debug, "Failure Showing '{}' via xdg-open on Linux or via os.startfile on other OS".format(manual_file))
+
+            try:
+                #a=1/0
+                import subprocess
+                if sys.platform.startswith('linux'):
+                    subprocess.call(["firefox", manual_file])
+                    dprint(gglobs.debug, "Showing '{}' via firefox on Linux".format(manual_file))
+                else:
+                    os.startfile(manual_file)
+                    dprint(gglobs.debug, "Showing '{}' via os.startfile on other OS".format(manual_file))
+
+                return
+            except:
+                print sys.exc_info()
+                dprint(gglobs.debug, "Failure Showing '{}' via firefox on Linux or via os.startfile on other OS".format(manual_file))
+
+            try:
+                #a = 1/0
+                import webbrowser
+                webbrowser.open(manual_file)
+                dprint(gglobs.debug, "Showing '{}' via import webbrowser".format(manual_file))
+                return
+            except:
+                print sys.exc_info()
+                dprint(gglobs.debug, "Failure Showing '{}' via import webbrowser".format(manual_file))
+
+
+        try:
+            #a=1/0
+            url = QtCore.QUrl('https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf')
+            if not QtGui.QDesktopServices.openUrl(url):
+                QtGui.QMessageBox.warning(self, 'GeigerLog Manual', 'Could not open GeigerLog Manual.pdf')
+                dprint(gglobs.debug, "Failure Showing manual with QtCore.QUrl")
+            else:
+                dprint(gglobs.debug, "Showing '{}' via QtCore.QUrl".format(manual_file))
+        except:
+            print sys.exc_info()
+            dprint(gglobs.debug, "Failure Showing manual with QtCore.QUrl")
+
+        self.error2NotePad("WARNING: Could not find GeigerLog-Manual, neither locally nor online!")
+        self.print2NotePad("The file 'GeigerLog-Manual-xyz', with xyz being a version number, is missing")
+        self.print2NotePad("from the GeigerLog working directory 'geigerlog'.")
+
+
+    def helpAbout(self):
+        """About item on the Help menu"""
+
+        description = u"""
+<!doctype html>
+<p><span style='color:darkblue;'><b>GeigerLog</b></span> is a Python based program for use with GQ Electronic's
+GMC-3xx and GMC-5xx line of Geiger counters. It was developed on Linux Ubuntu Mate 16.04
+but should also work on Windows and Mac as long as a Python 2.7 with PyQt4 environment is available.
+</p>
+
+<p>The program allows reading of Geiger counter data, printing to screen and logging to \
+file. Comments can be added to the log file during logging. The history stored on the Geiger \
+counter can be extracted and converted into files that can be printed and analyzed.</p>
+
+<p>From all data - Log data or History data - graphs can be created and shown as Count Rate History versus time.
+ The Count Rate can be shown in units of CPM or CPS or µSv/h. The time can be shown as time-of-day, or
+  time since first record in units of sec, min, hours, days, or auto-selected in auto mode.
+  During logging the graph is live auto-updated. Both graph axes can be in either
+  fixed scale or auto-scaled mode. The graphs can be stretched, shifted, and zoomed for details, and saved as pictures
+in various formats (png, jpg, tif, svg, ...).</p>
+
+<p>Time ranges can be set to analyze statistical properties of the data \
+set within that range and be plotted within that range. The ranges can be entered manually or by
+left and right mouse clicks for left (min) and right (max) range limits. All manipulations \
+can be done during ongoing logging without disturbing it.</p>
+
+<p>Some Geiger counter functions can be controlled from GeigerLog, and changes made without interrupting logging. All
+communication with the device is checked for errors, which unfortunately do occur occasionally. The program
+attempts to auto-recover from an error, and continues if successful, which it is in most cases.</p>
+
+<p>The USB port used and its baudrate for the connection with the device can be auto-discovered.</p>
+
+<p>A genuine recording of Geiger counter data from an international flight is included,
+indicating count rate increase with altitude, and reduction of cosmic rays
+when going from north towards the equator.</p>
+
+<p>The most recent version of GeigerLog can be found at project GeigerLog at Sourceforge:
+<a href="https://sourceforge.net/projects/geigerlog/">https://sourceforge.net/projects/geigerlog/</a>.
+A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf">GeigerLog-Manual(pdf)</a> is there as well.</p>
+
+<p>References:
+<br>&nbsp;&nbsp;Author.............: {}
+<br>&nbsp;&nbsp;Credits............: <a href="https://sourceforge.net/projects/gqgmc/">Phil Gillaspy for extended documentation</a> of Geiger counter commands
+<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+<a href="http://www.gqelectronicsllc.com/">GQ Electronics LLC</a> for documentation
+<br>&nbsp;&nbsp;Copyright..........: {}
+<br>&nbsp;&nbsp;License............: {}
+<br>Version status:
+<br>&nbsp;&nbsp;Version GeigerLog..: {}
+<br>&nbsp;&nbsp;Version numpy......: {}
+<br>&nbsp;&nbsp;Version matplotlib.: {}
+<br>&nbsp;&nbsp;Version Python.....: {}
+""".format(__author__, __copyright__, __license__, gglobs.__version__, np.version.version, mplVersion, gglobs.python_version)
+
+        licon   = QtGui.QLabel() # label to hold the geigerlog icon
+        licon.setPixmap(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png'))
+
+        ltext   = QtGui.QLabel() # label to hold the 'eigerlog' text as picture
+        ltext.setPixmap(QtGui.QPixmap(gglobs.sharePath + 'eigerlog.png'))
+
+        labout  = QtGui.QTextBrowser() # label to hold the description
+        labout.setLineWrapMode(QtGui.QTextEdit.WidgetWidth)
+        labout.setText(description)
+        labout.setOpenExternalLinks(True) # to open links in a browser
+        labout.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
+        labout.setMinimumWidth(800)
+        #labout.setTextColor(QtGui.QColor("red"))
+        #labout.setTextBackgroundColor(QtGui.QColor("red"))
+        #print labout.textBackgroundColor().toRgb().red()
+        #print labout.textBackgroundColor().toRgb().green()
+        #print labout.textBackgroundColor().toRgb().blue()
+        #labout.setStyleSheet("background-color: #F2F1F0; font-size:15px;")
+
+        d       = QtGui.QDialog()
+        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        d.setFont(self.fontstd)
+        d.setWindowTitle("Help - About GeigerLog")
+        #d.setWindowModality(QtCore.Qt.ApplicationModal)
+        d.setWindowModality(QtCore.Qt.WindowModal)
+        #d.setMinimumWidth(800)
+        d.setMinimumHeight(gglobs.window_height)
+
+        bbox    = QtGui.QDialogButtonBox()
+        bbox.setStandardButtons(QtGui.QDialogButtonBox.Ok)
+        bbox.accepted.connect(lambda: d.done(0))
+
+        layoutTop = QtGui.QHBoxLayout()
+        layoutTop.addWidget(licon)
+        layoutTop.addWidget(ltext)
+        layoutTop.addStretch()      # to keep the icons on the left
+
+        layoutV   = QtGui.QVBoxLayout(d)
+        layoutV.addLayout(layoutTop)
+        layoutV.addWidget(labout)
+        layoutV.addWidget(bbox)
+
+        d.exec_()
+
+
+#utilities in Class
+    def error2NotePad(self, *args):
+        """make beep sound when on terminal, and print into Notepad area
+        an error text in red"""
+
+        #line = "<span style='color:red;'>{:35s} ".format(str(args[0]))
+        line = u"<span style='color:red;'>{:35s} ".format(args[0])
+        for s in range(1, len(args)):
+            #line += str(args[s])
+            line += "{}".format(args[s])
+        self.notePad.append(line + u"</span>")
+        QtGui.QApplication.processEvents()
+
+        media.play()
+        time.sleep(0.5) # wait for the end of sound
+
+
+    def print2NotePad(self, *args):
+        """print all args in NotePad area"""
+
+        aa =  u"{}".format(args[0])
+        line = u"{:35s}".format(aa)
+        for s in range(1, len(args)):
+            line += u"{}".format(args[s])
+
+        self.notePad.append(line)
+        QtGui.QApplication.processEvents()
+
+
+    def clearNotePad(self):
+        """Clear the notepad"""
+
+        self.notePad.clear()
+
+
+    def print2LogPad(self, *args):
+        """print all args in logPad area"""
+
+        line = u"{:35s}".format(args[0])
+        for s in range(1, len(args)):
+            line += u"{}".format(args[s])
+        self.logPad.append(line)
+
+
+    def clearLogPad(self):
+        """Clear the logpad"""
+
+        self.logPad.clear()
+
+
+    def setBusyCursor(self):
+
+        QtGui.QApplication.setOverrideCursor(QtCore.Qt.WaitCursor)
+        #QtGui.QApplication.processEvents()
+
+
+    def setNormalCursor(self):
+
+        QtGui.QApplication.restoreOverrideCursor()
+        #QtGui.QApplication.processEvents()
+
+
+    def showStatusMessage(self, message):
+        """shows message by flashing the Status Bar red for 0.5 sec, then switches back to normal"""
+
+        media.play()
+
+        self.statusBar.showMessage(message, 0)         # message remains until overwritten by next status
+        self.statusBar.setStyleSheet("QStatusBar { background-color:red; color:white; }")
+        QtGui.QApplication.processEvents()             #assure that things are visible
+        time.sleep(0.5)                                # stays red for 0.5 sec
+        self.statusBar.setStyleSheet("QStatusBar { }") # reset to default colors
+
+
+    def selectionchange(self, i):
+        """used for initial device settings and device changes from the toolbar"""
+
+        #print "Devices in the list are :"
+        #for count in range(self.device.count()):
+        #    print "  ", self.device.itemText(count)
+        #print "Selection changed, new index:",i,", new device:",self.device.currentText()
+
+        self.print2NotePad(header("Device change"))
+        gglobs.devicesIndex     = i
+        gglobs.device           = gglobs.devices[gglobs.devicesIndex]
+
+        defineDevice(gglobs.devicesIndex)
+
+        info = u"New Device is: '{}'\nMemory:{}@{:,} B, Page size:{} B, Calibration:{} µSv/h / CPM".format(gglobs.device, gglobs.memoryMode, gglobs.memory, gglobs.page, gglobs.calibration)
+        self.print2NotePad(info)
+        dprint(gglobs.debug, info, ", ListIndex:{}".format(i))
+
+
+    def selectUSB(self):
+        """USB Autodiscovery with option to select any found connection"""
+
+        self.setBusyCursor()
+        rec, errmessage = gcommands.autoPORT(gglobs.usbport, gglobs.baudrates)
+        self.setNormalCursor()
+
+        msg = QtGui.QMessageBox()
+        msg.setWindowTitle("USB Autodiscovery")
+        msg.setIcon(QtGui.QMessageBox.Information)
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+
+        #rec.append(rec[0])
+        #rec.append(rec[0])
+        #print "len(rec)", len(rec)
+
+        if rec == None:
+            flag = "fail"
+            txt1 = errmessage + "\n\nIs device connected? Check cable and plugs!"
+        else:
+            if len(rec) == 1:
+                flag  = "success"
+                txt1  = "A Geiger Counter was found at:\n"
+                txt1 += "     Port: " + str(rec[0][0]) + "              Baudrate: " + str(rec[0][1])
+                txt1 += "\n\nPress OK to make this your new setting and connect, Cancel otherwise."
+                txt1 += "\n\nTo make this permanent edit the configuration file geigerlog.cfg\nand enter above settings in Section 'Serial Port'."
+
+            else:
+                flag  = "fail"
+                txt1  = "The following ports and baudrates have connected Geiger Counters:\n"
+                for i in rec:
+                    txt1 += "\n     Port: " + str(i[0]) + "              Baudrate: " + str(i[1])
+                txt1 += "\n\nGeigerLog can handle only a single connected Geiger Counter."
+                txt1 += "\n\nEither remove all counters except one now and re-run 'USB Autodiscovery', or "
+                txt1 += "edit the configuration file geigerlog.cfg in Section 'Serial Port' to define your counter."
+
+        msg.setText(txt1)
+
+        txt1  = "-" * 100
+        txt1 += "\nThe current settings of GeigerLog are:"
+        txt1 += "\n     Port: " + gglobs.usbport + "                Baudrate: " + str(gglobs.baudrate)
+        msg.setInformativeText(txt1)
+
+        if flag == "fail":
+            msg.setStandardButtons(QtGui.QMessageBox.Cancel)
+        else:
+            msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+        msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+        msg.setEscapeButton(QtGui.QMessageBox.Cancel)
+
+        retval = msg.exec_()
+        #dprint(gglobs.debug, "selectUSB: value of pressed message box button:", retval)
+        if retval == 1024:
+            gglobs.usbport = str(rec[0][0])
+            gglobs.baudrate = str(rec[0][1])
+            self.switchDeviceConnection(new_connection = "ON")
+
+
+#not used
+    def processtrigger(self, q):
+        """for testing"""
+
+        pass
+        #self.showStatusMessage(q.text())
+        #print q.text() + " is triggered"
+
+
+    def showDialog(self):
+        #   QtGui.QMessageBox.NoIcon
+        #   QtGui.QMessageBox.Question
+        #   QtGui.QMessageBox.Information
+        #   QtGui.QMessageBox.Warning
+        #   QtGui.QMessageBox.Critical
+
+        msg = QtGui.QMessageBox()
+        msg.setWindowTitle("FACTORYRESET Device")
+        msg.setIcon(QtGui.QMessageBox.Critical)
+
+        msg.setText("You are about to do a FACTORYRESET !")
+        msg.setInformativeText("Are you sure?")
+
+        msg.setDetailedText("And here is more...")
+        msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel|QtGui.QMessageBox.Save|QtGui.QMessageBox.Open|QtGui.QMessageBox.Abort|QtGui.QMessageBox.Ignore|QtGui.QMessageBox.Retry)
+        msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+        msg.setEscapeButton(QtGui.QMessageBox.Cancel)
+
+        retval = msg.exec_()
+        dprint(gglobs.debug, "value of pressed message box button:", retval)
+
+
+    def scrap(self):
+
+        print 0, dOptions.columnStretch(0)
+        print 1, dOptions.columnStretch(1)
+        print 2, dOptions.columnStretch(2)
+        print 3, dOptions.columnStretch(3)
+        print 4, dOptions.columnStretch(4)
+        print 5, dOptions.columnStretch(5)
+        print 6, dOptions.columnStretch(6)
+        print 7, dOptions.columnStretch(7)
+
+    def getRandomData(self):
+        """random data"""
+
+        mu, sigma = 20., np.sqrt(20.)
+        #mu, sigma = 50., np.sqrt(50.)
+        #mu, sigma = 5., np.sqrt(5.)
+        x = mu + sigma * np.random.randn(1000000)
+        #x = np.random.poisson(2., 1000000)
+
+        return x
+
+
+
+    def plotHistogram(self, type = 'plot'):
+        """Plotting a historgam"""
+
+        if type == 'plot':
+            #print "gglobs.cpmSlice", gglobs.cpmSlice
+            x = gglobs.logCPMSlice # only data in the plot
+        else:
+            #print "gglobs.logCPM", gglobs.logCPM
+            x = gglobs.logCPM # all data
+
+        if x is None:
+            self.showStatusMessage("No file available")
+            return
+
+
+        ######################################
+        # to show histogram of delta between 2 consecutive counts
+        if False:
+        #if True:
+            dx = x[:-1].copy()
+            for i in range(0, len(dx)):
+                dx[i] = abs(x[i+1] - x[i])
+                #if dx[i] > 10: print i, dx[i]
+            #print x, len(x)
+            #print dx, len(dx)
+            x = dx
+            yunit = "Differences between 2 consecutive CPM!"
+        #######################################
+
+        # if CPS selected in Graph, treat as CPS
+        else:
+            if self.yunit.currentText() == "CPS":
+                x = x / 60.
+                yunit = "CPS"
+            else:
+                yunit = "CPM"
+
+
+        #############################
+        # get artificial data
+        #x = self.getRandomData()
+        #############################
+
+        # switch off interactive mode
+        #plt.ioff()
+
+        fig2 = plt.figure(2, facecolor = "#E7F9C9")
+        plt.clf()
+        plt.title("Count Rate Histogram with Poisson Fit", fontsize=13)
+        plt.xlabel("Count Rate ({})".format(yunit), fontsize=13)
+        plt.ylabel("Frequency of Occurence", fontsize=13)
+        plt.grid(True)
+        plt.subplots_adjust(hspace=None, wspace=.2 , left=.17, top=0.9, bottom=0.1, right=.97)
+
+
+        # canvas - this is the Canvas Widget that displays the `figure`
+        # it takes the `figure` instance as a parameter to __init__
+        canvas2 = FigureCanvas(fig2)
+        canvas2.setFixedSize(550,350)
+        navtoolbar = NavigationToolbar(canvas2, self)
+
+        labout  = QtGui.QTextBrowser() # label to hold the description
+        labout.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        labout.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
+        labout.setMinimumHeight(160)
+
+        d       = QtGui.QDialog()
+        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        d.setFont(self.fontstd)
+        d.setWindowTitle("Histogram")
+        #d.setMinimumHeight(gglobs.window_height)
+#        d.setWindowModality(QtCore.Qt.ApplicationModal)
+        #d.setWindowModality(QtCore.Qt.NonModal)
+        d.setWindowModality(QtCore.Qt.WindowModal)
+
+        bbox    = QtGui.QDialogButtonBox()
+        bbox.setStandardButtons(QtGui.QDialogButtonBox.Ok)
+        bbox.accepted.connect(lambda: d.done(0))
+
+        layoutV   = QtGui.QVBoxLayout(d)
+        layoutV.addWidget(navtoolbar)
+        layoutV.addWidget(canvas2)
+        layoutV.addWidget(labout)
+        layoutV.addWidget(bbox)
+
+        step = max(1, int(0.3 * np.sqrt(x.max())))
+        bins = range(0, max(10, int(x.max() + step * 3)), step)
+        #print "bins=", bins
+
+        hist, bins = np.histogram(x, bins=bins)
+        #print "hist=\n", hist, len(hist)
+        #print "bins=\n", bins, len(bins)
+
+        avg = np.mean(x)
+        std = np.std(x)
+        sum_hist = int(np.sum(hist))
+
+
+        try:
+            from scipy import stats
+            pdf = stats.poisson.pmf(bins, avg)
+            sum_pdf  = sum(pdf)
+            pdfs = pdf * sum_hist/sum_pdf
+        except:
+            labout.append("Cannot calculate Poisson Curve - Module scipy is missing")
+            pdfs= bins - bins
+
+        labout.append("No.   Count Rate    Frequency    % of   Poisson-Fit")
+        labout.append("      from ... to   (columns)    Total   (red line)")
+        for i in range(0, len(hist)):
+            labout.append("{:3d}   {:4d} ... <{:<4d} {:8d}   {:5.2f}%   {:10.1f}".format( i, bins[i], bins[i+1], hist[i], hist[i]*100./sum_hist, pdfs[i]))
+        labout.append("Total count=       {:10d}  100.00%   {:10.1f}".format(sum(hist), sum(pdfs)))
+
+        width = step * 0.8
+
+        # histrogram ##########################################################
+        #rec = plt.bar(bins[:-1], hist, align='edge', width=width)
+        rec = plt.bar(bins[:-1], hist, align='center', width=width)
+        plt.xlim(xmin = 0, xmax = bins[-1] + step)
+
+        #rec = plt.hist(x, bins=50, rwidth=0.9)
+        #rec = plt.hist(x, bins='auto')
+
+        # determine r-squared
+        ss_res = np.sum((hist - pdfs[:-1]    ) ** 2)    # residual sum of squares
+        ss_tot = np.sum((hist - np.mean(hist)) ** 2)    # total sum of squares
+        r2 = 1 - (ss_res / ss_tot)                      # r-squared
+
+        labout.append(u"Goodness of Poisson Fit (Average, Total) r²= {:8.3f}".format(r2))
+
+        plt.plot(bins, pdfs, linewidth=3, color='red', label ="r2 = {:0.3f}".format(r2) )
+
+        #######################################################################
+
+
+        # find best place for legend
+        if avg >= bins[-1]/2:
+            plt.legend(loc='upper left', fontsize=12)
+        else:
+            plt.legend(loc='upper right', fontsize=12)
+
+        labout.append("\nData Set:")
+        labout.append("Average  ={:8.2f}".format(avg))
+        labout.append("Variance ={:8.2f}  same as Average if true Poisson Dist.".format(std**2))
+        labout.append("Std.Dev. ={:8.2f}".format(std))
+        labout.append("Sqrt(Avg)={:8.2f}  same as Std.Dev. if true Poisson Dist.".format(np.sqrt(avg)))
+
+        try:
+            skew     = stats.skew    (x)
+            kurtosis = stats.kurtosis(x)
+            labout.append("Skewness ={:8.2f}  0:Norm.Dist.; skewed to: +:right   -:left".format(skew))
+            labout.append("Kurtosis ={:8.2f}  0:Norm.Dist.; shape is:  +:pointy: -:flat".format(kurtosis))
+        except:
+            labout.append("Skewness = Cannot calculate, Module scipy is missing")
+            labout.append("Kurtosis = Cannot calculate, Module scipy is missing")
+        labout.append("")
+
+        fig2.canvas.draw_idle()
+        d.exec_()
+        #plt.close()
+        #plt.ion() # activate interactive mode again, IMPORTANT
+
+
+    def getSinusData(self, dlen):
+        """sinus data"""
+
+        pi2 = 2.0 * np.pi
+
+        # all times in Minutes !!!!
+        t = np.float64(np.array(range(0, dlen))) /dlen * 1000. # 1000 minutes
+
+        x  = 0.0 + 5.0 * (np.sin(t * pi2 / 2.    ))
+        x += 0.0 + 0.5 * (np.sin(t * pi2 / 1.0    ))
+        x += 0.0 + 0.2 * (np.sin(t * pi2 / 0.5    ))
+        #for i in range(0,100):
+        #    print i, x[i]
+
+        return t / 1440.0, x   # return as days
+
+
+    def plotFFT(self, type = 'plot'):
+        """Plotting a FFT Spectrum"""
+
+        if type == 'plot':              # use only data shown in the plot
+            #print "gglobs.logTimeDiffSlice", len(gglobs.logTimeDiffSlice)
+            #print gglobs.logTimeDiffSlice
+            #print "gglobs.logCPMSlice"
+            #print gglobs.logCPMSlice
+            t = gglobs.logTimeDiffSlice
+            x = gglobs.logCPMSlice
+        else:                           # use all data of the file
+            #print "gglobs.logTimeDiff"
+            #print gglobs.logTimeDiff
+            #print "gglobs.logCPM"
+            #print gglobs.logCPM
+            t = gglobs.logTimeDiff
+            x = gglobs.logCPM
+
+        if x is None:
+            self.showStatusMessage("No file available")
+            return
+
+        #############################
+        # get artificial data; timescale in hours
+        #t, x = self.getSinusData(5000)
+        #############################
+
+        #t = t * 24.0  # convert days to hours
+        #timeunit = "hours"
+        #frequencyunit = "1/hour"
+        t = t * 1440.0  # convert days to minutes
+        timeunit        = "minutes"
+        frequencyunit   = "1/minute"
+        cycletime       = (t[-1] - t[0]) / t.size
+
+        # Window functions ####################################################
+        hamm    = np.hamming (len(t))
+        hann    = np.hanning (len(t))
+        black   = np.blackman(len(t))
+
+        # beta  Window shape
+        # 0     Rectangular
+        # 5     Similar to a Hamming
+        # 6     Similar to a Hanning
+        # 8.6   Similar to a Blackman
+        # A beta value of 14 is probably a good starting point
+        beta    = 14.0
+        kaiser  = np.kaiser(len(t), beta)
+
+        # FFT calculation #####################################################
+        # using amplitude spectrum, not power spectrum
+        # power would be myfft^2
+        myfft         = np.abs(np.fft.rfft(x          ))
+        myfft_hamm    = np.abs(np.fft.rfft(x * hamm   ))
+        myfft_hann    = np.abs(np.fft.rfft(x * hann   ))
+        myfft_black   = np.abs(np.fft.rfft(x * black  ))
+        myfft_kaiser  = np.abs(np.fft.rfft(x * kaiser ))
+
+        #print "t:", len(t)
+        #print t
+        #print "x:", len(x),
+        #print x
+        #print "fft:", len(myfft)
+        #print myfft
+
+        f = np.fft.rfftfreq(t.size, d = cycletime)
+        #print "frequency", f.size
+        #print f
+
+        p  = np.reciprocal(f[1:])  # skipping 1st value frequency = 0
+        #print "Period", len(p)
+        #print p
+
+        # figure and canvas ###################################################
+        fig3 = plt.figure(3, facecolor = "#C9F9F0") # blueish tint
+        plt.clf()
+        # canvas - this is the Canvas Widget that displays the `figure`
+        # it takes the `figure` instance as a parameter to __init__
+        canvas3 = FigureCanvas(fig3)
+        canvas3.setFixedSize(550,550)
+        navtoolbar = NavigationToolbar(canvas3, self)
+
+        # Time ################################################################
+        plt.subplot(3,1,1)
+        plt.title("Time Course", fontsize=13)
+        plt.xlabel("time ({})".format(timeunit), fontsize=13)
+        plt.ylabel("Count Rate", fontsize=13)
+        plt.grid(True)
+        plt.plot(t, x           ,  linewidth=0.4, color='red'  , label ="Time Domain" )
+        #plt.plot(t, x * hamm    ,  linewidth=0.4, color='blue' , label ="Time Domain" )
+        #plt.plot(t, hann   ,  linewidth=0.4, color='green', label ="Time Domain" )
+        #plt.plot(t, black  , linewidth=0.4, color='black', label ="Time Domain" )
+        #plt.plot(t, black * 100., linewidth=0.4, color='black', label ="Time Domain" )
+        #plt.plot(t, kaiser * 100., linewidth=0.4, color='black', label ="Time Domain" )
+
+        # FFT vs Time #########################################################
+        plt.subplot(3,1,2)
+        plt.title("FFT Amplitude Spectrum vs. Time Period", fontsize=13)
+        plt.xlabel("Period ({})".format(timeunit), fontsize=13)
+        plt.ylabel("FFT Amplitude", fontsize=13)
+        plt.grid(True)
+
+        #plt.semilogy(p, myfft              , linewidth= 0.3, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'  , markersize=2.0)
+        plt.loglog(p, myfft[1:]         , linewidth= 0.3, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'  , markersize=2.0)
+        #plt.loglog(p, myfft_hamm[1:]    , linewidth= 0.4, color='blue'  , label ="FFT" , marker="o", markeredgecolor='blue' , markersize=2.0)
+        #plt.loglog(p, myfft_hann[1:]    , linewidth= 0.4, color='green' , label ="FFT" , marker="o", markeredgecolor='green', markersize=2.0)
+        #plt.loglog(p, myfft_black[1:]   , linewidth= 0.3, color='black' , label ="FFT" , marker="o", markeredgecolor='black', markersize=2.0)
+        #plt.loglog(p, myfft_kaiser[1:]  , linewidth= 0.3, color='black' , label ="FFT" , marker="o", markeredgecolor='black', markersize=2.0)
+
+        #plt.legend(loc='upper left', fontsize=12)
+
+        # FFT vs Frequency ####################################################
+        plt.subplot(3,1,3)
+        plt.title("FFT Amplitude Spectrum vs. Frequency", fontsize=13)
+        plt.xlabel("Frequency ({})".format(frequencyunit), fontsize=13)
+        plt.ylabel("FFT Amplitude", fontsize=13)
+        plt.grid(True)
+
+        plt.semilogy (f[1:], myfft[1:]      , linewidth= 0.3, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'  , markersize=2.0)
+        #plt.loglog  (f, myfft              , linewidth= 0.3, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'  , markersize=2.0)
+        #plt.semilogy (f[1:], myfft_hamm[1:] , linewidth= 0.4, color='blue'  , label ="FFT" , marker="o", markeredgecolor='blue' , markersize=2.0)
+        #plt.loglog  (f, myfft_hann         , linewidth= 0.4, color='green' , label ="FFT" , marker="o", markeredgecolor='green', markersize=2.0)
+        #plt.loglog  (f, myfft_black        , linewidth= 0.3, color='black' , label ="FFT" , marker="o", markeredgecolor='black', markersize=2.0)
+        #plt.semilogy(f[1:], myfft_kaiser[1:], linewidth= 0.3, color='black' , label ="FFT" , marker="o", markeredgecolor='black', markersize=2.0)
+
+        #plt.legend(loc='upper left', fontsize=12)
+
+        # arrange sub plots
+        plt.subplots_adjust(hspace=0.5, wspace=0., left=.12, top=0.95, bottom=0.08, right=.95)
+
+        # text ################################################################
+        labout  = QtGui.QTextBrowser() # label to hold some data
+        labout.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        labout.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
+        labout.setMinimumHeight(160)
+
+        d       = QtGui.QDialog()
+        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        d.setFont(self.fontstd)
+        d.setWindowTitle("FFT")
+        #d.setMinimumHeight(gglobs.window_height)
+        #d.setWindowModality(QtCore.Qt.ApplicationModal)
+        #d.setWindowModality(QtCore.Qt.NonModal)
+        d.setWindowModality(QtCore.Qt.WindowModal)
+
+        bbox    = QtGui.QDialogButtonBox()
+        bbox.setStandardButtons(QtGui.QDialogButtonBox.Ok)
+        bbox.accepted.connect(lambda: d.done(0))
+
+        layoutV   = QtGui.QVBoxLayout(d)
+        layoutV.addWidget(navtoolbar)
+        layoutV.addWidget(canvas3)
+        layoutV.addWidget(labout)
+        layoutV.addWidget(bbox)
+
+        fftmax      = np.max    (myfft[1:])
+        fftmaxindex = np.argmax (myfft[1:]) + 1
+        f_max       = f         [fftmaxindex ]
+
+        labout.append("{:20s}= {}"                   .format("No of Records"    , len(t)))
+        labout.append("{:20s}= {:4.2f} sec"          .format("Cycle Time"       , cycletime * 60.)) # t is in minutes
+        labout.append("{:20s}= {:4.0f}"              .format("FFT(f=0)"         , myfft[0]) )
+        labout.append("{:20s}= {:4.2f} (= FFT(f=0)/No of Records)".format("Average", myfft[0] / len(t)) )
+        labout.append("{:20s}= {:4.2f}"              .format("Max FFT(f>0)"     , fftmax))
+        labout.append("{:20s}= {}"                   .format("  @ Index"        , fftmaxindex))
+        labout.append("{:20s}= {:4.4f}"              .format("  @ Frequency"    , f_max ))
+        labout.append("{:20s}= {:4.4f}"              .format("  @ Period"       , p[fftmaxindex] ))
+
+        fig3.canvas.draw_idle()
+        d.exec_()
+
+
+    def qbtntest(self):
+        #dprint(gglobs.debug, "qbtntest: turnHeartbeatOn:", gcommands.turnHeartbeatOn(gglobs.ser))
+        #self.plotFFT(type = 'plot')
+        #self.selectUSB()
+        defineDevice(0)
+
+
+
+######## class ggeiger ends ###################################################
+
+def defineDevice(index):
+    """define a device and its paramters"""
+
+    gglobs.device = gglobs.devices[index]
+
+    # set aside if fixed and reapply later
+    if gglobs.memoryMode == 'fixed':
+        oldmem = gglobs.memory
+
+    if gglobs.calibrationMode == 'fixed':
+        oldcal = gglobs.calibration
+
+    if   index == 0:                                    #u"GMC-300E Plus v4.20"
+        gglobs.memory               = 2**16
+        gglobs.page                 = 4096
+        gglobs.cleanPipelineFlag    = False
+        gglobs.calibration          = 0.0065
+
+    elif index == 1:                                    #u"GMC-320"
+        #######################################################################
+        # make sure there are no extra bytes in pipeline, before reading history!
+        # may not be relevant for GMC 320, future will tell
+        # gglobs.cleanPipelineFlag    = True
+        # use:   extra = gcommands.getExtraByte(gglobs.ser)
+        #######################################################################
+        gglobs.memory               = 2**20
+        gglobs.page                 = 4096
+        gglobs.cleanPipelineFlag    = False
+        gglobs.calibration          = 0.0065
+
+    elif index == 2:                                    #u"GMC-500"
+        #######################################################################
+        # make sure there are no extra bytes in pipeline, before reading history!
+        # gglobs.cleanPipelineFlag    = True
+        # use:    extra = gcommands.getExtraByte(gglobs.ser)
+        #######################################################################
+        gglobs.memory               = 2**20
+        gglobs.page                 = 4096
+        gglobs.cleanPipelineFlag    = True
+        gglobs.calibration          = 0.0065
+
+    elif index == 3:                                    #u"GMC-300 v3.20"
+        #######################################################################
+        # the "GMC-300 v3.20" delivers the requested page after ANDing with 0fff
+        # hence when you request 4k (=1000hex) you get zero
+        # therefore use pagesize 2k only
+        #######################################################################
+        gglobs.memory               = 2**16
+        gglobs.page                 = 2048
+        gglobs.cleanPipelineFlag    = False
+        gglobs.calibration          = 0.0065
+
+    else:                                               #fallback; should never be reached
+        dprint(True, "in defineDevice(): reached fallback position - PROGRAMMING ERROR!")
+        gglobs.memory               = 2**16
+        gglobs.page                 = 4096
+        gglobs.cleanPipelineFlag    = False
+        gglobs.calibration          = 0.0065
+
+
+    # reapply fixed values
+    if gglobs.memoryMode == 'fixed':
+        gglobs.memory       = oldmem
+
+    if gglobs.calibrationMode == 'fixed':
+        gglobs.calibration  = oldcal
+
+
+def readGeigerConfig():
+    """reading the configuration file, return if not available.
+    Not-available or illegal options are being ignored with only a debug message"""
+
+    cfg_file = getProgPath() + '/geigerlog.cfg'
+
+    if not os.path.isfile(cfg_file): # does the config file exist?
+        dprint(gglobs.debug, "WARNING: Configuration file '{}' does not exist".format(cfg_file))
+        return
+
+    try:
+        config = ConfigParser.ConfigParser()
+        config.readfp(open(cfg_file))
+        dprint(gglobs.debug, "Configuration file '{}' was read".format(cfg_file))
+    except:
+        dprint(True, "WARNING: Configuration file '{}' exists, but cannot be read".format(cfg_file))
+        return
+
+# Serial Port
+    try:
+        gglobs.usbport = config.get("Serial Port", "port")
+    except:
+        dprint(True, "WARNING: Config port not available")
+
+    try:
+        b = config.getint("Serial Port", "baudrate")
+        if b in gglobs.baudrates:
+            gglobs.baudrate = b
+    except:
+        dprint(True, "WARNING: Config baudrate not available")
+
+    try:
+        t = config.getfloat("Serial Port", "timeout")
+        if t >= 0:
+            gglobs.timeout = t
+    except:
+        dprint(True, "WARNING: Config timeout not available")
+
+# Device active
+    try:
+        t = int(config.get("Device", "active_device"))
+        if t >= 0 and t <= 3:
+            gglobs.devicesIndex = t
+        else:
+            gglobs.devicesIndex = 0
+    except:
+        gglobs.devicesIndex = 0
+        dprint(True, "WARNING: Config active device not available; using default")
+    gglobs.device = gglobs.devices[gglobs.devicesIndex]
+
+    defineDevice(gglobs.devicesIndex)
+
+# Device memory
+    try:
+        t = config.get("Device", "memory")
+        if t.upper() == '1MB':
+            gglobs.memory     = 2**20
+            gglobs.memoryMode = 'fixed'
+
+        elif t.upper() == '64KB':
+            gglobs.memory     = 2**16
+            gglobs.memoryMode = 'fixed'
+
+        else:                               # auto
+            gglobs.memoryMode = 'auto'
+    except:
+        dprint(True, "WARNING: Config memory not available")
+
+# Device calibration
+    try:
+        t = config.get("Device", "calibration")
+        if t.upper() == 'AUTO':
+            gglobs.calibration      = 0.0065
+            gglobs.calibrationMode = 'auto'
+        else:
+            if float(t) > 0:
+                gglobs.calibration      = float(t)
+                gglobs.calibrationMode = 'fixed'
+            else:
+                gglobs.calibration      = 0.0065
+                gglobs.calibrationMode = 'auto'
+    except:
+        dprint(True, "WARNING: Config calibration not available")
+
+# Logging
+    try:
+        t = config.getfloat("Logging", "logcycle")
+        if t >= 0.1:
+            gglobs.logcycle = t
+    except:
+        dprint(True, "WARNING: Config logcycle not available")
+
+# Graphic
+    try:
+        t = config.getfloat("Graphic", "mav_initial")
+        if t >= 1:
+            gglobs.mav_initial = t
+    except:
+        dprint(True, "WARNING: Config mav_initial not available")
+
+# Window
+    try:
+        w = config.getint("Window", "width")
+        h = config.getint("Window", "height")
+        if w > 500 and w < 5000 and h > 100 and h < 5000:
+            gglobs.window_width  = w
+            gglobs.window_height = h
+        else:
+            dprint(True, "WARNING: Config Window dimension ignored")
+    except:
+        dprint(True, "WARNING: Config Window dimension not available")
+
+# Manual
+    try:
+        fn = config.get("Manual", "manual_name")
+        if fn.upper() != 'AUTO' and fn > '':
+            manual_file = getProgPath() + "/" + fn
+            #print "readGeigerConfig manual_file:", manual_file
+            if os.path.isfile(manual_file): # does the config file exist?
+                # it exists
+                gglobs.manual_filename = fn
+            else:
+                # it does not exist
+                gglobs.manual_filename = None
+                dprint(gglobs.debug, "WARNING: Manual file '{}' does not exist".format(fn))
+
+        else:   # entry == auto or no entry
+            gglobs.manual_filename = None
+            dprint(gglobs.debug, "INFO: Manual file is set to auto or undefined; it will be searched for")
+
+    except:
+        dprint(True, "WARNING: Config for manual file not available")
+
+# Style
+    #try:
+    #    t = config.get("Style", "style")
+    #    s = [a.upper() for a in ('Breeze',  "Cleanlooks", "Windows", "Plastique")]
+    #    if t.upper() in s :
+    #        gglobs.style = t
+    #    else:
+    #        gglobs.style = None
+    #except:
+    #    dprint(True, "Config style not available")
+
+
+def strFontInfo(origin, fi):
+    """formats font information, returns string"""
+
+    fontinfo = "Family:{}, fixed:{}, size:{}, style:{}, styleHint:{}, styleName:{}, weight:{}"\
+    .format(fi.family(), fi.fixedPitch(), fi.pointSize(), fi.style(), fi.styleHint(), fi.styleName(), fi.weight())
+
+    return fontinfo
+
+
+def version_status():
+    """Prints versions of various components"""
+
+    gglobs.python_version = sys.version.replace('\n', "")
+
+    return u"Version status: GeigerLog: {}, numpy:{}, matplotlib:{}, Python:{}".format(gglobs.__version__, np.version.version, mplVersion, gglobs.python_version)
+
+
+def main():
+    global usage, app, media, styles
+
+    # set the directories, needed if not started from working directory!
+    gglobs.sharePath = getIconPath(gglobs.shareDirectory)
+    gglobs.dataPath  = getDataPath(gglobs.dataDirectory)
+    vprint(gglobs.verbose, "gglobs.sharePath:",          gglobs.sharePath)
+    vprint(gglobs.verbose, "gglobs.dataPath:",           gglobs.dataPath)
+
+    #
+    # Make sure that data directory exists; create it if needed
+    # exit if it cannot be made
+    #
+    if os.access(gglobs.dataPath , os.F_OK):
+        # dir exists, ok
+        if not os.access(gglobs.dataPath , os.W_OK):
+            # dir exists, but is not writable
+            print "ERROR: main: Data directory '" + gglobs.dataDirectory + "' exists, but is not writable"
+            return 1
+    else:
+        # dir does not exist; make it
+        try:
+            os.mkdir(gglobs.dataPath )
+        except:
+            # dir cannot be made
+            print "ERROR: main: could not make data directory " + gglobs.dataDirectory
+            return 1
+
+    clearProgramLogFile() #clear the program log file 'geigerlog.proglog'
+
+    dprint(True, version_status())
+
+    usage = """
+Usage:  geigerlog [Options] [Commands]
+
+By default, data files will be read-from/written-to the
+data directory "data", a subdirectory to the program
+directory
+
+Options:
+    -h, --help          Show this help and exit
+    -d, --debug         Run with printing debug info
+                        Default is debug = False
+    -v, --verbose       Be more verbose
+                        Default is verbose = False
+    -V, --Version       Show version info and exit
+    -p, --port name     Sets the USB-Port to name
+                        Default is name = /dev/geiger
+    -b, --baudrate N    Sets the baudrate to N
+                        Default is N = 57600
+        -style name     Sets the style; see
+                        Commands showstyles
+                        Default is set by your system
+
+Commands:
+    showstyles          Show a list of styles avail-
+                        able on your system and exit.
+                        For usage details see manual
+    keepFF              Keeps all hexadecimal FF
+                        (Decimal 255) values as a
+                        real value and not an 'Empty'
+                        one. See manual in chapter
+                        on parsing strategy
+
+To watch debug and verbose output start the program
+from the command line in a terminal. The output will
+print to the terminal.
+"""
+
+    #
+    # parse command line options
+    #
+    # sys.argv[0] is progname
+    try:
+        opts, args = getopt.getopt(sys.argv[1:], "hdvVp:b:s:", ["help", "debug", "verbose", "Version", "port=", "baudrate=", "style="])
+
+        # processing the options
+        for opt, optval in opts:
+            if opt in ("-h", "--help"):
+                print usage
+                return
+
+            elif opt in ("-d", "--debug"):
+                gglobs.debug = True
+
+            elif opt in ("-v", "--verbose"):
+                gglobs.verbose = True
+
+            elif opt in ("-V", "--Version"):
+                print version_status
+                return
+
+        dprint(gglobs.debug,"Startup: sys.argv:", sys.argv, ", options:", opts, ", commands:", args)
+
+        for arg in args:
+            if arg in ("showstyles"):
+                print "Styles found on system: "
+                for a in QtGui.QStyleFactory.keys(): print "   " + a
+                print "See configuration file geigerlog.cfg, section [Style] for details"
+                return
+
+            if arg in ("keepFF"):
+                gglobs.keepFF = True
+
+            if arg in ("test"):
+                gglobs.test = True
+
+        # commands need debug state and must be processed before command line
+        # options, as latter are allowed to override config options
+        readGeigerConfig()                       # reads the configuration file
+
+        # processing the remaining options;; will overwrite any setting in config
+        for opt, optval in opts:
+            if opt in ("-p", "--port"):
+                gglobs.usbport = optval
+
+            elif opt in ("-b", "--baudrate"):
+                gglobs.baudrate = optval
+
+            elif opt in ("-s", "--style"):
+                gglobs.style = optval
+
+
+    except getopt.GetoptError, errmessage :
+        # print info like "option -a not recognized", then continue
+        dprint(True, "ERROR: " + str(errmessage) + ",", "use './geigerlog -h' for help" )
+
+    dprint(gglobs.debug, "Current Device is:", unicode(gglobs.device))
+
+    #
+    # Styles:
+    #
+    # QStyleFactory::keys() returns a list of valid keys, typically including
+    # "Windows", "Motif", "CDE", "MotifPlus", "Platinum", "SGI" and "Compact".
+    # Depending on the platform, "WindowsXP", "Aqua" or "Macintosh" may be available.
+    #
+    # Returns here: Breeze, Windows, Motif, CDE, Plastique, GTK+, Cleanlooks
+    # best is 1)Breeze, 2)Cleanlooks, 3) Plastique, ... 6)Windows, 7)GTK+
+    #
+    # app.style().metaObject().className() :  returns Style codings:
+    #   Breeze            =Breeze::Style,
+    #   Cleanlooks        =QCleanlooksStyle,
+    #   Plastique         =QPlastiqueStyle
+    #   CDE               =QCDEStyle,
+    #   Motif             =QMotifStyle,
+    #   Windows           =QWindowsStyle,
+    #   GTK+              =QGtkStyle
+
+    # order of my preference; first is best
+    styles_rank = ['Breeze', 'Cleanlooks', 'Plastique', 'Windows', 'CDE', 'Motif', 'GTK+' ]
+
+    styles = []
+    for a in QtGui.QStyleFactory.keys(): styles.append(str(a))
+    dprint(gglobs.debug, "Styles found on system: ", styles)
+
+    app = QtGui.QApplication(sys.argv)
+
+    # sets the style
+    if gglobs.style != None:
+        # either defined in config or on command line
+        # if both then command line takes precedence
+        #print "setting gglobs.style", gglobs.style
+        #QtGui.QApplication.setStyle(gglobs.style)
+        #app.setStyle(gglobs.style)
+        pass
+    else:
+        for s in styles_rank:       # Default if neither command line nor config
+            if s in styles:         # test on availability in order of preference
+                #print s
+                #QtGui.QApplication.setStyle(s)
+                #app.setStyle(s)
+                pass
+                break
+
+    #app = QtGui.QApplication([])    # sys.argv NOT given; cannot be used to set options!
+
+    gglobs.style = app.style().metaObject().className()
+    dprint(gglobs.debug, "Style active:", gglobs.style)
+
+    #app.font().setBold(False)      # has no effect???
+    #app.font().setItalic(False)
+    #app.font().setWeight(200)
+    dprint(gglobs.debug,"Fonts: Application -", strFontInfo("", app.font()))  # print font info for QApplication
+
+    app.setApplicationName("GeigerLog") # phonon useage requires an application name
+
+    # sound file for Error message
+    media = Phonon.MediaObject()
+    audio = Phonon.AudioOutput(Phonon.MusicCategory)
+    Phonon.createPath(media, audio)
+
+    # the file could be set elsewhere,
+    # but currently only one is needed, so ok to do it here
+    f = gglobs.sharePath + "sonar.ogg"
+    media.setCurrentSource(Phonon.MediaSource(f))
+
+    ex = ggeiger()
+    status = app.exec_()
+    dprint(gglobs.debug, "Exited app.exec_() with status of:", status)
+
+    # switching off the heartbeat function of the counter
+    if gglobs.ser != None:
+        rec = "X"
+        rec = gcommands.turnHeartbeatOFF(gglobs.ser)
+        dprint(gglobs.debug, "Exiting - turnHeartbeatOFF:", rec)
+    else:
+        dprint(gglobs.debug, "Exiting - No serial connection available")
+
+    sys.exit(status)
+
+
+if __name__ == '__main__':
+    main()
