@@ -44,6 +44,7 @@ baudrate            = 57600               # will be overwritten by a setting in 
 #usbport             = '/dev/geiger'
 usbport             = '/dev/ttyUSB0'      # will be overwritten by a setting in geigerlog.cfg file
 timeout             = 5                   # will be overwritten by a setting in geigerlog.cfg file
+ttyS                = "ignore"            # to ignore or include '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
 
 # Device Options
 devices             = [u"GMC-300E Plus v4.20", u"GMC-320", u"GMC-500", u"GMC-300 v3.20"]
@@ -63,15 +64,16 @@ calibration         = 0.0065              # factory default calibration factor i
                                           # i.e. the same for all 3 calibration points
                                           # CPM * calibration => µSv/h
 
-powerstate          = None                # will be "ON" or "OFF" or "unknown"
+cfg                 = None                # Configuration bytes of the counter. 256 bytes in 300series, 512 bytes in 500series
 cfgOffsetPower      = 0                   # Offset in config for Power status (0=OFF, 255= ON)
 cfgOffsetAlarm      = 1                   # Offset in config for AlarmOnOff (0=OFF, 1=ON)
 cfgOffsetSpeaker    = 2                   # Offset in config for SpeakerOnOff (0=OFF, 1=ON)
 cfgOffsetSDT        = 32                  # Offset in config to Save Data Type
 cfgOffsetCalibration= 8                   # Offset in config for CPM / µSv/h calibration points
 cfgOffsetMaxCPM     = 49                  # A MaxCPM during what period? of values in Memory??? HiByte@49, LoByte@50
+powerstate          = None                # will be "ON" or "OFF" or "unknown"
 savedatatypes       = ("OFF (no history saving)", "CPS, save every second", "CPM, save every minute", "CPM, save hourly average")
-savedatatype        = "Unknown, run 'Device'->'Switch Saving Mode of Device' to set"
+savedatatype        = "Unknown, run 'Device'->'Switch Saving Mode of Device' to get Mode info"
 
 
 # Logging Options
@@ -87,6 +89,8 @@ keepFF              = False               # Flag in startup-options
                                           # Keeps all hexadecimal FF (Decimal 255) values as a
                                           # real value and not an 'Empty' one. See manual in chapter
                                           # on parsing strategy
+fullhist            = False               # If False breaks history recording when 8k FF is read
+                                          # if True reads the whole history from memory
 
 
 # scratch pads
@@ -131,9 +135,9 @@ currentFileData     = None                # 2dim numpy array with the currently 
 
 
 # Versions and infos
-python_version      = "2.7"               # will be overwritten with auto-determined version in startup
+python_version      = "2.x"               # will be overwritten with auto-determined version in startup
 __author__          = "ullix"
 __copyright__       = "Copyright 2016"
 __credits__         = [""]
 __license__         = "GPL"
-__version__         = "0.9.04"
+__version__         = "0.9.05"

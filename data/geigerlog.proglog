@@ -1,1 +1,30 @@
-2017-07-13 11:42:55  geigerlog  22455 Version status: GeigerLog: 0.9.04, numpy:1.11.0, matplotlib:1.5.1, Python:2.7.12 (default, Nov 19 2016, 06:48:10) [GCC 5.4.0 20160609] 
+2017-11-24 14:08:35  geigerlog  24370 2017-11-24 14:08:35 
+2017-11-24 14:08:35  geigerlog  24370 Version status: GeigerLog: 0.9.05,  Python: 2.7.12 (default, Nov 19 2016, 06:48:10) [GCC 5.4.0 20160609],  matplotlib: 1.5.1,  numpy: 1.11.0,  Qt version: 4.8.7,  SIP version: 4.17,  PyQt version: 4.11.4,  pyserial: 3.4,  scipy: 0.17.0,   
+2017-11-24 14:09:26  geigerlog  24370 autoPORT: Autodiscovery of Serial Ports 
+2017-11-24 14:09:26  geigerlog  24370 autoPORT: Found these ports: 
+2017-11-24 14:09:26  geigerlog  24370     /dev/ttyUSB2 - USB2.0-Serial 
+2017-11-24 14:09:26  geigerlog  24370     /dev/ttyUSB3 - USB-SER! 
+2017-11-24 14:09:26  geigerlog  24370 autoPORT: Testing all ports for communication: 
+2017-11-24 14:09:26  geigerlog  24370 autoBAUDRATE: Autodiscovery of baudrate on port: '/dev/ttyUSB2' 
+2017-11-24 14:09:26  geigerlog  24370 Trying baudrate: 115200 
+2017-11-24 14:09:27  geigerlog  24370 Trying baudrate: 57600 
+2017-11-24 14:09:27  geigerlog  24370 Success with 57600 
+2017-11-24 14:09:27  geigerlog  24370 autoBAUDRATE: Autodiscovery of baudrate on port: '/dev/ttyUSB3' 
+2017-11-24 14:09:27  geigerlog  24370 Trying baudrate: 115200 
+2017-11-24 14:09:27  geigerlog  24370 autoBAUDRATE: ERROR: Serial communication error on finding baudrate: [Errno 13] could not open port /dev/ttyUSB3: [Errno 13] Keine Berechtigung: '/dev/ttyUSB3' 
+2017-11-24 14:09:27  geigerlog  24370 autoPORT: ERROR: Failure during Serial Communication on port: '/dev/ttyUSB3' 
+2017-11-24 14:09:46  geigerlog  24370 autoPORT: Autodiscovery of Serial Ports 
+2017-11-24 14:09:46  geigerlog  24370 autoPORT: Found these ports: 
+2017-11-24 14:09:46  geigerlog  24370     /dev/ttyUSB2 - USB2.0-Serial 
+2017-11-24 14:09:46  geigerlog  24370     /dev/ttyUSB3 - USB-SER! 
+2017-11-24 14:09:46  geigerlog  24370 autoPORT: Testing all ports for communication: 
+2017-11-24 14:09:46  geigerlog  24370 autoBAUDRATE: Autodiscovery of baudrate on port: '/dev/ttyUSB2' 
+2017-11-24 14:09:46  geigerlog  24370 Trying baudrate: 115200 
+2017-11-24 14:09:47  geigerlog  24370 Trying baudrate: 57600 
+2017-11-24 14:09:47  geigerlog  24370 Success with 57600 
+2017-11-24 14:09:47  geigerlog  24370 autoBAUDRATE: Autodiscovery of baudrate on port: '/dev/ttyUSB3' 
+2017-11-24 14:09:47  geigerlog  24370 Trying baudrate: 115200 
+2017-11-24 14:09:47  geigerlog  24370 autoBAUDRATE: ERROR: Serial communication error on finding baudrate: [Errno 13] could not open port /dev/ttyUSB3: [Errno 13] Keine Berechtigung: '/dev/ttyUSB3' 
+2017-11-24 14:09:47  geigerlog  24370 autoPORT: ERROR: Failure during Serial Communication on port: '/dev/ttyUSB3' 
+2017-11-24 14:10:28  geigerlog  24370 serialOPEN: ERROR: could not open port /dev/ttyUSB0: [Errno 2] Datei oder Verzeichnis nicht gefunden: '/dev/ttyUSB0' 
+2017-11-24 14:10:28  geigerlog  24370 serialOPEN: ERROR: Settings tried: port='/dev/ttyUSB0', baudrate=57600, timeout=3.0 

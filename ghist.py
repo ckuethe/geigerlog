@@ -51,15 +51,15 @@ def makeHIST(ser, sourceHIST, binFilePath, lstFilePath, hisFilePath):
         FFpages = 0           # number of successive pages having only FF
 
         #
-        # Cleaning pipeline - relevant at least for GMC-500
+        # Cleaning pipeline BEFORE reading history - relevant at least for GMC-500
         #
-        if gglobs.cleanPipelineFlag  == True:
-            dprint(gglobs.debug, "makeHIST: Cleaning pipeline before reading history")
-            extra = gcommands.getExtraByte(gglobs.ser)
+        dprint(gglobs.debug, "makeHIST: Cleaning pipeline BEFORE reading history")
+        extra = gcommands.getExtraByte(gglobs.ser)
 
         for address in range(0, gglobs.memory, page):       # prepare to read all memory
-            time.sleep(0.5) # fails occasionally to read all data when
+            time.sleep(0.1) # fails occasionally to read all data when
                             # sleep is only 0.1; still not ok at 0.2 sec
+                            #wieder auf 0.1, da GQ Datavier deutlich scneller ist
             fprint("Reading page of size {} @address:".format(page)  , address)
             rec, error, errmessage = gcommands.getSPIR(ser, address , page)
             if error == 0 or error == 1:
@@ -68,23 +68,25 @@ def makeHIST(ser, sourceHIST, binFilePath, lstFilePath, hisFilePath):
 
                 if rec.count('\xFF') == page:
                     #print "rec.count('\xFF'):", rec.count('\xFF')
-                    FFpages +=1
+                    FFpages += 1
                 else:
-                    FFpages = 0
+                    FFpages  = 0
 
-                if FFpages * page >= 8192: # 8192 is 2 pages of 4096 byte each
-                    txt = "Found {} successive {}B-pages (total {}B), as 'FF' only - ending reading".format(FFpages, page, FFpages * page)
+                if not gglobs.fullhist and FFpages * page >= 8192: # 8192 is 2 pages of 4096 byte each
+                    txt = "Found {} successive {} B-pages (total {} B), as 'FF' only - ending reading".format(FFpages, page, FFpages * page)
                     dprint(gglobs.debug, txt)
                     fprint(txt)
                     break
             else:
+                # non-recovered error occured
                 fprint("History: Reading error:", "Recovery failed; cannot continue. Error:", errmessage)
                 dprint(gglobs.debug, "ERROR: in makeHIST: ", errmessage, "; exiting from makeHist")
-                # non-recovered error occured
                 return (error, "ERROR: Cannot Make History: " + errmessage)
 
-        # clean pipeline
-        dprint(gglobs.debug, "makeHIST: After reading history - Cleaning pipeline")
+        #
+        # Cleaning pipeline AFTER reading history - relevant at least for GMC-500
+        #
+        dprint(gglobs.debug, "makeHIST: Cleaning pipeline AFTER reading history")
         extra = gcommands.getExtraByte(gglobs.ser)
 
     else:
@@ -99,44 +101,45 @@ def makeHIST(ser, sourceHIST, binFilePath, lstFilePath, hisFilePath):
 
     histRC    = hist.rstrip(chr(0xff))     # after right-clip FF (removal of all trailing 0xff)
     histRClen = len(histRC)                # total byte count
-    histRCFF  = histRC.count('\xFF')       # total count of FF
+    histRCFF  = histRC.count('\xFF')       # total count of FF in right-clipped data
 
     fprint("Count of FF bytes - Trailing:"     , "{} Bytes".format(histlen - histRClen))
     fprint("Count of data bytes:"              , "{} Bytes".format(histRClen))
     fprint("Count of FF bytes within data:"    , "{} Bytes".format(histRCFF))
 
     if sourceHIST == "Device":
-        # writing full 64k data as binary; NOT tail clipped for FF!
+        # writing data as binary
         fprint("Writing data as binary to:", binFilePath)
         f = open(binFilePath, "w", buffering=1)
         f.write(hist)
         f.close
 
-    # write binary data to '*.lst' file (= lstFilePath) in human readable format
-    lstlines  = "#Binary History Data - created {}\n".format(stime())  # write header
+    # prepare to write binary data to '*.lst' file (= lstFilePath) in human readable format
+    lstlines  = "#Binary History Data - created {}\n".format(stime())   # write header
     lstlines += "#Format: byte_index hex=dec : value hex=dec | \n"
-    #lh        = len(hist)
-    lh        = len(histRC)         # for the binary the trailing ff can be ignored
-    histInt   = map(ord, histRC)    # convert string to list of int
-    pagesize  = 1024
-    for i in range(0, 2**16, pagesize):
+    histInt   = map(ord, histRC)                                        # convert string to list of int
+    pagesize  = 1024                                                    # for the breaks in printing
+
+    # This reads the full history independent of the memory setting of the currently
+    # selected counter
+    for i in range(0, histRClen, pagesize):
         for j in range(0, pagesize, 4):
             lstline =""
             for k in range(0, 4):
                 if j + k >= pagesize:   break
                 l  = i + j + k
-                if l >= lh:         break
+                if l >= histRClen:         break
                 lstline += "{:04x}={:<5d}:{:02x}={:<3d}|".format(l, l, histInt[l], histInt[l])
             lstlines += lstline[:-1] + "\n"
-            if l >= lh:         break
+            if l >= histRClen:         break
 
         lstlines += "Reading Page {} of size {} bytes complete; next address: 0x{:04x}={:5d} {}\n".format(i/pagesize, pagesize, i+pagesize, i+pagesize, "-" * 6)
         #print "(l +1)", (l+1), "(l +1) % 4096", (l+1) % 4096
         if (l + 1) % 4096 == 0 :
             lstlines += "Reading Page {} of size {} Bytes complete {}\n".format(i/4096, 4096, "-" * 35)
-        if l >= lh:         break
-    if lh < histlen:
-        lstlines += "Remaining {} Bytes to the end of history (size:{}) are all ff\n".format(histlen -lh, histlen)
+        if l >= histRClen:         break
+    if histRClen < histlen:
+        lstlines += "Remaining {} Bytes to the end of history (size:{}) are all ff\n".format(histlen -histRClen, histlen)
     else:
         lstlines += "End of history reached\n"
 
@@ -286,7 +289,7 @@ def parseHIST(hist, hisFilePath):
                     lsb     = rec[i+4]
                     cpm     = msb * 256 + lsb
                     if cpmfactor == 60: #measurement is CPS, count rate limit applies!
-                        cpm = cpm & 0x3f00
+                        cpm = cpm & 0x3fff
                     cpm     = cpm * cpmfactor
 
                     cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')

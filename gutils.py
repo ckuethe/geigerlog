@@ -57,9 +57,16 @@ def datestr2num(string_date):
     to a Unix timestamp"""
 
     #print "string_date", string_date
-    dt=time.mktime(datetime.datetime.strptime(string_date, "%Y-%m-%d %H:%M:%S").timetuple())
+    try:
+        dt=time.mktime(datetime.datetime.strptime(string_date, "%Y-%m-%d %H:%M:%S").timetuple())
+    except:
+        dprint(True, "ERROR in datestr2num: Date as String: '{}'".format(string_date))
+        newstrdate = '2099-09-09 09:09:09'
+        dprint(True, "                      replacing with: '{}'".format(newstrdate))
+        dt=time.mktime(datetime.datetime.strptime(newstrdate, "%Y-%m-%d %H:%M:%S").timetuple())
 
     return dt
+
 
 def convertBytesToAscii(bytestring):
     """get a bytestring with all bytes from 0...255, and convert to string
@@ -113,6 +120,15 @@ def header(txt):
     return u"\n==== {} {}".format(txt, u"=" * max(0, (68 - len(txt))))
 
 
+def getUnicodeString(arg):
+    try:
+        arg1 = unicode(arg)
+    except:
+        arg1 = convertBytesToAscii(arg) # in some strange circumstances
+
+    return arg1
+
+
 def fprint(*args):
     """print all args in the GUI"""
 
@@ -123,12 +139,12 @@ def fprint(*args):
         if args[s] == "debug":
             forcedebug = True
         else:
-            ps += unicode(args[s])
+            #ps += unicode(args[s])
+            ps += getUnicodeString(args[s])
 
     gglobs.NotePad.append(ps)
     QtGui.QApplication.processEvents()
 
-    #dprint(forcedebug or gglobs.debug, ps)
     dprint(forcedebug, ps)
 
 
@@ -137,7 +153,8 @@ def strprint(self, *args):
 
     ps = "{:23s}".format(str(args[0]))
     for s in range(1, len(args)):
-        ps += str(args[s])
+        #ps += str(args[s])
+        ps += getUnicodeString(args[s])
 
     return ps + "\n"
 
@@ -150,7 +167,9 @@ def vprint(verbose, *args):
         line = u"{:35s}".format(args[0])
         for s in range(1, len(args)):
             #line += str(args[s])
-            line += unicode(args[s])
+            #line += unicode(args[s])
+            line += getUnicodeString(args[s])
+
         if sys.stdout.isatty(): print "VERBOSE:", line # print only if in console
 
 
@@ -171,7 +190,7 @@ def dprint(debug, *args):
         line     = u""
 
         for arg in args:
-            line += unicode(arg) + " "
+            line += getUnicodeString(arg) + " "
 
         progname_base     = os.path.splitext(progname)[0]
         writeFileA(gglobs.dataPath + progname_base + ".proglog", tag + line)

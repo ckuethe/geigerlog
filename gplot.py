@@ -110,7 +110,7 @@ def printDataProp(alldata = True):
     fprint("  Oldest rec    = {}  (time={:0.3f} d)".format(oldest,   0))
     fprint("  Youngest rec  = {}  (time={:0.3f} d)".format(youngest, logtime_max - logtime_min))
     fprint("  Duration      = {:0.0f} s   ={:0.1f} m   ={:0.2f} h   ={:0.3f} d".format(logtime_delta *86400., logtime_delta*1440., logtime_delta *24., logtime_delta))
-    fprint("  Cycle average = {:0.2f} s".format(logtime_delta *86400./sizeSlice))
+    fprint("  Cycle average = {:0.2f} s".format(logtime_delta *86400./ (sizeSlice -1)))
 
     r = min (sizeSlice, 3)
     fprint("\nFirst and last {} records:".format(r))
@@ -370,10 +370,17 @@ def makePlot(fprintMAV = False):
     plt.clf()                                    # clear figure
     plt.grid(True)
     ax  = plt.gca()
-    plt.title('Count Rate History', fontsize=16, fontweight='bold', loc = 'left')
+    #plt.title('Count Rate History', fontsize=16, fontweight='bold', loc = 'left')
+    plt.title('Count Rate History', fontsize=14, fontweight='bold', loc = 'left')
     plotSubTitle = 'File:' + os.path.basename(filePath) + "  Recs:" + str(gglobs.sizePlotSlice)
-    plt.title(plotSubTitle, fontsize=12, fontweight='normal', loc = 'right')
-    plt.subplots_adjust(hspace=None, wspace=.2 , left=.12, top=0.93, bottom=0.10, right=.97)
+    #plt.title(plotSubTitle, fontsize=12, fontweight='normal', loc = 'right')
+    plt.title(plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
+    #plt.subplots_adjust(hspace=None, wspace=.2 , left=.12, top=0.93, bottom=0.10, right=.97)
+    plt.subplots_adjust(hspace=None, wspace=.2 , left=.12, top=0.93, bottom=0.15, right=.97)
+
+
+    plt.ticklabel_format(useOffset=False)       # avoids showing scale in exponential units
+                                                # works at least on Y-axis
 
     #
     # Fixed plot limits for x- and y-axis only when requested and possible
@@ -396,7 +403,8 @@ def makePlot(fprintMAV = False):
     # add labels to the axis
     #
     # add a label to the X-axis
-    plt.xlabel(xLabelStr, fontsize=13, fontweight='bold')
+    #plt.xlabel(xLabelStr, fontsize=13, fontweight='bold')
+    plt.xlabel(xLabelStr, fontsize=12, fontweight='bold')
     # add a label to the Y-axis; rescale if needed
     if gglobs.Yunit == "CPM":
         # data are handled as CPM even if measured as CPS
@@ -409,7 +417,8 @@ def makePlot(fprintMAV = False):
         plotCPMSlice = gglobs.logCPMSlice * gglobs.calibration
         ylabel = u"µSv/h"
 
-    plt.ylabel(ylabel, fontsize=18, fontweight='bold')
+    #plt.ylabel(ylabel, fontsize=18, fontweight='bold')
+    plt.ylabel(ylabel, fontsize=16, fontweight='bold')
 
     #
     # plot the data
@@ -423,6 +432,9 @@ def makePlot(fprintMAV = False):
         xfmt = mpld.DateFormatter(xFormatStr)
         ax.xaxis.set_major_formatter(xfmt)
         ax.xaxis.set_label_coords(0.5, -0.2)
+
+        ax.xaxis.set_tick_params(labelsize=8)
+
         rdplt, = plt.plot_date(gglobs.plotTimeSlice, plotCPMSlice, color=color['cpm'], linestyle='solid', linewidth=.5, label ="", markeredgecolor=color['cpm'], marker="o", markersize=2)
     else:
         rdplt, = plt.plot     (gglobs.plotTimeSlice, plotCPMSlice, color=color['cpm'], linestyle='solid', linewidth=.5, label ="", markeredgecolor=color['cpm'], marker="o", markersize=2)
