@@ -1,2 +1,2 @@
-python c:\geigerlog\geigerlog -dv
+python3 c:\geigerlog\geigerlog -dv
 
