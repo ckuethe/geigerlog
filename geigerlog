@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#! /usr/bin/python
 # -*- coding: utf-8 -*-
 
 """
@@ -7,16 +7,18 @@ GeigerLog - A program to handle Geiger counters with a Graphical User Interface
 start as 'geigerlog -h' for help on available options and commands
 """
 
-
 import sys
 import os
 import platform                 #
 import re                       # regex
 import getopt                   # parse command line for options and commands
 import ConfigParser             # parse configuration file geigerlog.cfg
+import serial                   # needed in version_status()
 
 from PyQt4 import QtGui, QtCore
 from PyQt4.phonon import Phonon # used only for an error sound
+
+from PyQt4.QtGui import QSound
 
 from matplotlib import __version__ as mplVersion
 import matplotlib.backends.backend_qt4agg
@@ -27,6 +29,8 @@ import matplotlib.pyplot as plt
 import matplotlib.dates  as mpld
 #import matplotlib.mlab   as mlab
 import numpy as np
+import scipy
+import scipy.signal
 
 import signal
 signal.signal(signal.SIGINT, signal.SIG_DFL) # to allow shut down with ctrl-c when IN THE TERMINAL
@@ -42,6 +46,47 @@ __copyright__       = "Copyright 2016"
 __credits__         = [""]
 __license__         = "GPL"
 
+
+usage = """
+Usage:  geigerlog [Options] [Commands]
+
+By default, data files will be read-from/written-to the
+data directory "data", a subdirectory to the program
+directory
+
+Options:
+    -h, --help          Show this help and exit
+    -d, --debug         Run with printing debug info
+                        Default is debug = False
+    -v, --verbose       Be more verbose
+                        Default is verbose = False
+    -V, --Version       Show version status and exit
+    -p, --port name     Sets the USB-Port to name
+                        Default is name = /dev/ttyUSB0
+    -b, --baudrate N    Sets the baudrate to N
+                        Default is N = 57600
+    -R  --Redirect      Redirect stdout and stderr to
+                        file geigerlog.stdlog (for debugging)
+        -style name     Sets the style; see
+                        Commands showstyles
+                        Default is set by your system
+
+Commands:
+    showstyles          Show a list of styles avail-
+                        able on your system and exit.
+                        For usage details see manual
+    keepFF              Keeps all hexadecimal FF
+                        (Decimal 255) values as a
+                        real value and not an 'Empty'
+                        one. See manual in chapter
+                        on parsing strategy
+    devel               Development settings; careful!
+                        see program code
+
+To watch debug and verbose output start the program
+from the command line in a terminal. The output will
+print to the terminal.
+"""
 
 
 class ggeiger(QtGui.QMainWindow):
@@ -92,7 +137,7 @@ class ggeiger(QtGui.QMainWindow):
         if "WINDOWS" in platform.platform().upper(): y += 33           # some correction needed at least on Virtual Win8.1
         self.setGeometry(x, y, sw, sh) # position window in upper right corner of screen
         self.setWindowTitle('GeigerLog')
-        self.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        self.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
 
 #figure and its toolbar
         # a figure instance to plot on
@@ -114,7 +159,7 @@ class ggeiger(QtGui.QMainWindow):
 #menubar and statusbar and toolbar
         menubar     = self.menuBar()
         menubar.setFocus()
-        dprint(gglobs.debug, "Fonts: menubar -", strFontInfo("", menubar.fontInfo()))
+        #dprint(gglobs.debug, "Fonts: menubar -", strFontInfo("", menubar.fontInfo()))
 
         self.statusBar = QtGui.QStatusBar()
         self.setStatusBar(self.statusBar)
@@ -126,62 +171,60 @@ class ggeiger(QtGui.QMainWindow):
         toolbar.setToolTip("Main Toolbar")
 
 # buttons connected to stuff (may not be in use)
-        #self.qbtn = QtGui.QPushButton('Quit')
-        self.qbtn = QtGui.QPushButton('Spare Button')
-        #self.qbtn.setIcon(QtGui.QIcon.fromTheme("messagebox_warning"))
-        #self.qbtn.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_plug_open.png')))
-        #self.qbtn.clicked.connect(QtCore.QCoreApplication.instance().quit)
-        self.qbtn.clicked.connect(self.qbtntest)
+        self.btna = QtGui.QPushButton('Button Alpha')
+        self.btna.clicked.connect(self.btnAlpha)
+        self.btnb = QtGui.QPushButton('Button Beta')
+        self.btnb.clicked.connect(self.btnBeta)
+        self.btnc = QtGui.QPushButton('Button Gamma')
+        self.btnc.clicked.connect(self.btnGamma)
+
+        self.btna.setText(self.btnAlpha .__doc__)
+        self.btnb.setText(self.btnBeta  .__doc__)
+        self.btnc.setText(self.btnGamma .__doc__)
+
         layout2 = QtGui.QHBoxLayout()
-        layout2.addWidget(self.qbtn)
+        layout2.addWidget(self.btna)
+        layout2.addWidget(self.btnb)
+        layout2.addWidget(self.btnc)
 
 #file menu
         PlotLogAction = QtGui.QAction('Plot Log', self)
-        #PlotLogAction.setShortcut('Ctrl+P')
         PlotLogAction.setStatusTip('Plots the Log file')
         PlotLogAction.triggered.connect(lambda: self.plotGraph('Log'))
 
         PlotHisAction = QtGui.QAction('Plot History', self)
-        #PlotHisAction.setShortcut('Ctrl+H')
         PlotHisAction.setStatusTip('Plots the History file')
         PlotHisAction.triggered.connect(lambda: self.plotGraph('His'))
 
         PrintFileStatsAction =  QtGui.QAction('Print File Stats', self)
-        #PrintFileStatsAction.setShortcut('Ctrl+H')
         PrintFileStatsAction.setStatusTip("Print the Statistics of all the data in the file")
         PrintFileStatsAction.triggered.connect(self.printFileStats)
 
         PrintPlotStatsAction =  QtGui.QAction('Print Plot Stats', self)
-        #PrintPlotStatsAction.setShortcut('Ctrl+H')
         PrintPlotStatsAction.setStatusTip("Print the Statistics of all the data in the current plot")
         PrintPlotStatsAction.triggered.connect(self.printPlotStats)
 
         HistogramFileAction =  QtGui.QAction('Show File Histogram', self)
-        #HistogramFileAction.setShortcut('Ctrl+H')
         HistogramFileAction.setStatusTip("Shows the histogram of all the data in the file")
         HistogramFileAction.triggered.connect(lambda: self.plotHistogram('all'))
 
         HistogramPlotAction =  QtGui.QAction('Show Plot Histogram', self)
-        #HistogramPlotAction.setShortcut('Ctrl+H')
         HistogramPlotAction.setStatusTip("Shows the histogram of the data in the current plot")
         HistogramPlotAction.triggered.connect(lambda: self.plotHistogram('plot'))
 
-        FFTFileAction =  QtGui.QAction('Show File FFT', self)
-        #FFTFileAction.setShortcut('Ctrl+H')
-        FFTFileAction.setStatusTip("Shows the FFT Spectra of all the data in the file")
+        FFTFileAction =  QtGui.QAction('Show File FFT && Autocorrelation', self)
+        FFTFileAction.setStatusTip("Shows the FFT Spectra & an Autocorrelation of all the data in the file")
         FFTFileAction.triggered.connect(lambda: self.plotFFT('all'))
 
-        FFTPlotAction =  QtGui.QAction('Show Plot FFT', self)
-        #FFTPlotAction.setShortcut('Ctrl+H')
-        FFTPlotAction.setStatusTip("Shows the FFT Spectra of the data in the current plot")
+        FFTPlotAction =  QtGui.QAction('Show Plot FFT && Autocorrelation', self)
+        FFTPlotAction.setStatusTip("Shows the FFT Spectra & an Autocorrelation of the data in the current plot")
         FFTPlotAction.triggered.connect(lambda: self.plotFFT('plot'))
 
-        exitAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_exit.png')), 'Exit', self)
+        exitAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_exit.png'))), 'Exit', self)
         exitAction.setShortcut('Ctrl+Q')
         exitAction.setStatusTip('Exit the GeigerLog program')
-        #exitAction.triggered.connect(self.close)
-        exitAction.triggered.connect(self.exitGeigerLog)
-
+        #exitAction.triggered.connect(self.exitGeigerLog)
+        exitAction.triggered.connect(self.close)
 
         fileMenu = menubar.addMenu('&File')
         fileMenu.addAction(PlotLogAction)
@@ -198,8 +241,7 @@ class ggeiger(QtGui.QMainWindow):
         toolbar.addAction(exitAction)
 
 # Device menu
-        self.toggleDeviceConnectionAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_plug_open.png')), 'Connect / Disconnect Device', self)
-        #self.toggleDeviceConnectionAction.setShortcut('Ctrl+C')
+        self.toggleDeviceConnectionAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_plug_open.png'))), 'Connect / Disconnect Device', self)
         self.toggleDeviceConnectionAction.setStatusTip('Toggle connection of the computer with the Geiger counter device via the Serial Port')
         self.toggleDeviceConnectionAction.triggered.connect(self.toggleDeviceConnection)
 
@@ -213,10 +255,9 @@ class ggeiger(QtGui.QMainWindow):
         self.DeviceDisconnectAction.setStatusTip('Disconnect the computer from the Geiger counter device via the Serial Port')
         self.DeviceDisconnectAction.triggered.connect(lambda : self.switchDeviceConnection("OFF"))
 
-        self.DevicePowerAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_off.png')), 'Switch Device Power', self, enabled=False)
-        #self.DevicePowerAction.setShortcut('Ctrl+C')
-        self.DevicePowerAction.setStatusTip('Toggle Device Power On / OFF - Requires Connection to the Serial Port (gray: button disabled; red: Power OFF; yellow: Power ON)')
-        self.DevicePowerAction.triggered.connect(self.toggleDevicePower)
+        self.DevicePowerToggle = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_power_off.png'))), 'Switch Device Power', self, enabled=False)
+        self.DevicePowerToggle.setStatusTip('Toggle Device Power On / OFF - Requires Connection to the Serial Port (gray: button disabled; red: Power OFF; yellow: Power ON)')
+        self.DevicePowerToggle.triggered.connect(self.toggleDevicePower)
 
         self.DeviceInfoAction = QtGui.QAction('Show Device Info', self, enabled=False)
         self.DeviceInfoAction.setShortcut('Ctrl+I')
@@ -229,52 +270,42 @@ class ggeiger(QtGui.QMainWindow):
         self.DeviceConfigAction.triggered.connect(self.printDevConfig)
 
         self.DeviceONAction = QtGui.QAction('Switch Power ON', self, enabled=False)
-        #self.DeviceONAction.setShortcut('Ctrl+F')
         self.DeviceONAction.setStatusTip('Switch the device power to ON')
         self.DeviceONAction.triggered.connect(lambda: self.switchDevicePower("ON"))
 
         self.DeviceOFFAction = QtGui.QAction('Switch Power OFF', self, enabled=False)
-        #self.DeviceOFFAction.setShortcut('Ctrl+F')
         self.DeviceOFFAction.setStatusTip('Switch the device power to OFF')
         self.DeviceOFFAction.triggered.connect(lambda: self.switchDevicePower("OFF"))
 
-        self.AlarmONAction = QtGui.QAction('Switch Alarm ON', self, enabled=False)
-        #self.AlarmONAction.setShortcut('Ctrl+F')
-        self.AlarmONAction.setStatusTip('Switch the device alarm ON')
-        self.AlarmONAction.triggered.connect(lambda: self.switchDeviceAlarm("ON"))
+        self.DeviceAlarmONAction = QtGui.QAction('Switch Alarm ON', self, enabled=False)
+        self.DeviceAlarmONAction.setStatusTip('Switch the device alarm ON')
+        self.DeviceAlarmONAction.triggered.connect(lambda: self.switchDeviceAlarm("ON"))
 
-        self.AlarmOFFAction = QtGui.QAction('Switch Alarm OFF', self, enabled=False)
-        #self.AlarmOFFAction.setShortcut('Ctrl+F')
-        self.AlarmOFFAction.setStatusTip('Switch the device alarm OFF')
-        self.AlarmOFFAction.triggered.connect(lambda: self.switchDeviceAlarm("OFF"))
+        self.DeviceAlarmOFFAction = QtGui.QAction('Switch Alarm OFF', self, enabled=False)
+        self.DeviceAlarmOFFAction.setStatusTip('Switch the device alarm OFF')
+        self.DeviceAlarmOFFAction.triggered.connect(lambda: self.switchDeviceAlarm("OFF"))
 
-        self.SpeakerONAction = QtGui.QAction('Switch Speaker ON', self, enabled=False)
-        #self.SpeakerONAction.setShortcut('Ctrl+F')
-        self.SpeakerONAction.setStatusTip('Switch the device speaker ON')
-        self.SpeakerONAction.triggered.connect(lambda: self.switchDeviceSpeaker("ON"))
+        self.DeviceSpeakerONAction = QtGui.QAction('Switch Speaker ON', self, enabled=False)
+        self.DeviceSpeakerONAction.setStatusTip('Switch the device speaker ON')
+        self.DeviceSpeakerONAction.triggered.connect(lambda: self.switchDeviceSpeaker("ON"))
 
-        self.SpeakerOFFAction = QtGui.QAction('Switch Speaker OFF', self, enabled=False)
-        #self.SpeakerOFFAction.setShortcut('Ctrl+F')
-        self.SpeakerOFFAction.setStatusTip('Switch the device speaker OFF')
-        self.SpeakerOFFAction.triggered.connect(lambda: self.switchDeviceSpeaker("OFF"))
+        self.DeviceSpeakerOFFAction = QtGui.QAction('Switch Speaker OFF', self, enabled=False)
+        self.DeviceSpeakerOFFAction.setStatusTip('Switch the device speaker OFF')
+        self.DeviceSpeakerOFFAction.triggered.connect(lambda: self.switchDeviceSpeaker("OFF"))
 
-        self.DeviceSavingStateAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + '')), 'Switch Saving Mode of Device', self, enabled=False)
-        #self.DeviceSavingStateAction.setShortcut('Ctrl+V')
+        self.DeviceSavingStateAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, ''))), 'Switch Saving Mode of Device', self, enabled=False)
         self.DeviceSavingStateAction.setStatusTip('Switch Saving Mode of Device between OFF, CPS, CPM, and hourly as CPM')
         self.DeviceSavingStateAction.triggered.connect(self.switchSaveDataType)
 
         self.DeviceSetTimeAction = QtGui.QAction('Set Date+Time of Device', self, enabled=False)
-        #self.DeviceSetTimeAction.setShortcut('Ctrl+F')
         self.DeviceSetTimeAction.setStatusTip('Set the Date + Time of the device to the computer time')
-        self.DeviceSetTimeAction.triggered.connect(self.deviceSetTime)
+        self.DeviceSetTimeAction.triggered.connect(self.deviceSetDateTime)
 
         self.DeviceREBOOTAction = QtGui.QAction('Reboot Device', self, enabled=False)
-        #self.DeviceREBOOTAction.setShortcut('Ctrl+F')
         self.DeviceREBOOTAction.setStatusTip('Send REBOOT command to the device')
         self.DeviceREBOOTAction.triggered.connect(self.doREBOOT)
 
         self.DeviceFACTORYRESETAction = QtGui.QAction('FACTORYRESET Device', self, enabled=False)
-        #self.DeviceFACTORYRESETAction.setShortcut('Ctrl+F')
         self.DeviceFACTORYRESETAction.setStatusTip('Send FACTORYRESET command to the device')
         self.DeviceFACTORYRESETAction.triggered.connect(self.doFACTORYRESET)
 
@@ -285,10 +316,10 @@ class ggeiger(QtGui.QMainWindow):
         deviceMenu.addAction(self.DeviceConfigAction)
         deviceMenu.addAction(self.DeviceONAction)
         deviceMenu.addAction(self.DeviceOFFAction)
-        deviceMenu.addAction(self.AlarmONAction)
-        deviceMenu.addAction(self.AlarmOFFAction)
-        deviceMenu.addAction(self.SpeakerONAction)
-        deviceMenu.addAction(self.SpeakerOFFAction)
+        deviceMenu.addAction(self.DeviceAlarmONAction)
+        deviceMenu.addAction(self.DeviceAlarmOFFAction)
+        deviceMenu.addAction(self.DeviceSpeakerONAction)
+        deviceMenu.addAction(self.DeviceSpeakerOFFAction)
         deviceMenu.addAction(self.DeviceSavingStateAction)
         deviceMenu.addAction(self.DeviceSetTimeAction)
         deviceMenu.addAction(self.DeviceREBOOTAction)
@@ -307,47 +338,44 @@ class ggeiger(QtGui.QMainWindow):
         toolbar.setIconSize(QtCore.QSize(32,32))  # standard size is too small
         toolbar.addWidget(self.device)
         toolbar.addAction(self.toggleDeviceConnectionAction)
-        toolbar.addAction(self.DevicePowerAction)
+        toolbar.addAction(self.DevicePowerToggle)
 
 #Log Menu
-        self.logLoadFileAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_log_get.png')), 'Get Log File or Create New One', self)
+        self.logLoadFileAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_log_get.png'))), 'Get Log File or Create New One', self)
         self.logLoadFileAction.setShortcut('Ctrl+F')
         self.logLoadFileAction.setStatusTip('Load file for logging or create new one. Plot data if there are any in the loaded file')
         self.logLoadFileAction.triggered.connect(self.getLogFile)
 
-        self.startloggingAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_log_start.png')), 'Start Logging', self, enabled=False)
+        self.startloggingAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_log_start.png'))), 'Start Logging', self, enabled=False)
         self.startloggingAction.setShortcut('Ctrl+L')
         self.startloggingAction.setStatusTip('Start logging from device. Requires: 1) Connection, 2) Device is powered, 3) Log file is loaded')
         self.startloggingAction.triggered.connect(self.startTimer)
 
-        self.stoploggingAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_log_stop.png')), 'Stop Logging', self, enabled=False)
+        self.stoploggingAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_log_stop.png'))), 'Stop Logging', self, enabled=False)
         self.stoploggingAction.setShortcut('Ctrl+S')
         self.stoploggingAction.setStatusTip('Stop logging from device')
         self.stoploggingAction.triggered.connect(self.stopTimer)
 
-        self.addCommentAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + '')), 'Add Comment to Log', self, enabled=False)
+        self.addCommentAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, ''))), 'Add Comment to Log', self, enabled=False)
         self.addCommentAction.setShortcut('Ctrl+A')
         self.addCommentAction.setStatusTip('Add a comment to the current log file')
         self.addCommentAction.triggered.connect(self.addComment)
 
         self.showLogDataAction = QtGui.QAction('Show Log Data', self)
-        #self.showLogDataAction.setShortcut('Ctrl+S')
         self.showLogDataAction.setStatusTip('Show all log data from current log file')
         self.showLogDataAction.triggered.connect(self.showLogData)
 
-        self.quickLogAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_quick_log.png')), 'Quick Log', self, enabled=False)
+        self.quickLogAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_quick_log.png'))), 'Quick Log', self, enabled=False)
         self.quickLogAction.setShortcut('Ctrl+K')
-        self.quickLogAction.setStatusTip('One-click log always into file file default.log, overwritten on restart')
+        self.quickLogAction.setStatusTip('One-click log. Saves always into file default.log; will be overwritten on next Quick Log click')
         self.quickLogAction.triggered.connect(self.quickLog)
 
         self.showLogTagsAction = QtGui.QAction('Show Log Comments', self)
-        #self.showLogTagsAction.setShortcut('Ctrl+S')
         self.showLogTagsAction.setStatusTip('Show only lines from log containing comments')
         self.showLogTagsAction.triggered.connect(self.showLogTags)
 
-        self.showLogExcerptAction = QtGui.QAction('Show Log Data as Excerpt', self)
-        #self.showLogExcerptAction.setShortcut('Ctrl+S')
-        self.showLogExcerptAction.setStatusTip('Show log data as excerpt (i.e. first and last records) from current log file')
+        self.showLogExcerptAction = QtGui.QAction('Show Log Data Excerpt', self)
+        self.showLogExcerptAction.setStatusTip('Show first and last few lines of current log file')
         self.showLogExcerptAction.triggered.connect(self.showLogDataExcerpt)
 
         self.countUnit = QtGui.QComboBox()
@@ -377,13 +405,7 @@ class ggeiger(QtGui.QMainWindow):
         # next: required to correct for gtk alignment problem
         # border is made invisible by setting to background color
         # background-color: rgb(255, 255,255);
-        countGroup.setStyleSheet("""
-                                   QGroupBox
-                                   {
-                                       border:1px solid rgb(242,241,240);
-                                   }
-                                   """
-                                    )
+        countGroup.setStyleSheet("QGroupBox{ border:1px solid rgb(242,241,240);}")
 
         loggingMenu = menubar.addMenu('&Log')
         loggingMenu.addAction(self.logLoadFileAction)
@@ -406,17 +428,17 @@ class ggeiger(QtGui.QMainWindow):
         toolbar.addAction(self.stoploggingAction)
 
 #History Menu
-        self.histLoadBinAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_hist_bin_active.png')), 'Get History from Binary File', self)
+        self.histLoadBinAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_bin_active.png'))), 'Get History from Binary File', self)
         self.histLoadBinAction.setShortcut('Ctrl+B')
         self.histLoadBinAction.setStatusTip('Load history data from binary file and plot')
         self.histLoadBinAction.triggered.connect(lambda: self.getHistory("Binary File"))
 
-        self.histLoadHisAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_hist_his_active.png')), 'Get History from Parsed File', self)
+        self.histLoadHisAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_his_active.png'))), 'Get History from Parsed File', self)
         self.histLoadHisAction.setShortcut('Ctrl+P')
         self.histLoadHisAction.setStatusTip('Load history data from parsed history file and plot')
         self.histLoadHisAction.triggered.connect(lambda: self.getHistory("Parsed File"))
 
-        self.histDeviceAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_hist_device_active.png')), 'Get History from Device ', self, enabled=False)
+        self.histDeviceAction = QtGui.QAction(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Device ', self, enabled=False)
         self.histDeviceAction.setShortcut('Ctrl+H')
         self.histDeviceAction.setStatusTip('Load history data from device and plot; requires Device connection')
         self.histDeviceAction.triggered.connect(lambda: self.getHistory("Device"))
@@ -460,42 +482,40 @@ class ggeiger(QtGui.QMainWindow):
 
 #Help Menu
         self.helpAboutAction = QtGui.QAction('About GeigerLog', self)
-        #self.helpAboutAction.setShortcut('Ctrl+S')
         self.helpAboutAction.setStatusTip('About the GeigerLog program')
         self.helpAboutAction.triggered.connect(self.helpAbout)
 
         self.helpOptionsAction = QtGui.QAction('Options', self)
-        #self.helpOptionsAction.setShortcut('Ctrl+S')
         self.helpOptionsAction.setStatusTip('Show command line options')
         self.helpOptionsAction.triggered.connect(self.helpOptions)
 
+        self.changeOptionsAction = QtGui.QAction('Change Options', self)
+        self.changeOptionsAction.setStatusTip('Allows to change some command line options during running')
+        self.changeOptionsAction.triggered.connect(self.changeOptions)
+
         self.helpQickStartAction = QtGui.QAction('Quickstart', self)
-        #self.helpQickStartAction.setShortcut('Ctrl+S')
         self.helpQickStartAction.setStatusTip('Guidance for an easy start')
         self.helpQickStartAction.triggered.connect(self.helpQuickStart)
 
         self.DeviceUSBDiscoveryAction = QtGui.QAction('USB Autodiscovery', self)
-        #self.DeviceUSBDiscoveryAction.setShortcut('Ctrl+F')
         self.DeviceUSBDiscoveryAction.setStatusTip('Finding the USB Port and the Baudrate automatically')
-        #self.DeviceUSBDiscoveryAction.triggered.connect(self.doPortAutoDiscovery)
-        self.DeviceUSBDiscoveryAction.triggered.connect(self.selectUSB)
-
+        self.DeviceUSBDiscoveryAction.triggered.connect(self.USBautoDiscovery)
 
         self.helpSystemInfoAction = QtGui.QAction('System Info', self)
-        #self.helpSystemInfoAction.setShortcut('Ctrl+F')
         self.helpSystemInfoAction.setStatusTip('Show Details on the Current Program Settings and Environment')
         self.helpSystemInfoAction.triggered.connect(self.showSystemInfo)
 
         self.helpManualUrlAction = QtGui.QAction('GeigerLog Manual', self)
-        #self.helpManualUrlAction.setShortcut('Ctrl+F')
         self.helpManualUrlAction.setStatusTip('Open the GeigerLog Manual (locally if available, or online)')
         self.helpManualUrlAction.triggered.connect(self.openUrl)
 
         helpMenu = menubar.addMenu('&Help')
         helpMenu.addAction(self.helpQickStartAction)
         helpMenu.addAction(self.helpManualUrlAction)
-        helpMenu.addAction(self.helpOptionsAction)
-        helpMenu.addAction(self.helpSystemInfoAction)
+        if gglobs.devel:
+            helpMenu.addAction(self.helpOptionsAction)
+            helpMenu.addAction(self.changeOptionsAction)
+            helpMenu.addAction(self.helpSystemInfoAction)
         helpMenu.addAction(self.DeviceUSBDiscoveryAction)
         helpMenu.addSeparator()
         helpMenu.addAction(self.helpAboutAction)
@@ -680,7 +700,7 @@ class ggeiger(QtGui.QMainWindow):
         btnFFT.clicked.connect(lambda: self.plotFFT('plot'))
         btnFFT.setMaximumWidth(btn_width)
         btnFFT.setMinimumWidth(btn_width)
-        btnFFT.setStatusTip("Show the FFT spectra of the data in the plot")
+        btnFFT.setStatusTip("Show the FFT spectra & an Autocorrelation of the data in the plot")
 
         btnPlotStats =  QtGui.QPushButton('Statistics')
         btnPlotStats.clicked.connect(self.printPlotStats)
@@ -769,7 +789,7 @@ class ggeiger(QtGui.QMainWindow):
         #self.notePad.setStyleSheet("background-color: #F7FDFF;") # very light blue
         #self.notePad.setTextBackgroundColor(QColor(/rgb(0xF7, 0xFD, 0xFF))
         #self.notePad.setBackgroundColor(QtGui.QColor("#a7FDFF"))
-        dprint(gglobs.debug, "Fonts: notePad -", strFontInfo("", self.notePad.fontInfo()))
+        #dprint(gglobs.debug, "Fonts: notePad -", strFontInfo("", self.notePad.fontInfo()))
 
 # LogPad, to be added below graph
         self.logPad = QtGui.QTextEdit()
@@ -777,7 +797,7 @@ class ggeiger(QtGui.QMainWindow):
         self.logPad.setLineWrapMode(QtGui.QTextEdit.NoWrap)
         #self.logPad.setLineWrapMode(QtGui.QTextEdit.WidgetWidth)
         self.logPad.setFont(self.fontstd)
-        dprint(gglobs.debug, "Fonts: logPad  -", strFontInfo("", self.logPad.fontInfo()))
+        #dprint(gglobs.debug, "Fonts: logPad  -", strFontInfo("", self.logPad.fontInfo()))
         #self.logPad.setMinimumWidth(800)
         #self.logPad.setColor(0xFFFFFF)
         #self.logPad.setStyleSheet("color:black;")
@@ -791,8 +811,10 @@ class ggeiger(QtGui.QMainWindow):
 # set the layout - left
         layoutPad = QtGui.QVBoxLayout()
         layoutPad.addWidget(dataGroup)
+        if gglobs.devel:
+            layoutPad.addLayout(layout2)  # only Spare button, keep for tests
         layoutPad.addWidget(self.notePad)
-        #layoutPad.addLayout(layout2)  # only Spare button, keep for tests
+
 
 # set the layout - right
         graphbox = QtGui.QVBoxLayout()
@@ -812,7 +834,6 @@ class ggeiger(QtGui.QMainWindow):
         grid = QtGui.QGridLayout()
         grid.addLayout(layoutPad,   0, 0)
         grid.addLayout(layoutGraph, 0, 1)
-        #grid.addLayout(layout2, 1, 0, 1, 2)  # only Quit button, keep for tests
 
 # add navigation toolbar as last toolbar
         self.addToolBar(self.navtoolbar)
@@ -836,35 +857,78 @@ class ggeiger(QtGui.QMainWindow):
         self.dcycl. setText(str(gglobs.logcycle))
 
         self.show()
+        if gglobs.window_size == "maximized":
+            self.showMaximized()
 
-        if gglobs.test:
-            self.getLogFileTest()
-
-        # redirection of output
-        #print "sys.stdout.isatty():", sys.stdout.isatty()
-        #sys.stdout = open('stdoutfile', 'w', buffering=0)
-        #print "sys.stdout.isatty():", sys.stdout.isatty()
-
-        dprint(gglobs.debug, "Screen Dimensions: ", QtGui.QDesktopWidget().screenGeometry()) # gives screen dimensions
-        dprint(gglobs.debug, "Screen Available:  ", screen_available)                        # gives screen dimensions available
+        vprint(gglobs.verbose, u"Fonts: App     -",       strFontInfo("", app.font()))  # print font info for QApplication
+        vprint(gglobs.verbose, u"Fonts: logPad  -",       strFontInfo("", self.logPad.fontInfo()))
+        vprint(gglobs.verbose, u"Fonts: notePad -",       strFontInfo("", self.notePad.fontInfo()))
+        vprint(gglobs.verbose, u"Fonts: menubar -",       strFontInfo("", menubar.fontInfo()))
+        vprint(gglobs.verbose, u"Screen: Dimensions: ",   QtGui.QDesktopWidget().screenGeometry()) # gives screen dimensions
+        vprint(gglobs.verbose, u"Screen: Available:  ",   screen_available)                        # gives screen dimensions available
 
         # Note on Windows sizes:
         # "On X11, a window does not have a frame until the window manager decorates it."
         # see: http://doc.qt.io/qt-4.8/application-windows.html#window-geometry
-        dprint(gglobs.debug, "Windows Dimensions w/o Frame:", self.geometry())      # gives Windows dimensions but has the frame EXCLUDED!
-                                                                                    # self.frameGeometry() gives Windows dimensions including frame, but not on X11!
+        dprint(gglobs.debug, u"Window: Dimensions: ", self.geometry(), u" w/o Frame") # gives Windows dimensions but has the frame EXCLUDED!
+        dprint(gglobs.debug, u"Window: Dimensions: ", self.frameGeometry(), u" WITH Frame (not valid on X11)") # self.frameGeometry() gives Windows dimensions including frame, but not on X11!
+
+        # Devel Data - start GeigerLog with command 'devel' e.g.: 'geigerlog -dv devel'
+        if gglobs.devel:
+            testFile = gglobs.dataPath + "/TESTDATA.log"
+            testFile = gglobs.dataPath + "/" + "WhiteNoisePoisson, mean=20.0.log"
+            testFile = gglobs.dataPath + "/" + "White Noise Poisson, mean=2.5, cycle=1.0, mode=CPS.log"
+
+            if os.access(testFile , os.R_OK):
+                self.getLogFile(defaultFile = testFile)
+            else:
+                dprint(True, "Testfile '{}' not found".format(testFile))
 
 
-#####===========Class Functions================================================
+
+
+#==========Class Functions=====================================================
 
 #exit GeigerLog
-    def exitGeigerLog(self):
+    def closeEvent(self, event):
+        """
+        is called via self.close!
+        Allow to Exit unless Logging is active
+        """
+
+        dprint(gglobs.debug, "closeEvent: Begin.")
+        debugIndent(1)
+
+        if gglobs.logging :
+            msg = "Can't exit because logging is active! Stop logging first"
+            self.showStatusMessage(msg)
+            okToExit = False
+        else:
+            msg = "Exiting now"
+            okToExit = True
+
+        debugIndent(0)
+        dprint(gglobs.debug, "closeEvent: Done. " + msg)
+
+        if okToExit:
+            event.accept() # let the window close
+            #print "event.accept() done"
+            #sys.exit(0)                            # works
+            #QtGui.QApplication.quit()              # works
+            QtGui.QApplication.closeAllWindows()    # works
+        else:
+            event.ignore()
+            #print "event.ignore() done"
+
+
+    def xxxexitGeigerLog(self):
         """Exit unless Logging"""
+        #does not take into account the windows close button
 
         if gglobs.logging :
             self.showStatusMessage("Can't exit because logging is active! Stop logging first")
         else:
-            dprint(gglobs.debug, "exitGeigerLog:")
+            dprint(gglobs.debug, "exitGeigerLog: exiting now")
             QtGui.QApplication.quit()
 
 
@@ -887,7 +951,7 @@ class ggeiger(QtGui.QMainWindow):
             lc = 0
 
         if lc < 0.1:
-            self.print2NotePad("ERROR: Log cycle must be a number and at least 0.1 sec")
+            self.print2NotePad(u"ERROR: Log cycle must be a number and at least 0.1 sec")
             self.dcycl.setText(str(oldlogcycle))
             self.dcunit.setCurrentIndex(oldunitIndex)
             return
@@ -1064,7 +1128,7 @@ class ggeiger(QtGui.QMainWindow):
                 self.dcfLog.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
 
         else:
-            dprint(True, "PROGRAMMING ERROR in plotGraph - var current is:", current)
+            dprint(True, u"PROGRAMMING ERROR in geigerlog:plotGraph: var current is:", current)
             sys.exit(1)
 
         self.print2NotePad(header("Plot Data"))
@@ -1115,7 +1179,7 @@ class ggeiger(QtGui.QMainWindow):
         oldXunit = gglobs.XunitCurrent
         #print "oldXunit", oldXunit
 
-        self.applyGraphOptions()
+    #    self.applyGraphOptions()
 
         if oldXunit == "Time":
             if gglobs.Xleft != None:
@@ -1292,22 +1356,25 @@ class ggeiger(QtGui.QMainWindow):
         if source == "Binary File":
             # there must be an existing '*.bin' file and must be allowed to write .lst, .his files
             dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption = "Get History from existing Binary File")
-            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
             dlg.setFileMode(QtGui.QFileDialog.ExistingFile)
+            dlg.setViewMode(QtGui.QFileDialog.Detail)
             dlg.setFilter("History Files (*.bin)")
 
         elif source == "Parsed File":
             # there must be an existing '*.his' file
             dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption= "Get History from Parsed File")
-            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
             dlg.setFileMode(QtGui.QFileDialog.ExistingFile)
+            dlg.setViewMode(QtGui.QFileDialog.Detail)
             dlg.setFilter("History Files (*.his)")
 
         else: # source is device
             # may use existing or new file, but must be allowed to write new files (.bin, .lst, .his)
             dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption = "Get History from Device - enter new filename or select from existing")
-            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
             dlg.setFileMode(QtGui.QFileDialog.AnyFile)
+            dlg.setViewMode(QtGui.QFileDialog.Detail)
             dlg.setFilter("History Files (*.bin)")
 
         if dlg.exec_() == QtGui.QDialog.Accepted:
@@ -1507,16 +1574,17 @@ class ggeiger(QtGui.QMainWindow):
             self.showStatusMessage("No file available")
             return
 
-        self.setBusyCursor()
-
-        f = open(gglobs.hisFilePath, "r")
-        data = f.read()
-        f.close
-
         self.print2NotePad(header("Show Parsed History Data"))
         self.print2NotePad(u"from: {}\n".format(gglobs.hisFilePath))
-        self.print2NotePad(data)
 
+        # printing whole string took 6 times(!) as long as individual lines!??
+        #data = readFile(gglobs.hisFilePath)
+        #self.print2NotePad(data)
+
+        self.setBusyCursor()
+        data = readFileLines(gglobs.hisFilePath)
+        for a in data:
+            self.print2NotePad(a[:-1])
         self.setNormalCursor()
 
 
@@ -1527,15 +1595,14 @@ class ggeiger(QtGui.QMainWindow):
             self.showStatusMessage("No file available")
             return
 
-        self.setBusyCursor()
-        data = readFileLines(gglobs.hisFilePath)
-
         self.print2NotePad(header("Show Parsed History Tags and Comments"))
         self.print2NotePad(u"from: {}\n".format(gglobs.hisFilePath))
+
+        self.setBusyCursor()
+        data = readFileLines(gglobs.hisFilePath)
         for a in data:
             if a[0] == '#':
                 self.print2NotePad(a[:-1])
-
         self.setNormalCursor()
 
 
@@ -1546,14 +1613,15 @@ class ggeiger(QtGui.QMainWindow):
             self.showStatusMessage("No file available")
             return
 
-        self.setBusyCursor()
-
-        data = readFile(gglobs.lstFilePath)
-
         self.print2NotePad(header("Show Binary History Data"))
         self.print2NotePad(u"from: {}\n".format(gglobs.lstFilePath))
-        self.print2NotePad(data)
 
+        self.setBusyCursor()
+        #data = readFile(gglobs.lstFilePath)
+        #self.print2NotePad(data)
+        data = readFileLines(gglobs.lstFilePath)
+        for a in data:
+            self.print2NotePad(a[:-1])
         self.setNormalCursor()
 
 
@@ -1596,37 +1664,48 @@ class ggeiger(QtGui.QMainWindow):
     def startTimer(self):
         """Starts the logging"""
 
+        dprint(gglobs.debug, u"startTimer: Begin.")
+        debugIndent(1)
+
         self.print2NotePad(header("Start Logging"))
 
         # NOTE: the first 4 "if" should never be executed, as Start Logging should
         # not be enabled unless all those conditions are met. Leaving them anyway
 
         if gglobs.ser == None:
-            self.error2NotePad("ALERT: Cannot log; Device is not connected")
+            self.error2NotePad(u"ALERT: Cannot log; Device is not connected")
 
         elif gcommands.isPowerOn() == "OFF":
-            self.error2NotePad("ALERT: Cannot log; Device is switched OFF")
+            self.error2NotePad(u"ALERT: Cannot log; Device is switched OFF")
 
         elif gglobs.logFilePath == None:
-            self.error2NotePad("ALERT: Cannot log; Logfile is not loaded")
+            self.error2NotePad(u"ALERT: Cannot log; Logfile is not loaded")
 
         elif not os.access(gglobs.logFilePath, os.W_OK):
             # cannot write to file
-            self.error2NotePad("ALERT: Cannot log; Logfile is not available for writing!")
+            self.error2NotePad(u"ALERT: Cannot log; Logfile is not available for writing!")
 
         else:
             if gcommands.isPowerOn() != "ON":
-                self.error2NotePad("ALERT: Cannot determine power state of device; it maybe switched OFF; observe logging output")
+                self.error2NotePad(u"ALERT: Cannot determine power state of device; it maybe switched OFF; observe logging output")
 
-            writestring  = "#LOGGING,{}, Start: cycle {} sec, mode '{}', device '{}'".format(stime(), gglobs.logcycle, "CPM" if gglobs.cpmflag else "CPS", gglobs.device)
-            writeFileA(gglobs.logFilePath, writestring)
-            self.print2LogPad(writestring)
-            self.print2NotePad(writestring)
+            gglobs.deviceDetected, error, errmessage = gcommands.getVER(gglobs.ser)
 
-            dprint(gglobs.debug, "startTimer: Cleaning pipeline before logging")
+            #writestring  = u"#LOGGING,{}, Start: cycle {} sec, mode '{}', device '{}'".format(stime(), gglobs.logcycle, "CPM" if gglobs.cpmflag else "CPS", gglobs.device)
+            writestring1  = u"#LOGGING,{}, Start:  cycle: {} sec, mode: '{}'".format(stime(), gglobs.logcycle, "CPM" if gglobs.cpmflag else "CPS")
+            writestring2  = u"#LOGGING,{}, Device: selected: '{}', detected: '{}'".format(stime(), gglobs.device, gglobs.deviceDetected)
+            writeFileA(gglobs.logFilePath, writestring1)
+            self.print2LogPad(writestring1)
+            self.print2NotePad(writestring1)
+            writeFileA(gglobs.logFilePath, writestring2)
+            self.print2LogPad(writestring2)
+            self.print2NotePad(writestring2)
+
+            dprint(gglobs.debug, u"startTimer: Cleaning pipeline before logging")
             gcommands.getExtraByte(gglobs.ser)
 
             self.timer.start(gglobs.logcycle * 1000.0) # time is on ms
+            dprint(gglobs.debug, u"startTimer: Logging now; Timer is started with cycle {} sec.".format(gglobs.logcycle))
             gglobs.logging              = True
             gglobs.cpm_counter          = 0
             gglobs.currentFilePath      = gglobs.logFilePath
@@ -1637,30 +1716,41 @@ class ggeiger(QtGui.QMainWindow):
 
             self.makeLOG()  # first call now; timer fires only AFTER 1st period!
 
+        debugIndent(0)
+        dprint(gglobs.debug, u"startTimer: Done.")
+
 
     def stopTimer(self):
         """Stops the logging"""
+
+        dprint(gglobs.debug, u"stopTimer: Begin.")
+        debugIndent(1)
 
         self.print2NotePad(header("Stop Logging"))
         self.timer.stop()
         gglobs.logging = False
 
-        writestring  = "#LOGGING,{}, Stop".format(stime())
+        writestring  = u"#LOGGING,{}, Stop".format(stime())
         writeFileA(gglobs.logFilePath, writestring)
         self.print2LogPad(writestring)
         self.print2NotePad(writestring)
 
-        dprint(gglobs.debug, "stopTimer: Cleaning pipeline after logging")
+        dprint(gglobs.debug, u"stopTimer: Cleaning pipeline after logging")
         gcommands.getExtraByte(gglobs.ser)
 
         self.checkLoggingState()
         self.labelCPM.setStyleSheet('color:darkgray;')
 
+        debugIndent(0)
+        dprint(gglobs.debug, u"stopTimer: Done. Logging is stopped")
+
 
     def makeLOG(self):
-        """Reads CPM or CPS from device, saves in log file, and
-        prints record into LogPad.
-        Called by the timer once the timer is started"""
+        """
+        Reads CPM or CPS from device, saves it in log file, and prints record
+        into LogPad.
+        Called by the timer once the timer is started
+        """
 
         if not gglobs.logging: return
         if gglobs.logFilePath == None: return
@@ -1675,22 +1765,22 @@ class ggeiger(QtGui.QMainWindow):
         if err == 0 or err == 1:
             # count rate always stored in CPM even if CPS requested
             if gglobs.cpmflag == False:             # we requested CPS
-                cpscnt      = "(measured as CPS: {:0.0f})".format(cpm / 60)
+                cpscnt      = u"(measured as CPS: {:0.0f})".format(cpm / 60)
             else:                                   # we requested CPM
-                cpscnt      = ""
+                cpscnt      = u""
 
             if err == 0:
-                printstring = "#{:<6d}  {:19s}  CPM: {:<6.0f} {}".format(gglobs.cpm_counter, timetag, cpm, cpscnt)
-                writestring = " {:6d},{:19s}, {:}".format(gglobs.cpm_counter, timetag, cpm)
+                printstring = u"#{:<7d}  {:19s}  CPM: {:<6.0f} {}".format(gglobs.cpm_counter, timetag, cpm, cpscnt)
+                writestring = u" {:7d},{:19s}, {:}".format(gglobs.cpm_counter, timetag, cpm)
 
             else: #err == 1
-                printstring = "#{:<6d}  {:19s}  CPM: {:<6.0f}, WARNING: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
-                writestring = " {:6d},{:19s}, {:}\n".format(gglobs.cpm_counter, timetag, cpm)
-                writestring += "#{:6d},{:19s}, {:}, WARNING: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
+                printstring = u"#{:<7d}  {:19s}  CPM: {:<6.0f}, WARNING: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
+                writestring = u" {:7d},{:19s}, {:}\n".format(gglobs.cpm_counter, timetag, cpm)
+                writestring += u"#{:7d},{:19s}, {:}, WARNING: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
 
         else: # err == -1 (or else)
-            printstring = "#{:<6d}  {:19s}  CPM: {}, ERROR: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
-            writestring = "#{:6d},{:19s}, {:}, ERROR: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
+            printstring = u"#{:<7d}  {:19s}  CPM: {}, ERROR: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
+            writestring = u"#{:7d},{:19s}, {:}, ERROR: {}".format(gglobs.cpm_counter, timetag, cpm, errmessage)
             self.stopTimer()
             self.toggleDeviceConnection()
             self.print2NotePad("Check USB Port and Baudrate settings!")
@@ -1716,6 +1806,13 @@ class ggeiger(QtGui.QMainWindow):
             else:
                 gplot.updatePlot(gglobs.logFilePath, timetag, cpm)
 
+        # test for counter time
+        #rec, error, errmessage = gcommands.getDATETIME(gglobs.ser)
+        #devtime = str(rec)
+        #cmptime = stime()
+        #deltat  = datestr2num(cmptime) - datestr2num(devtime)
+        #dprint(True, "Counter Time: {}, Deltatime:{} sec, (Error:{}, Errmessage:'{}')".format(rec, deltat,error,errmessage))
+
 
     def changedCountUnit(self, i):
         """counter unit combo in Toolbar was changed"""
@@ -1725,6 +1822,7 @@ class ggeiger(QtGui.QMainWindow):
 
     def updateCountLabel(self, cpm):
         """update the CPM/CPS/µSv/h counts in the toolbar"""
+
         #self.countUnit.addItems([u"CPM:", u"CPS:", u"µSv/h:", u"mSv/d", u"mSv/a"])
         if gglobs.lastCPM == None: return
 
@@ -1748,7 +1846,6 @@ class ggeiger(QtGui.QMainWindow):
         else: #u"mSv/a"
             labelCPMText = "{:0.0f}".format(cpm * gglobs.calibration / 1000.0 * 24 * 365.25)
 
-
         self.labelCPM.setText(labelCPMText)
 
 
@@ -1756,55 +1853,104 @@ class ggeiger(QtGui.QMainWindow):
         """Reads CPM or CPS from device and displays in Toolbar
         Called by the timer, once the timer is started"""
 
-        gglobs.logFilePath      = gglobs.dataPath + "default.log"
-        #print "gglobs.logFilePath:", gglobs.logFilePath
+        dprint(gglobs.debug, u"quickLog: Begin.")
+        debugIndent(1)
+
+        self.print2NotePad(header("Quick Log"))
+        self.clearLogPad()
+
+        gglobs.logFilePath      = os.path.join(gglobs.dataPath, "default.log")
+        gglobs.currentFilePath  = gglobs.logFilePath
+        dprint(gglobs.debug, "Quick Log filename:", gglobs.logFilePath)
+
+        line = u"#HEADER ,using Quick Log file: default.log"
+        self.print2LogPad(line)
+        writeFileW(gglobs.logFilePath, line)
+
         gglobs.currentFilePath = gglobs.logFilePath
+        self.print2NotePad(u"Logfile: {}".format(gglobs.currentFilePath))
+
+        self.dcfLog.setText(gglobs.currentFilePath)
+        self.dcfLog.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
+        self.dcfHis.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
 
         gglobs.logFileData      = np.empty([0,2])
         gglobs.currentFileData  = gglobs.logFileData
         #print "gglobs.logFileData:", gglobs.logFileData
 
-        gglobs.currentFilePath = gglobs.logFilePath
-        self.dcfLog.setText(gglobs.currentFilePath)
-        self.dcfLog.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
-        self.dcfHis.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
-
-        self.print2NotePad(header("Quick Log"))
-        self.print2NotePad(u"Logfile: {}".format(gglobs.currentFilePath))
-        self.clearLogPad()
-
         fig = plt.figure(1)
         plt.clf()                                    # clear figure
         fig.canvas.draw_idle()
 
-        line = u"#HEADER , using Quick Log file: default.log"
-        self.print2LogPad(line)
-        writeFileW(gglobs.logFilePath, line)
-        self.clearPlotDefaults()
         self.resetGraph()
-
-        dprint(gglobs.debug, "quickLog: Quick Log filename:", gglobs.logFilePath)
 
         self.checkLoggingState()
 
         self.startTimer()
 
+        debugIndent(0)
+        dprint(gglobs.debug, u"quickLog: Done.")
 
-    def getLogFileTest(self):
-        """Load predefined log file use for testing only"""
 
-        gglobs.logFilePath = "/home/ullix/geigerlog/data/background-11hours-CPM.log"
+    def getLogFile(self, defaultFile = False):
+        """Load existing file for logging, or create new one"""
+
+        dprint(gglobs.debug, u"getLogFile: Begin.")
+        debugIndent(1)
+        #print defaultFile
+
+        if defaultFile == False:
+            dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption= "Get Log File - enter new filename or select from existing")
+            dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
+            dlg.setFileMode(QtGui.QFileDialog.AnyFile)
+            dlg.setViewMode(QtGui.QFileDialog.Detail)
+            dlg.setFilter("Logging Files (*.log)")
+
+            if dlg.exec_() == QtGui.QDialog.Accepted: # (=1)
+                fnames  = dlg.selectedFiles()
+                fn      = unicode(fnames[0])
+                ext     = os.path.splitext(fn)[1]
+                if ext != ".log":  fn += ".log"      # forces the ".log" extension
+
+            else: # QtGui.QDialog.Rejected (= 0)
+                debugIndent(0)
+                dprint(gglobs.debug, u"getLogFile: Done. (FileDialog Escape)")
+                return
+
+            if os.path.isfile(fn):
+                msg = QtGui.QMessageBox()
+                msg.setIcon(QtGui.QMessageBox.Warning)
+                msg.setWindowTitle("CAUTION")
+                critical  = """You selected an existing file, which will be modified \
+    when logging by <b>APPENDING</b> new data to it.Please confirm with OK.
+    <br><br>Otherwise click Cancel and enter a new filename in the Get Log File dialog."""
+                msg.setText(critical)
+                msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+                msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+                msg.setEscapeButton(QtGui.QMessageBox.Cancel)
+                retval = msg.exec_()
+
+                if retval != 1024:
+                    debugIndent(0)
+                    dprint(gglobs.debug, u"getLogFile: Done. (Existing File Escape)")
+                    return
+
+            gglobs.logFilePath = fn
+        else:
+            gglobs.logFilePath = defaultFile
+
 
         if gglobs.logging:
             self.stopTimer()
 
-        gglobs.currentFilePath = gglobs.logFilePath
+        gglobs.currentFilePath  = gglobs.logFilePath
         self.dcfLog.setText(gglobs.currentFilePath)
         self.dcfLog.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
         self.dcfHis.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
 
         self.print2NotePad(header("Get Logfile"))
         self.print2NotePad(u"Logfile: {}".format(gglobs.currentFilePath))
+        dprint(gglobs.debug, "getLogFile: log filename:", gglobs.currentFilePath)
         self.clearLogPad()
 
         fig = plt.figure(1)
@@ -1819,85 +1965,7 @@ class ggeiger(QtGui.QMainWindow):
             writeFileW(gglobs.logFilePath, line)
             self.clearPlotDefaults()
             gglobs.logFileData      = np.empty([0,2])
-            gglobs.currentFileData  = gglobs.logFileData
-
-        else:
-            if os.access(gglobs.logFilePath, os.W_OK):
-                # can read and write
-                self.print2NotePad("Logfile opened - available for writing")
-
-            elif os.access(gglobs.logFilePath, os.R_OK):
-                # can read only
-                self.error2NotePad("Logfile opened - ALERT: available ONLY FOR READING")
-
-            gglobs.logFileData      = self.getFileData()
-            gglobs.currentFileData  = gglobs.logFileData
-
-        self.resetGraph()
-
-        dprint(gglobs.debug, "getLogFile: log filename:", gglobs.logFilePath)
-
-        self.checkLoggingState()
-
-
-    def getLogFile(self):
-        """Load existing file for logging, or create new one"""
-
-        dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption= "Get Log File - enter new filename or select from existing")
-        dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
-        dlg.setFileMode(QtGui.QFileDialog.AnyFile)
-        dlg.setFilter("Logging Files (*.log)")
-
-        if dlg.exec_() == QtGui.QDialog.Accepted: # (=1)
-            fnames  = dlg.selectedFiles()
-            fn      = unicode(fnames[0])
-            ext     = os.path.splitext(fn)[1]
-            if ext != ".log":  fn += ".log"      # forces the ".log" extension
-
-        else: # QtGui.QDialog.Rejected (= 0)
-            return
-
-        if os.path.isfile(fn):
-            msg = QtGui.QMessageBox()
-            msg.setIcon(QtGui.QMessageBox.Warning)
-            msg.setWindowTitle("CAUTION")
-            critical  = """You selected an existing file, which will be modified \
-when logging by <b>APPENDING</b> new data to it.Please confirm with OK.
-<br><br>Otherwise click Cancel and enter a new filename in the Get Log File dialog."""
-            msg.setText(critical)
-            msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
-            msg.setDefaultButton(QtGui.QMessageBox.Cancel)
-            msg.setEscapeButton(QtGui.QMessageBox.Cancel)
-            retval = msg.exec_()
-
-            if retval != 1024:  return
-
-        if gglobs.logging:
-            self.stopTimer()
-
-        gglobs.logFilePath      = fn
-        gglobs.currentFilePath  = gglobs.logFilePath
-        self.dcfLog.setText       (gglobs.currentFilePath)
-        self.dcfLog.setStyleSheet("QLineEdit { background-color: #F9F4C9; color: rgb(80,80,80); }")
-        self.dcfHis.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
-
-        self.print2NotePad(header("Get Logfile"))
-        self.print2NotePad(u"Logfile: {}".format(gglobs.currentFilePath))
-        self.clearLogPad()
-
-        fig = plt.figure(1)
-        plt.clf()                                    # clear figure
-        fig.canvas.draw_idle()
-
-        if not os.path.isfile(gglobs.logFilePath):
-            # File does not exist; create new one
-            self.print2NotePad("Logfile newly created - available for writing")
-            line = u"#HEADER ,{}, Logfile newly created as '{}'".format(stime(), os.path.basename(gglobs.logFilePath))
-            self.print2LogPad(line)
-            writeFileW(gglobs.logFilePath, line)
-            self.clearPlotDefaults()
-            gglobs.logFileData      = np.empty([0,2])
-            gglobs.currentFileData  = gglobs.logFileData
+            #gglobs.currentFileData  = gglobs.logFileData
 
         else:
             # File does exist
@@ -1910,13 +1978,13 @@ when logging by <b>APPENDING</b> new data to it.Please confirm with OK.
                 self.error2NotePad("Logfile opened - ALERT: available ONLY FOR READING")
 
             gglobs.logFileData      = self.getFileData()
-            gglobs.currentFileData  = gglobs.logFileData
 
+        gglobs.currentFileData  = gglobs.logFileData
         self.resetGraph()
-
-        dprint(gglobs.debug, "getLogFile: log filename:", gglobs.logFilePath)
-
         self.checkLoggingState()
+
+        debugIndent(0)
+        dprint(gglobs.debug, u"getLogFile: Done.")
 
 
     def addComment(self):
@@ -1942,20 +2010,18 @@ when logging by <b>APPENDING</b> new data to it.Please confirm with OK.
             self.showStatusMessage("No file available")
             return
 
-        self.setBusyCursor()
-
-        #f = open(gglobs.logFilePath, "r")
-        f = codecs.open(gglobs.logFilePath, "r", 'utf-8')
-        data = f.read()
-        f.close
-        #data = readFileLines(gglobs.logFilePath)
-
         self.print2NotePad(header("Show Log Data"))
         self.print2NotePad(u"from: {}\n".format(gglobs.logFilePath))
-        #for a in data:
-        #    self.print2NotePad(a[:-1]) # remove \n at end
-        self.print2NotePad(data)
 
+        # printing as single lines takes ~twice as long a printing as whole string
+        # Note: it is the reverse with Hist printing???
+        #data = readFile(gglobs.logFilePath)
+        #self.print2NotePad(data)
+
+        self.setBusyCursor()
+        data = readFileLines(gglobs.logFilePath)
+        for a in data:
+            self.print2NotePad(a[:-1]) # remove \n at end
         self.setNormalCursor()
 
 
@@ -1966,13 +2032,15 @@ when logging by <b>APPENDING</b> new data to it.Please confirm with OK.
             self.showStatusMessage("No file available")
             return
 
-        data = readFileLines(gglobs.logFilePath)
-
         self.print2NotePad(header("Show Log Comments"))
         self.print2NotePad(u"from: {}\n".format(gglobs.logFilePath))
+
+        self.setBusyCursor()
+        data = readFileLines(gglobs.logFilePath)
         for a in data:
             if a[0] == '#':
                 self.print2NotePad(a[:-1]) # remove \n at end
+        self.setNormalCursor()
 
 
     def showLogDataExcerpt(self):
@@ -1984,15 +2052,17 @@ when logging by <b>APPENDING</b> new data to it.Please confirm with OK.
 
         self.print2NotePad(header("Show Log Data Excerpt"))
         self.print2NotePad(u"from: {}\n".format(gglobs.logFilePath))
-        self.printExcerptLines(gglobs.logFilePath, lmax = 12)
 
+        self.setBusyCursor()
+        self.printExcerptLines(gglobs.logFilePath, lmax = 12)
+        self.setNormalCursor()
 
 #device
     def doREBOOT(self):
         """reboot the device"""
 
         msg = QtGui.QMessageBox()
-        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
         msg.setIcon(QtGui.QMessageBox.Warning)
         msg.setWindowTitle("Reboot Device")
         msg.setText("Rebooting your device.\nPlease confirm with OK, or Cancel")
@@ -2008,14 +2078,14 @@ when logging by <b>APPENDING</b> new data to it.Please confirm with OK.
         if err == 0 or err == 1:
             self.print2NotePad("REBOOT completed")
         else:
-            self.print2NotePad("ERROR in REBOOT: " + errmessage)
+            self.print2NotePad("ERROR in doREBOOT: " + errmessage)
 
 
     def doFACTORYRESET(self):
         """Does a FACTORYRESET of the device"""
 
         d = QtGui.QInputDialog()
-        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
         warning ="""
 CAUTION - You are about to reset the device to factory condition!
 All data and your changes of settings will be lost. \n
@@ -2033,7 +2103,7 @@ and press OK"""
                 if err == 0 or err == 1:
                     self.print2NotePad("FACTORYRESET completed")
                 else:
-                    self.print2NotePad("ERROR in FACTORYRESET: " + message)
+                    self.print2NotePad("ERROR in doFACTORYRESET: " + message)
             else:
                 self.print2NotePad("Entry '{}' not matching 'FACTORYRESET' - Reset NOT done".format(text))
 
@@ -2047,6 +2117,7 @@ and press OK"""
             self.switchDeviceConnection(new_connection = "OFF")
 
 
+
     def switchDeviceConnection(self, new_connection = "ON"):
         """
         if new_connection = ON and no connection exists, then try to make
@@ -2054,51 +2125,48 @@ and press OK"""
         else disconnect (unless already disconnected)
         """
 
+        dprint(gglobs.debug, u"switchDeviceConnection: --> {}. Begin.".format(new_connection))
+        debugIndent(1)
+
         if new_connection == "ON":
-            msg = header("Connect Device")
-            self.print2NotePad(msg)
-            dprint(gglobs.debug, msg)
+            self.print2NotePad(header("Connect Device"))
             QtGui.QApplication.processEvents()
 
             if gglobs.ser != None:
                 self.print2NotePad("Device is already connected")
-                return # is already connected
 
             else:
                 self.setBusyCursor()
 
                 # try to open the port
                 gglobs.ser, errmessage = gcommands.serialOPEN(gglobs.usbport, gglobs.baudrate, gglobs.timeout)
-                if gglobs.ser != None:
-                    gcommands.getDeviceConfig()
-                    # stop heartbeat
-                    dprint(gglobs.debug, "switchDeviceConnection: turnHeartbeatOFF")
-                    rec = gcommands.turnHeartbeatOFF(gglobs.ser)
-                    dprint(gglobs.debug, "switchDeviceConnection: Cleaning pipeline after turnHeartbeatOFF")
-                    gcommands.getExtraByte(gglobs.ser)
 
-                    self.print2NotePad("Device '{}' is connected to port:'{}' (baudrate:{}, timeout:{}sec)".format(gglobs.device, gglobs.ser.name, gglobs.ser.baudrate, gglobs.ser.timeout))
-                    #self.print2NotePad("Powerstate of device is:", "{}".format(gglobs.powerstate))
-                    if gcommands.isPowerOn() in ("ON", "OFF"):
-                        self.print2NotePad("Powerstate of device is:", "{}".format(gcommands.isPowerOn()))
-                    else:
-                        self.error2NotePad("Powerstate of device is:", "{}".format(gcommands.isPowerOn()))
+                if gglobs.ser != None:  # device is connected, and communication had been verified with getVER()
+                    gcommands.getDeviceConfig()
+
+                    # stop heartbeat
+                    rec = gcommands.turnHeartbeatOFF(gglobs.ser)
+
+                    self.print2NotePad("Device '{}' is connected to port:'{}', baudrate:{}, timeout:{}sec,".format(gglobs.device, gglobs.ser.name, gglobs.ser.baudrate, gglobs.ser.timeout))
+                    if gglobs.cfg == None:
+                        self.error2NotePad("but did not get reliable communication - device may not be working!")
 
                     self.setEnableDeviceActions(new_enable = True)
 
-                    #if gglobs.powerstate == "ON":
-                    if gcommands.isPowerOn() == "ON":
-
-                        self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_on.png')))
-                    #elif gglobs.powerstate == "OFF":
-                    elif gcommands.isPowerOn() == "OFF":
-
-                        self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_off.png')))
+                    PowerState = gcommands.isPowerOn()
+                    if PowerState == "ON":
+                        self.print2NotePad("Powerstate of device is:", "ON")
+                        self.DevicePowerToggle.setIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_power_on.png'))))
+                    elif PowerState == "OFF":
+                        self.print2NotePad("Powerstate of device is:", "OFF")
+                        self.DevicePowerToggle.setIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_power_off.png'))))
                     else:
-                        self.DevicePowerAction.         setEnabled(False)
+                        self.error2NotePad("Powerstate of device is:", PowerState)
+                        self.DevicePowerToggle.         setEnabled(False)
 
-                    #media.play()
-                    #time.sleep(0.5) # wait for the end of sound
+                    media.play()
+                    time.sleep(0.5) # wait for the end of sound
+
 
                 else:
                     self.error2NotePad(errmessage)
@@ -2107,7 +2175,6 @@ and press OK"""
                 self.setNormalCursor()
 
         else: # new_connection == OFF
-
             if gglobs.logging:
                 self.stopTimer()
                 gglobs.logging = False
@@ -2117,12 +2184,10 @@ and press OK"""
 
             if gglobs.ser == None:
                 self.print2NotePad("No connected Device")
-                return # is already dis-connected == OFF
 
             else:
                 gglobs.ser.close()
                 gglobs.ser          = None
-                #gglobs.powerstate   = None
 
                 msg = "Device '{}' is disconnected".format(gglobs.device)
                 self.print2NotePad(msg)
@@ -2130,31 +2195,32 @@ and press OK"""
 
                 self.setEnableDeviceActions(new_enable = False)
 
+
         self.checkLoggingState()
+
+        debugIndent(0)
+        dprint(gglobs.debug, u"switchDeviceConnection: Done.")
 
 
     def checkLoggingState(self):
         """some cleanup of status"""
 
-        #if gglobs.ser == None or gglobs.logFilePath == None or gglobs.powerstate == "OFF":
         if gglobs.ser == None or gglobs.logFilePath == None or gcommands.isPowerOn() == "OFF":
-
             self.startloggingAction.    setEnabled(False)
             self.stoploggingAction.     setEnabled(False)
         else:
             self.startloggingAction.    setEnabled(True)
 
-        #if gglobs.ser == None or gglobs.powerstate == "OFF":
         if gglobs.ser == None or gcommands.isPowerOn() == "OFF":
-
             pass
+            self.quickLogAction.       setEnabled(False)
         else:
             self.quickLogAction.       setEnabled(True)
 
         if gglobs.ser != None:
-            self.toggleDeviceConnectionAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_plug_closed.png')))
+            self.toggleDeviceConnectionAction.setIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_plug_closed.png'))))
         else:
-            self.toggleDeviceConnectionAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_plug_open.png')))
+            self.toggleDeviceConnectionAction.setIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_plug_open.png'))))
 
         if gglobs.logFilePath != None:
             self.addCommentAction.      setEnabled(True)
@@ -2171,29 +2237,43 @@ and press OK"""
 
     def setEnableDeviceActions(self, new_enable = True):
 
+        # Device
         self.DeviceConnectAction.       setEnabled(not new_enable)
         self.DeviceDisconnectAction.    setEnabled(new_enable)
         self.DeviceInfoAction.          setEnabled(new_enable)
         self.DeviceConfigAction.        setEnabled(new_enable)
         self.DeviceONAction.            setEnabled(new_enable)
         self.DeviceOFFAction.           setEnabled(new_enable)
-        self.SpeakerONAction.           setEnabled(new_enable)
-        self.SpeakerOFFAction.          setEnabled(new_enable)
-        self.AlarmONAction.             setEnabled(new_enable)
-        self.AlarmOFFAction.            setEnabled(new_enable)
-        self.DeviceSavingStateAction.   setEnabled(new_enable)
         self.DeviceSetTimeAction.       setEnabled(new_enable)
         self.DeviceREBOOTAction.        setEnabled(new_enable)
         self.DeviceFACTORYRESETAction.  setEnabled(new_enable)
-        self.DevicePowerAction.         setEnabled(new_enable)
 
+        # Device functions using the config
+        self.DeviceSpeakerONAction.     setEnabled(new_enable)
+        self.DeviceSpeakerOFFAction.    setEnabled(new_enable)
+        self.DeviceAlarmONAction.       setEnabled(new_enable)
+        self.DeviceAlarmOFFAction.      setEnabled(new_enable)
+        self.DeviceSavingStateAction.   setEnabled(new_enable)
+
+        #toolbar toggle
+        self.DevicePowerToggle.         setEnabled(new_enable)
+
+        # History
         self.histDeviceAction.          setEnabled(new_enable)
+
+        # config not usable in 500 and up series
+        if gglobs.device in [u"GMC-500", u"GMC-500+", u"GMC-600", u"GMC-600+"]:
+            self.DeviceSpeakerONAction.     setEnabled(False)
+            self.DeviceSpeakerOFFAction.    setEnabled(False)
+            self.DeviceAlarmONAction.       setEnabled(False)
+            self.DeviceAlarmOFFAction.      setEnabled(False)
+            self.DeviceSavingStateAction.   setEnabled(False)
+
 
 
     def toggleDevicePower(self):
         """Toggle Device Power ON / OFF"""
 
-        #if gglobs.powerstate == "OFF" or gglobs.powerstate == None:
         if gcommands.isPowerOn() == "ON":
             self.switchDevicePower("OFF")
         else:
@@ -2223,15 +2303,14 @@ and press OK"""
         gglobs.cfg = cfg
 
         ipo = gcommands.isPowerOn()
-        #gglobs.powerstate = ipo
         self.print2NotePad("Power State of device is: ",  ipo)
 
         if   ipo == "ON":
-            self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_on.png')))
+            self.DevicePowerToggle.setIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_power_on.png'))))
         elif ipo == "OFF":
-            self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_off.png')))
+            self.DevicePowerToggle.setIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_power_off.png'))))
         else:
-            self.DevicePowerAction.setIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_power_on.png')))
+            self.DevicePowerToggle.setIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_power_on.png'))))
 
         self.checkLoggingState()
         self.setNormalCursor()
@@ -2252,39 +2331,49 @@ and press OK"""
         msg = header("Device Configuration")
         self.print2NotePad(msg)
         dprint(gglobs.debug, msg)
-        #self.notePad.append(gcommands.ftextCFG())
         self.print2NotePad(gcommands.ftextCFG())
         self.setNormalCursor()
 
 
-    def deviceSetTime(self):
+    def deviceSetDateTime(self):
         """ set date and time on device to computer date and time"""
 
-        self.print2NotePad(header("Set Date+Time of Device"))
-        rec, error, errmessage = gcommands.getDATETIME(gglobs.ser)
-        if error < 0:
-            self.print2NotePad("Communication problem with device:", errmessage)
-            return
+        dprint(gglobs.debug, "deviceSetDateTime: Begin.")
+        debugIndent(1)
 
-        computerTime = stime()
-        deviceTime      = str(rec)
-        deltat       = datestr2num(computerTime) - datestr2num(deviceTime)
-        if deltat == 0:
-            dtxt = "Device time is same as computer time"
-        elif deltat > 0:
-            dtxt = "Device is slower than computer by {:0.0f} sec".format(deltat)
-        else:
-            dtxt = "Device is faster than computer by {:0.0f} sec".format(abs(deltat))
+        while True:
+            self.print2NotePad(header("Set Date+Time of Device"))
+            rec, error, errmessage = gcommands.getDATETIME(gglobs.ser)
+            if error < 0:
+                self.print2NotePad("Communication problem with device:", errmessage)
+                break
 
-        self.print2NotePad("Date and Time from device is:", deviceTime)
-        self.print2NotePad("Date and Time from computer is:", "{}".format(computerTime))
-        self.print2NotePad("", "{}\n".format(dtxt))
+            computerTime = stime()
+            deviceTime   = str(rec)
+            deltat       = datestr2num(computerTime) - datestr2num(deviceTime)
+            if deltat == 0:
+                dtxt = "Device time is same as computer time"
+            elif deltat > 0:
+                dtxt = "Device is slower than computer by {:0.0f} sec".format(deltat)
+            else:
+                dtxt = "Device is faster than computer by {:0.0f} sec".format(abs(deltat))
 
-        self.print2NotePad("Setting device time to computer time")
-        gcommands.setDATETIME(gglobs.ser)
-        rec, error, errmessage = gcommands.getDATETIME(gglobs.ser)
-        deviceTime = str(rec)
-        self.print2NotePad("New Date and Time from device is:", str(deviceTime))
+            self.print2NotePad("Date and Time from device is:", deviceTime)
+            self.print2NotePad("Date and Time from computer is:", "{}".format(computerTime))
+            self.print2NotePad("", "{}\n".format(dtxt))
+
+            self.print2NotePad("Setting device time to computer time")
+            gcommands.setDATETIME(gglobs.ser)
+            extra = gcommands.getExtraByte(gglobs.ser)
+
+            rec, error, errmessage = gcommands.getDATETIME(gglobs.ser)
+            deviceTime = str(rec)
+            self.print2NotePad("New Date and Time from device is:", str(deviceTime))
+
+            break
+
+        debugIndent(0)
+        dprint(gglobs.debug, "deviceSetDateTime: Done.")
 
 
     def switchSaveDataType(self):
@@ -2319,7 +2408,6 @@ and press OK"""
             return
 
         # read the config to verify
-        #beep()
         cfg, error, errmessage = gcommands.getCFG(gglobs.ser)
         gglobs.cfg = cfg
         if error < 0:
@@ -2410,26 +2498,6 @@ and press OK"""
 
 
 #help
-    def doPortAutoDiscovery(self):
-        """Autodiscover the available Serial Ports and baudrates"""
-
-        self.print2NotePad(header("Autodiscover Ports and Baudrates"))
-        #rec, errmessage = gcommands.autoPORT(gglobs.usbport, gglobs.baudrates)
-        rec, errmessage = gcommands.autoPORT()
-
-        if rec == None:
-            self.error2NotePad(errmessage)
-            self.print2NotePad("Is device connected? Check cable and plugs!")
-        else:
-            self.print2NotePad("The following ports and baudrates have connected Geiger Counters:")
-            for i in rec:
-                self.print2NotePad("Port:" + i[0], "baudrate:" + str(i[1]))
-            self.print2NotePad("\nThe current settings of GeigerLog are:")
-            self.print2NotePad("Port:" + gglobs.usbport, "baudrate:" + str(gglobs.baudrate))
-
-            self.print2NotePad("\nCheck Quickstart in the Help Menu for guidance on starting GeigerLog\nwith new port and/or baudrate settings" )
-
-
     def helpQuickStart(self):
         """Quickstart item on the Help menu"""
 
@@ -2488,7 +2556,7 @@ at SourceForge project GeigerLog: <a href="https://sourceforge.net/projects/geig
 """
 
         msg = QtGui.QMessageBox()
-        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
         msg.setWindowTitle("Help - Quickstart")
         msg.setFont(self.fontstd)
         msg.setText(qs)
@@ -2518,7 +2586,7 @@ at SourceForge project GeigerLog: <a href="https://sourceforge.net/projects/geig
         """Options item on the Help menu"""
 
         msg = QtGui.QMessageBox()
-        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
         msg.setWindowTitle("Help - Options")
         msg.setFont(self.fontstd)
         msg.setText(usage)
@@ -2533,6 +2601,47 @@ at SourceForge project GeigerLog: <a href="https://sourceforge.net/projects/geig
 
         msg.addButton(btn, QtGui.QMessageBox.YesRole)
         msg.exec_()
+
+
+    def changeOptions(self):
+        """Switches State of some options"""
+
+        options       = ("Verbose  = False",
+                         "Verbose  = True",
+                         "Debug    = False",
+                         "Debug    = True",
+                         "Redirect = False",
+                         "Redirect = True"
+                         )
+
+        index         = 0
+        text, ok      = QtGui.QInputDialog().getItem(self, 'Switch Option', "Select new option setting and press ok:   ", options, index, False )
+        vprint(gglobs.verbose, "changeOptions: text= '{}', ok={}".format( text, ok))
+
+        if not ok: return      # user has selected Cancel
+
+        newIndex    = options.index(text)
+
+        self.print2NotePad(header("Change Options"))
+        self.print2NotePad("New Option setting:", "{}".format(options[newIndex]))
+
+        if   newIndex == 0:
+            gglobs.verbose  = False
+        elif newIndex == 1:
+            gglobs.verbose  = True
+
+        elif newIndex == 2:
+            gglobs.debug    = False
+        elif newIndex == 3:
+            gglobs.debug    = True
+
+        elif newIndex == 4:
+            gglobs.redirect = False
+        elif newIndex == 5:
+            gglobs.redirect = True
+
+        else:
+            pass
 
 
     def showSystemInfo(self):
@@ -2559,10 +2668,11 @@ at SourceForge project GeigerLog: <a href="https://sourceforge.net/projects/geig
         si += fmt.format(u"Runtime settings:",                 "")
         si += fmt.format(u"  Flag Debug:",                    str(gglobs.debug))
         si += fmt.format(u"  Flag Verbose:",                  str(gglobs.verbose))
-        si += fmt.format(u"  Flag Test:",                     str(gglobs.test))
+        si += fmt.format(u"  Flag Development:",              str(gglobs.devel))
         si += fmt.format(u"  Flag KeepFF:",                   str(gglobs.keepFF))
+        si += fmt.format(u"  Flag Redirect:",                 str(gglobs.redirect))
         si += fmt.format(u"  GeigerLog Data Directory:",      str(gglobs.dataPath))
-        si += fmt.format(u"  GeigerLog Resource Directory:",  str(gglobs.sharePath))
+        si += fmt.format(u"  GeigerLog Resource Directory:",  str(gglobs.gresPath))
         si += fmt.format(u"  GeigerLog Program Directory:",   str(getProgPath() + "/"))
         si += fmt.format(u"  GeigerLog Manual:",              str(gglobs.manual_filename))
         si += fmt.format(u"GUI:",                              "")
@@ -2584,7 +2694,7 @@ at SourceForge project GeigerLog: <a href="https://sourceforge.net/projects/geig
         si += fmt.format(u"  Machine:",                        "{}, {}".format(platform.machine(), platform.architecture()[0]))
 
         msg = QtGui.QMessageBox()
-        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
         msg.setWindowTitle("Help - System Info")
         msg.setFont(self.fontstd)
         msg.setText(si)
@@ -2687,13 +2797,76 @@ at SourceForge project GeigerLog: <a href="https://sourceforge.net/projects/geig
         self.print2NotePad("from the GeigerLog working directory 'geigerlog'.")
 
 
+    def USBautoDiscovery(self):
+        """USB Autodiscovery with option to select any found connection"""
+
+        dprint(gglobs.debug, "USBautoDiscovery: Begin.")
+        debugIndent(1)
+
+        self.setBusyCursor()
+        rec, errmessage = gcommands.autoPORT()
+        self.setNormalCursor()
+
+        msg = QtGui.QMessageBox()
+        msg.setWindowTitle("USB Autodiscovery")
+        msg.setIcon(QtGui.QMessageBox.Information)
+        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
+
+        if rec == None:
+            flag = "fail"
+            txt1 = errmessage + "\n\nIs device connected? Check cable and plugs! Re-run in a few seconds."
+        else:
+            if len(rec) == 1:
+                flag  = "success"
+                txt1  = "A Geiger Counter was found at:\n"
+                txt1 += "     Port: " + str(rec[0][0]) + "              Baudrate: " + str(rec[0][1])
+                txt1 += "\n\nPress OK to make this your new setting and connect, Cancel otherwise."
+                txt1 += "\n\nTo make this permanent edit the configuration file geigerlog.cfg\nand enter above settings in Section 'Serial Port'."
+
+            else:
+                flag  = "fail"
+                txt1  = "The following ports and baudrates have connected Geiger Counters:\n"
+                for i in rec:
+                    txt1 += "\n     Port: " + str(i[0]) + "              Baudrate: " + str(i[1])
+                txt1 += "\n\nGeigerLog can handle only a single connected Geiger Counter."
+                txt1 += "\n\nEither remove all counters except one now and re-run 'USB Autodiscovery', or "
+                txt1 += "edit the configuration file geigerlog.cfg in Section 'Serial Port' to define your counter."
+
+        msg.setText(txt1)
+
+        txt1  = "-" * 100
+        txt1 += "\nThe current settings of GeigerLog are:"
+        txt1 += "\n     Port: " + gglobs.usbport + "                Baudrate: " + str(gglobs.baudrate)
+        msg.setInformativeText(txt1)
+
+        if flag == "fail":
+            msg.setStandardButtons(QtGui.QMessageBox.Cancel)
+        else:
+            msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+        msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+        msg.setEscapeButton(QtGui.QMessageBox.Cancel)
+
+        retval = msg.exec_()
+
+        if retval == 1024:
+            dprint(gglobs.debug, "Accepting autodiscovered port settings; connecting now")
+            gglobs.usbport = str(rec[0][0])
+            gglobs.baudrate = str(rec[0][1])
+            self.switchDeviceConnection(new_connection = "ON")
+        else:
+            dprint(gglobs.debug, "Not accepting autodiscovered port settings; cancelling now")
+
+        debugIndent(0)
+        dprint(gglobs.debug, "USBautoDiscovery: Done.")
+
+
     def helpAbout(self):
         """About item on the Help menu"""
 
         description = u"""
 <!doctype html>
 <p><span style='color:darkblue;'><b>GeigerLog</b></span> is a Python based program for use with GQ Electronic's
-GMC-3xx and GMC-5xx line of Geiger counters. It was developed on Linux Ubuntu Mate 16.04
+GMC-3xx, GMC-5xx, and GMC-6xx line of Geiger counters. It was developed on Linux Ubuntu Mate 16.04
 but should also work on Windows and Mac as long as a Python 2.7 with PyQt4 environment is available.
 </p>
 
@@ -2739,10 +2912,10 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
 
 
         licon   = QtGui.QLabel() # label to hold the geigerlog icon
-        licon.setPixmap(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png'))
+        licon.setPixmap(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png')))
 
         ltext   = QtGui.QLabel() # label to hold the 'eigerlog' text as picture
-        ltext.setPixmap(QtGui.QPixmap(gglobs.sharePath + 'eigerlog.png'))
+        ltext.setPixmap(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'eigerlog.png')))
 
         labout  = QtGui.QTextBrowser() # label to hold the description
         labout.setLineWrapMode(QtGui.QTextEdit.WidgetWidth)
@@ -2758,7 +2931,7 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
         #labout.setStyleSheet("background-color: #F2F1F0; font-size:15px;")
 
         d       = QtGui.QDialog()
-        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
         d.setFont(self.fontstd)
         d.setWindowTitle("Help - About GeigerLog")
         #d.setWindowModality(QtCore.Qt.ApplicationModal)
@@ -2801,10 +2974,11 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
     def print2NotePad(self, *args):
         """print all args in NotePad area"""
 
-        aa =  u"{}".format(args[0])
-        line = u"{:35s}".format(aa)
+        arg0 = cleanStringToAscii(args[0])
+        line = u"{:35s}".format(arg0)
         for s in range(1, len(args)):
-            line += u"{}".format(args[s])
+            args = cleanStringToAscii(args[s])
+            line += u"{}".format(args)
 
         self.notePad.append(line)
         QtGui.QApplication.processEvents()
@@ -2865,75 +3039,23 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
         #print "Selection changed, new index:",i,", new device:",self.device.currentText()
 
         self.switchDeviceConnection("OFF")
-        #gglobs.powerstate = None
 
         self.print2NotePad(header("Device change"))
         gglobs.devicesIndex     = i
         gglobs.device           = gglobs.devices[gglobs.devicesIndex]
         defineDevice(gglobs.devicesIndex)
 
-        info = u"New Device is: '{}'\nMemory:{}@{:,} B, Page size:{} B, Calibration:{} µSv/h / CPM".format(gglobs.device, gglobs.memoryMode, gglobs.memory, gglobs.page, gglobs.calibration)
+        info = u"New Device is: '{}'\nMemory: {}@{:,}B, Pagesize: {}B, Calibration: {}µSv/h / CPM".format(gglobs.device, gglobs.memoryMode, gglobs.memory, gglobs.page, gglobs.calibration)
         self.print2NotePad(info)
         dprint(gglobs.debug, info.replace("\n", ", "), ", ListIndex:{}".format(i))
+
+        if gglobs.device in [u"GMC-500", u"GMC-500+", u"GMC-600", u"GMC-600+"]:
+            self.error2NotePad(u"Device {} not fully supported due to unddisclosed firmware changes!".format(gglobs.device))
+            self.error2NotePad(u"Unsupported commands are greyed-out in menu 'Device'; 'Log' and 'History' do work!")
+
         self.switchDeviceConnection("ON")
 
-
-    def selectUSB(self):
-        """USB Autodiscovery with option to select any found connection"""
-
-        self.setBusyCursor()
-        dprint(gglobs.debug, "selectUSB: starting gcommands.autoPORT")
-        #rec, errmessage = gcommands.autoPORT(gglobs.usbport, gglobs.baudrates)
-        rec, errmessage = gcommands.autoPORT()
-        self.setNormalCursor()
-
-        msg = QtGui.QMessageBox()
-        msg.setWindowTitle("USB Autodiscovery")
-        msg.setIcon(QtGui.QMessageBox.Information)
-        msg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
-
-        if rec == None:
-            flag = "fail"
-            txt1 = errmessage + "\n\nIs device connected? Check cable and plugs! Re-run in a few seconds."
-        else:
-            if len(rec) == 1:
-                flag  = "success"
-                txt1  = "A Geiger Counter was found at:\n"
-                txt1 += "     Port: " + str(rec[0][0]) + "              Baudrate: " + str(rec[0][1])
-                txt1 += "\n\nPress OK to make this your new setting and connect, Cancel otherwise."
-                txt1 += "\n\nTo make this permanent edit the configuration file geigerlog.cfg\nand enter above settings in Section 'Serial Port'."
-
-            else:
-                flag  = "fail"
-                txt1  = "The following ports and baudrates have connected Geiger Counters:\n"
-                for i in rec:
-                    txt1 += "\n     Port: " + str(i[0]) + "              Baudrate: " + str(i[1])
-                txt1 += "\n\nGeigerLog can handle only a single connected Geiger Counter."
-                txt1 += "\n\nEither remove all counters except one now and re-run 'USB Autodiscovery', or "
-                txt1 += "edit the configuration file geigerlog.cfg in Section 'Serial Port' to define your counter."
-
-        msg.setText(txt1)
-
-        txt1  = "-" * 100
-        txt1 += "\nThe current settings of GeigerLog are:"
-        txt1 += "\n     Port: " + gglobs.usbport + "                Baudrate: " + str(gglobs.baudrate)
-        msg.setInformativeText(txt1)
-
-        if flag == "fail":
-            msg.setStandardButtons(QtGui.QMessageBox.Cancel)
-        else:
-            msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
-        msg.setDefaultButton(QtGui.QMessageBox.Cancel)
-        msg.setEscapeButton(QtGui.QMessageBox.Cancel)
-
-        retval = msg.exec_()
-        #dprint(gglobs.debug, "selectUSB: value of pressed message box button:", retval)
-        if retval == 1024:
-            gglobs.usbport = str(rec[0][0])
-            gglobs.baudrate = str(rec[0][1])
-            self.switchDeviceConnection(new_connection = "ON")
-
-
+#########################################
 #not used
     def processtrigger(self, q):
         """for testing"""
@@ -2977,17 +3099,7 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
         print 6, dOptions.columnStretch(6)
         print 7, dOptions.columnStretch(7)
 
-    def getRandomData(self):
-        """random data"""
-
-        mu, sigma = 20., np.sqrt(20.)
-        #mu, sigma = 50., np.sqrt(50.)
-        #mu, sigma = 5., np.sqrt(5.)
-        x = mu + sigma * np.random.randn(1000000)
-        #x = np.random.poisson(2., 1000000)
-
-        return x
-
+#########################################
 
 
     def plotHistogram(self, type = 'plot'):
@@ -3004,6 +3116,7 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
             self.showStatusMessage("No file available")
             return
 
+        DataSrc = os.path.basename(gglobs.currentFilePath)
 
         ######################################
         # to show histogram of delta between 2 consecutive counts
@@ -3028,30 +3141,19 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
                 yunit = "CPM"
 
 
-        #############################
-        # get artificial data
-        #x = self.getRandomData()
-        #############################
-
         # switch off interactive mode
         #plt.ioff()
 
         fig2 = plt.figure(2, facecolor = "#E7F9C9")
         plt.clf()
-        #plt.title("Count Rate Histogram with Poisson Fit", fontsize=13, loc='left')
         plt.title("Count Rate Histogram with Poisson Fit", fontsize=12, loc='left')
-        plotSubTitle = "  Recs:" + str(gglobs.sizePlotSlice)
-        #plt.title(plotSubTitle, fontsize=12, fontweight='normal', loc = 'right')
+        plotSubTitle = "  Recs:" + str(x.size)
         plt.title(plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
-        #plt.xlabel("Count Rate ({})".format(yunit), fontsize=13)
         plt.xlabel("Count Rate ({})".format(yunit), fontsize=12)
-        #plt.ylabel("Frequency of Occurence", fontsize=13)
         plt.ylabel("Frequency of Occurence", fontsize=12)
         plt.grid(True)
-        #plt.subplots_adjust(hspace=None, wspace=.2 , left=.17, top=0.9, bottom=0.1, right=.97)
         plt.subplots_adjust(hspace=None, wspace=.2 , left=.17, top=0.9, bottom=0.15, right=.97)
         plt.ticklabel_format(useOffset=False)
-
 
         # canvas - this is the Canvas Widget that displays the `figure`
         # it takes the `figure` instance as a parameter to __init__
@@ -3065,11 +3167,11 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
         labout.setMinimumHeight(160)
 
         d       = QtGui.QDialog()
-        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
         d.setFont(self.fontstd)
         d.setWindowTitle("Histogram")
         #d.setMinimumHeight(gglobs.window_height)
-#        d.setWindowModality(QtCore.Qt.ApplicationModal)
+        #d.setWindowModality(QtCore.Qt.ApplicationModal)
         #d.setWindowModality(QtCore.Qt.NonModal)
         d.setWindowModality(QtCore.Qt.WindowModal)
 
@@ -3088,13 +3190,14 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
         #print "bins=", bins
 
         hist, bins = np.histogram(x, bins=bins)
+        #hist, bins = np.histogram(x)
         #print "hist=\n", hist, len(hist)
         #print "bins=\n", bins, len(bins)
 
-        avg = np.mean(x)
-        std = np.std(x)
-        sum_hist = int(np.sum(hist))
-
+        avg         = np.mean(x)
+        var         = np.var(x)
+        std         = np.std(x)
+        sum_hist    = int(np.sum(hist))
 
         try:
             from scipy import stats
@@ -3102,7 +3205,7 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
             sum_pdf  = sum(pdf)
             pdfs = pdf * sum_hist/sum_pdf
         except:
-            labout.append("Cannot calculate Poisson Curve - Module scipy is missing")
+            labout.append("Cannot calculate Poisson Curve - Module 'scipy' is missing")
             pdfs= bins - bins
 
         labout.append("No.   Count Rate    Frequency    % of   Poisson-Fit")
@@ -3128,7 +3231,8 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
 
         labout.append(u"Goodness of Poisson Fit (Average, Total) r²= {:8.3f}".format(r2))
 
-        plt.plot(bins, pdfs, linewidth=3, color='red', label ="r2 = {:0.3f}".format(r2) )
+        #plt.plot(bins, pdfs, linewidth=3, color='red', label ="r2 = {:0.3f}".format(r2) )
+        plt.plot(bins, pdfs, linewidth=3, color='red', label ="r2  = {:0.3f}\navg= {:0.2f}".format(r2, avg))
 
         #######################################################################
 
@@ -3139,13 +3243,14 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
         else:
             plt.legend(loc='upper right', fontsize=12)
 
-        labout.append("\nData Set:")
-        labout.append("File     = {}"    .format(os.path.basename(gglobs.currentFilePath)))
-        labout.append("Records  = {}"    .format(len(x)))
-        labout.append("Average  ={:8.2f}".format(avg))
-        labout.append("Variance ={:8.2f}  same as Average if true Poisson Dist.".format(std**2))
-        labout.append("Std.Dev. ={:8.2f}".format(std))
-        labout.append("Sqrt(Avg)={:8.2f}  same as Std.Dev. if true Poisson Dist.".format(np.sqrt(avg)))
+        labout.append(u"\nData Set:")
+        labout.append(u"File     = {}"    .format(DataSrc))
+        labout.append(u"Records  = {}"    .format(x.size))
+        labout.append(u"Average  ={:8.2f}".format(avg))
+        labout.append(u"Variance ={:8.2f}  same as Average if true Poisson Dist.".format(var))
+        labout.append(u"Std.Dev. ={:8.2f}".format(std))
+        labout.append(u"Sqrt(Avg)={:8.2f}  same as Std.Dev. if true Poisson Dist.".format(np.sqrt(avg)))
+        labout.append(u"Std.Err. ={:8.2f}".format(std / np.sqrt(x.size)))
 
         try:
             skew     = stats.skew    (x)
@@ -3163,206 +3268,415 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
         #plt.ion() # activate interactive mode again, IMPORTANT
 
 
-    def getSinusData(self, dlen):
-        """sinus data"""
+    def createSyntheticLog(self):
+        """Create synthetic data and save in log format.
+        All times in SECONDS"""
+
+        records     = 20000
+        cycletime   = 1.0
+        mode        = "CPS"
+        #mode        = "CPM"
+
+        mean        = 2.5  # -> "CPM"=150, like in KCl case
+        stddev      = np.sqrt(mean)
+
+    # get time
+        t = np.float64(np.array(range(0, records))) * cycletime
+        print "time: size: {}, Delta-t: {} sec".format(t.size, (t[1] - t[0]))
+        print np.int_(t)
+
+        # convert time in sec to datetime strings
+        strt0 = "2018-01-01 00:00:00"          # nominal default start datetime
+        t0    = mpld.datestr2num(strt0)        # time zero
+        td    = np.empty(records, dtype='U19') # holds strings of max length 19
+        print "td, len:", td.size, td
+        for i in range(0, records):
+            td[i] = mpld.num2date(t0 + t[i] / 86400.) #clipped after 19 chars
+
+    # get data
+        sigt, DataSrc     = self.getWhiteNoisePoisson(records, mean, cycletime, mode)       # White Noise from Poisson Distribution
+        #sigt,  DataSrc    = self.getWhiteNoiseNormal(records, mean=mean, stddev=stddev)    # White Noise from Normal Distribution
+        #sigt,  DataSrc    = self.getSinus(records, t)                                      # Sine (one or more)
+        #sigt,  DataSrc    = self.getWhiteNoiseSine(records, t)                             # White Noise with Sine
+        #sigt,  DataSrc    = self.getConstantData(records, t)                               # constant + breaks
+        #sigt, DataSrc     = self.getAutocorr(records)                                      # Autocorr as time function
+        #sigt, DataSrc     = self.getRectangle(records)                                      # Rectangle of 20 samples @ 3sec = 1min
+        #sigt, DataSrc     = self.getWhiteNoisePoissonAutocorr(records, mean, cycletime)     # Autocorrelated Poisson Noise
+        #sigt, DataSrc     = self.getRandomData(records, mean, stddev)                  # Radom Data
+
+        # Mean=17, followed by mean=29
+        #sigt1, DataSrc     = self.getWhiteNoisePoisson(20000, mean=17)                  # White Noise from Poisson Distribution
+        #sigt2, DataSrc2    = self.getWhiteNoisePoisson(20000, mean=29)                  # White Noise from Poisson Distribution
+        #sigt = np.concatenate((sigt1 , sigt2))
+        #print "len(sigt):", len(sigt)
+        #DataSrc = "WhiteNoisePoisson,mean=17&29CPM"
+
+        print DataSrc
+
+        if mode == "CPS":
+            sigt *= 60              # save as CPM
+
+        for i in range(0, 10): print "i: {:4d}, time(sec): {:5.2f}, sigt: {}".format(i, t[i] * 60., sigt[i])
+        print "..."
+        for i in range(0, records, int(records/10.)): print  "i: {:4d}, time(min): {:5.2f}, sigt: {}".format(i, t[i], sigt[i])
+
+    # write to log file
+        path = gglobs.dataPath + "/" + DataSrc + ".log"
+        writeFileW(path, "", linefeed = True)
+        writeFileA(path, "#HEADER ," + strt0 + ", SYNTHETIC data: " + DataSrc)
+        writeFileA(path, "#LOGGING," + strt0 + ", Start: cycle {} sec, mode '{}', device 'SYNTHETIC'".format(cycletime, mode))
+        for i in range(records):
+            writestring = u" {:7d},{:19s}, {:}".format(i, td[i], sigt[i])
+            writeFileA(path, writestring)
+
+
+    def getWhiteNoisePoisson(self, records, mean, cycletime, mode):
+        """White noise data drawn from Poisson distribution"""
+
+        DataSrc = "White Noise Poisson, mean={}, cycle={}, mode={}".format(mean, cycletime, mode)
+
+        x = np.random.poisson(mean, size=records )
+        print "x.size, x.mean, x.var, x.std. :", x.size, np.mean(x), np.var(x), np.std(x)
+        print x
+
+        return x, DataSrc
+
+
+    def getWhiteNoisePoissonAutocorr(self, records, mean, cycletime):
+        """White noise data drawn from Poisson distribution"""
+
+        DataSrc = "Autocorrelated Poisson Noise, CPM={}, cycle={}sec".format(mean, cycletime)
+
+        x    = np.random.poisson(mean / 60., size=records * 60 + 60 )
+        print "x.size, x.mean, x.var, x.std. :", x.size, np.mean(x), np.var(x), np.std(x)
+        print x
+
+        x2   = np.zeros(records)
+        print "all zeros: x2.size, x2.mean, x2.var, x2.std. :", x2.size, np.mean(x2), np.var(x2), np.std(x2)
+
+        for i in range(0, records):
+            j = i * cycletime
+            x2[i] = np.sum(x[j : j + 60])
+
+        print "x2.size, x2.mean, x2.var, x2.std. :", x2.size, np.mean(x2), np.var(x2), np.std(x2)
+
+        return x2, DataSrc
+
+
+    def getSinus(self, records, t):
+        """
+        sinus data
+        All times in seconds
+        """
+
+        DataSrc = "Sinus"
 
         pi2 = 2.0 * np.pi
 
-        # all times in Minutes, but return is in days  !!!!
-        t = np.float64(np.array(range(0, dlen))) /dlen * 1000. # 1000 minutes = 16.7 hours
+        x   = 10.0 + 5.0 * np.sin(t * pi2 / (100. * 60. +  0. )  ) # periode von 100   min
+        x  +=  0.0 + 5.0 * np.sin(t * pi2 / (400. * 60. +  0. )  ) # periode von 400   min
+        x  +=  0.0 + 5.0 * np.sin(t * pi2 / ( 30. * 60. +  0. )  ) # periode von  50   min
+        x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  3. * 60. +  4. )  ) # periode von   3.x min
+        x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  3. * 60. +  9. )  ) # periode von   3.y min
+        x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  3. * 60. + 13. )  ) # periode von   3.z min
+        x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  1.0            )  ) # periode von   1   sec
+        x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  0.5            )  ) # periode von   0.5 sec
 
-        x  = 0.0 + 5.0 * (np.sin(t * pi2 / ((3. * 60. + 0. )/60.)  ))
-        x += 0.0 + 5.0 * (np.sin(t * pi2 / ((3. * 60. + 4. )/60.)  ))
-        x += 0.0 + 5.0 * (np.sin(t * pi2 / ((3. * 60. + 7. )/60.)  ))
-        x += 0.0 + 5.0 * (np.sin(t * pi2 / ((3. * 60. + 11. )/60.)  ))
-        x += 0.0 + 0.5 * (np.sin(t * pi2 / 1.0    ))
-        x += 0.0 + 0.2 * (np.sin(t * pi2 / 0.5    ))
-        #for i in range(0,100): print i, x[i]
-
-        return t / 1440.0, x   # return as days
+        return x, DataSrc
 
 
-    def getConstantData(self, dlen):
-        """constant data"""
+    def getConstantData(self, records, t):
+        """
+        constant data
+        All times in seconds
+        """
 
-        # all times in Minutes, but return is in days  !!!!
-        t = np.float64(np.array(range(0, dlen))) /dlen * 1000. # 1000 minutes = 16.7 hours
-        for i in range(0, dlen, 1000): print i, t[i] * 60., "sec"
-        #x  = np.ones(dlen)
-        x  = np.zeros(dlen)
+        DataSrc = "Constant + Breaks"
 
-        for i in range(0, dlen - 10, 20):
-            x[i] = 1000.
-            #x[i + 1] = -10.
-            #x[i + 2] = 1.
+        x  = np.ones(records) * 1000
 
+        for i in range(0, records - 10, 20):
+            x[i] = 500.
+            x[i + 1] = -10.
+            x[i + 2] = 1.
 
-        return t / 1440.0, x   # return as days
-
-
-    def getWhiteNoiseData(self, dlen):
-        """White noise data"""
-
-        # all times in Minutes, but return is in days  !!!!
-        t = np.float64(np.array(range(0, dlen))) /dlen * 1000. # 1000 minutes = 16.7 hours
-
-        mean = 2500
-        std  = np.sqrt(mean)
-        x    = np.random.normal(mean, std, size=dlen)
-        #for i in range(0, dlen, 100): print i, x[i]
-
-        return t / 1440.0, x   # return as days
+        return x, DataSrc
 
 
-    def getWhiteNoiseSinusData(self, dlen):
-        """White noise with Sinus data"""
+    def getWhiteNoiseNormal(self, records, mean=16, stddev=4):
+        """
+        White noise data
+        All times in seconds
+        """
+
+        DataSrc = "White Noise Normal, mean={}, stddev={:3.2f}".format(mean, stddev)
+
+        x = np.random.normal(mean, stddev, size=records)
+
+        return x, DataSrc
+
+
+    def getAutocorr(self, records):
+        """
+        The autocorrelation function as time series to use as input
+        All times in seconds
+        """
+
+        DataSrc = "Autocorrelation as time series - 1st point=1"
+
+        # a small random component
+        mean = 0
+        std  = 0.01
+        x    = np.random.normal(mean, std, size=records)
+
+        #for a 1 sec cycle time the first 60 records will show a linear down curve
+        #for i in range (0, 20):
+        #    x[i] = 1 - i * 1./20.
+
+        x[0] = 1
+
+
+        return x, DataSrc
+
+
+    def getRectangle(self, records):
+        """
+        A rectangle 1 min long with 20 samples @ assumed 3sec cycle
+        """
+
+        DataSrc = "Rectangle_1min"
+
+        x = np.zeros(records)
+        #print x
+        for i in range(20):
+            x[i] = 1
+        print "x:", len(x), x
+
+        return x, DataSrc
+
+
+
+    def getWhiteNoiseSine(self, records, t):
+        """
+        White noise with Sine data
+        All times in seconds
+        """
+
+        DataSrc = "White Noise Normal + Sine"
 
         pi2 = 2.0 * np.pi
 
-        # all times in Minutes, but return is in days  !!!!
-        t = np.float64(np.array(range(0, dlen))) /dlen * 900. # 1000 minutes = 16.7 hours
-
         mean = 2500
         std  = np.sqrt(mean)
-        #x    = np.random.normal(mean, std, size=dlen)
-        #p1   = (100. * 60. + 2.) / 60.  # 100,0333 min
-        p1   = (10. * 60. + 1.4) / 60.  # 100,0333 min
-        print "p1:", p1
-        x   = mean + std * (np.sin(t * pi2 / p1 ))
-        #x   += mean + std * (np.sin(t * pi2 / 111.    ))
+        x    = np.random.normal(mean, std, size=records)
+        p1   = (100. * 60. + 1.4) / 60.  # 100,0333 min
+        print "getWhiteNoiseSinusData: p1:", p1
+        x   +=  40. * std * (np.sin(t * pi2 / p1 ))
+        x   +=  10. * std * (np.sin(t * pi2 / 11. ))
 
-        #for i in range(0, dlen, 100): print i, x[i]
-
-        return t / 1440.0, x   # return as days
+        return x, DataSrc
 
 
-    def plotFFT(self, type = 'plot'):
-        """Plotting a FFT Spectrum
+    def getRandomData(self, records, mean, stddev):
+        """random data"""
+
+        DataSrc = "Random Data"
+
+        x = mean + stddev * np.random.randn(records)
+
+        return x, DataSrc
+
+
+    def Eval_plotFFT(self, type = 'plot'):
+        """Plotting FFT and Autocorrelation
         t       = time
         sigt    = Signal in time domain, (CPM/CPS here)
         freq    = Signal in frequency domain
         """
 
-
         if type == 'plot':              # use only data shown in the plot
             #print "gglobs.logTimeDiffSlice:", len(gglobs.logTimeDiffSlice), "\n", gglobs.logTimeDiffSlice
             #print "gglobs.logCPMSlice:", len(gglobs.logCPMSlice), "\n", gglobs.logCPMSlice
-            t    = gglobs.logTimeDiffSlice
-            sigt = gglobs.logCPMSlice
+            rawt    = gglobs.logTimeDiffSlice
+            rawsigt = gglobs.logCPMSlice
+            winTitleLabel = " (Data from Plot Only)"
         else:                           # use all data of the file
             #print "gglobs.logTimeDiff", len(), "\n", gglobs.logTimeDiff
             #print "gglobs.logCPM", len(gglobs.logCPM), "\n", gglobs.logCPM
-            t    = gglobs.logTimeDiff
-            sigt = gglobs.logCPM
+            rawt    = gglobs.logTimeDiff
+            rawsigt = gglobs.logCPM
+            winTitleLabel = " (Data from complete File )"
 
-        if sigt is None:
+        if rawsigt is None:
             self.showStatusMessage("No file available")
             return
 
-        #######################################################################
-        # get artificial data
-        samples = 20000
-        #t, sigt = self.getSinusData(samples)           # sine
-        #t, sigt = self.getConstantData(samples)        # constant
-        #t2, sigt2 = self.getWhiteNoiseData(samples)    # White Noise
-        #t, sigt = self.getWhiteNoiseData(samples)      # White Noise
-        #t, sigt = self.getWhiteNoiseSinusData(samples) # White Noise with Sinus
-        #######################################################################
+        if rawt.size < 20:
+            self.showStatusMessage("Not enough data")
+            return
 
-        #for i in range (0, len(sigt), 100):
-        #    sigt[i] = 0.
-            #sigt[i] = 0.
+        DataSrc = os.path.basename(gglobs.currentFilePath)
 
-        #sigt = sigt + sigt2 / 1000.
+        t    = rawt.copy()
+        sigt = rawsigt.copy()
 
-        #######################################################################
-        # When using window functions subtract the average in order to avoid
-        # spurious low-frequency peaks!
-        #sigt = sigt - np.mean(sigt)
-        #sigt2 = sigt - np.mean(sigt)
-        #######################################################################
+        # if CPS selected in Graph, treat sigt data as CPS
+        if self.yunit.currentText() == "CPS":
+            sigt /= 60.
+            yunit = "CPS"
+        else:
+            yunit = "CPM"
+
+# Window functions ############################################################
+        # the only place to activate Window function is here
+        use_window_functions = False
+
+        if use_window_functions:
+            hamm    = np.hamming (len(t))
+            hann    = np.hanning (len(t))
+            black   = np.blackman(len(t))
+            # Kaiser:
+            # "A beta value of 14 is probably a good starting point"
+            # beta  Window shape
+            # 0     Rectangular
+            # 5     Similar to a Hamming
+            # 6     Similar to a Hanning
+            # 8.6   Similar to a Blackman
+            beta    = 5
+            kaiser  = np.kaiser(len(t), beta)
+
+            # Select one
+            #win     = hamm
+            #win     = hann
+            #win     = black
+            win     = kaiser
+
+            # When using window functions subtract the average in order to avoid
+            # spurious low-frequency peaks!
+            sigt   = sigt - np.mean(sigt)
+
+            # Time domain signal with Window function applied
+            sigt_win = sigt * win
+
+# Prepare variables ###########################################################
 
         t               = t * 1440.0  # convert days to minutes
         timeunit        = "minutes"
         frequencyunit   = "1/minute"
-        cycletime       = (t[-1] - t[0]) / (t.size -1)
+        cycletime       = (t[-1] - t[0]) / (t.size -1)  # in minutes
 
-        # Window functions ####################################################
-        hamm    = np.hamming (len(t))
-        hann    = np.hanning (len(t))
-        black   = np.blackman(len(t))
-        # Kaiser:
-        # "A beta value of 14 is probably a good starting point"
-        # beta  Window shape
-        # 0     Rectangular
-        # 5     Similar to a Hamming
-        # 6     Similar to a Hanning
-        # 8.6   Similar to a Blackman
-        beta    = 5
-        kaiser  = np.kaiser(len(t), beta)
+        sigt_mean       = np.mean(sigt)
+        sigt_var        = np.var(sigt)
+        sigt_std        = np.std(sigt)
+        sigt_var        = np.var(sigt)
+        sigt_err        = sigt_std / np.sqrt(sigt.size)
 
-        # Select one when using Window functions ###############################
-        #win     = hamm
-        #win     = hann
-        #win     = black
-        win     = kaiser
+        print "t:    size:"       , t.size        , "\n", t
+        print "sigt: size:"       , sigt.size     , "\n", sigt
+        #print "sigt_win: size:"  , sigt_win.size , "\n", sigt_win
 
 
-        # Time domain signal with Window function applied #####################
-        sigt_win = sigt * win
-
-        # FFT calculation #####################################################
-        # using amplitude spectrum, not power spectrum; power would be freq^2
-        freq         = np.abs(np.fft.rfft(sigt     ))
-        freq_win     = np.abs(np.fft.rfft(sigt_win ))
-        #freq2        = np.abs(np.fft.rfft(sigt2    ))
-
-        #print "t:"          , len(t)        , "\n", t
-        #print "sigt:"       , len(sigt)     , "\n", sigt
-        #print "sigt_win:"   , len(sigt_win) , "\n", sigt_win
-        #print "freq:"       , len(freq)     , "\n", freq
-        #for i in range(0,100):  print freq[i]
-        #print "freq_win:"   , len(freq_win) , "\n", freq_win
-
-
-        f = np.fft.rfftfreq(t.size, d = cycletime)
-        #print "frequency", f.size, "\n", f
-
-        p  = np.reciprocal(f[1:])  # skipping 1st value frequency = 0
-        #print "Period", len(p), "\n", p
-
-        # figure and canvas ###################################################
+# figure and canvas ###################################################
         fig3 = plt.figure(3, facecolor = "#C9F9F0") # blueish tint
         plt.clf()
         # canvas - this is the Canvas Widget that displays the `figure`
         # it takes the `figure` instance as a parameter to __init__
         canvas3 = FigureCanvas(fig3)
-        canvas3.setFixedSize(550,550)
+        canvas3.setFixedSize(1800, 550)
         navtoolbar = NavigationToolbar(canvas3, self)
 
-        # Time ################################################################
-        plt.subplot(3,1,1)
-        #plt.title("Time Course", fontsize=13, loc = 'left')
-        plt.title("Time Course", fontsize=12, loc = 'left')
-        plotSubTitle = "Recs:" + str(gglobs.sizePlotSlice)
-        plt.title(plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
-        #plt.xlabel("time ({})".format(timeunit), fontsize=13)
-        plt.xlabel("time ({})".format(timeunit), fontsize=12)
-        #plt.ylabel("Count Rate", fontsize=13)
-        plt.ylabel("Count Rate", fontsize=12)
-        plt.grid(True)
+# Data vs Time ################################################################
+        plt.subplot (2,4,1)
+        plt.title   ("Time Course", fontsize=12, loc = 'left')
+        plotSubTitle = "Recs:" + str(sigt.size)
+        plt.title   (plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
+        plt.xlabel  ("time ({})".format(timeunit), fontsize=12)
+        plt.ylabel  ("Count Rate  " + yunit, fontsize=12)
+        plt.grid    (True)
         plt.ticklabel_format(useOffset=False)
 
-        plt.plot(t, sigt        ,  linewidth=0.4, color='red'   , label ="Time Domain" , marker="o", markeredgecolor='red'   , markersize=2.0)
-        #plt.plot(t, sigt_win    ,  linewidth=0.4, color='black' , label ="Time Domain" , marker="o", markeredgecolor='black' , markersize=2.0)
+        plt.plot    (t, sigt        ,  linewidth=0.4, color='red'   , label ="Time Domain" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.plot   (t, sigt_win    ,  linewidth=0.4, color='black' , label ="Time Domain" , marker="o", markeredgecolor='black' , markersize=2.0)
 
-        # FFT vs Time #########################################################
-        plt.subplot(3,1,2)
-        #plt.title("FFT Amplitude Spectrum vs. Time Period", fontsize=13, loc = 'left')
+# Autocorrelation vs Lag #########################################################
+    # calculations
+        asigt = sigt - sigt_mean
+        #print "np.mean(sigt) , np.var(sigt) :", np.mean(sigt),  np.var(sigt)
+        #print "np.mean(asigt), np.var(asigt):", np.mean(asigt), np.var(asigt)
+
+        asigtnorm = np.var(asigt) * asigt.size  # to normalize autocorrelation
+        ac = np.correlate(asigt, asigt, mode='full') / asigtnorm
+        ac = ac[ac.size/2:]
+        #print "ac: len:", ac.size
+        #print "ac:", "\n", ac
+
+    # autocorrelation plot
+        aax1 =  plt.subplot(2,4, 5)
+
+        plt.title   ("Autocorrelation (normalized) vs. Lag Period", fontsize=12, loc = 'left', y = 1.08)
+        plt.xlabel  ("lag period ({})".format(timeunit), fontsize=12)
+        plt.ylabel  ("Autocorrelation", fontsize=12)
+        plt.grid    (True)
+        #plt.ticklabel_format(useOffset=False)
+
+        aax2 = aax1.twiny()
+
+        # how many points to show enlarged?
+        for i in range(t.size):
+            if ac[i] < 0: break
+
+        tindex = min(i, t.size * 0.01)
+        tindex = max(25, tindex, 60./(cycletime * 60.))
+        tindex = int(tindex)  # Warning: ./geigerlog:3483: VisibleDeprecationWarning: using a non-integer number instead of an integer will result in an error in the future
+                              # aax2.plot(tnew[:tindex], ac[:tindex], linewidth= 2.0, color='blue' , label ="Expanded Lag Period - Top Scale" , marker="o", markeredgecolor='blue'  , markersize=4.0)
+                              # What is the reason ?????
+        #print "tindex:", tindex
+
+        tnew = t - t[0]
+        aax1.plot(tnew,          ac         , linewidth= 0.4, color='red'  , label ="Full Lag Period - Bottom Scale" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #aax1.legend(loc='upper right', fontsize=12)
+
+        aax2.plot(tnew[:tindex], ac[:tindex], linewidth= 2.0, color='blue' , label ="Expanded Lag Period - Top Scale" , marker="o", markeredgecolor='blue'  , markersize=4.0)
+        #print "ac:", ac[:10]
+
+        plt.legend(loc='upper right', fontsize=12)
+
+        for a in aax1.get_xticklabels():
+            #a.set_color("red")
+            #a.set_weight("bold")
+            pass
+
+        for a in aax2.get_xticklabels():
+            #a.set_color("green")
+            a.set_color("blue")
+            a.set_weight("bold")
+
+# FFT plots
+    # calculations
+        # using amplitude spectrum, not power spectrum; power would be freq^2
+        freq                = np.abs(np.fft.rfft(sigt     ))
+        #freq2              = np.abs(np.fft.rfft(sigt2    ))
+        print "freq:"       , len(freq)     , "\n", freq
+        #for i in range(0,100):  print freq[i]
+
+        if use_window_functions:
+            freq_win        = np.abs(np.fft.rfft(sigt_win ))
+            #print "freq_win:"   , len(freq_win) , "\n", freq_win
+            #for i in range(0,100):  print freq_win[i]
+
+        f = np.fft.rfftfreq(t.size, d = cycletime)
+        #print "f:   len:", f.size, "\n", f
+
+        p  = np.reciprocal(f[1:])  # skipping 1st value frequency = 0
+        #print "Period: len:", p.size, "\n", p
+
+
+    # Plot FFT vs Time #########################################################
+        plt.subplot(2, 4, 2)
         plt.title("FFT Amplitude Spectrum vs. Time Period", fontsize=12, loc = 'left')
-        #plt.xlabel("Period ({})".format(timeunit), fontsize=13)
-        plt.xlabel("Period ({})".format(timeunit), fontsize=12)
-        #plt.ylabel("FFT Amplitude", fontsize=13)
+        plotSubTitle = "Recs:" + str(freq.size)
+        plt.title   (plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
+        plt.xlabel("time period ({})".format(timeunit), fontsize=12)
         plt.ylabel("FFT Amplitude", fontsize=12)
         plt.grid(True)
         plt.ticklabel_format(useOffset=False)
@@ -3371,13 +3685,426 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
         #plt.loglog(p, freq2[1:] -freq[1:]       , linewidth= 0.4, color='black'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
         #plt.loglog(p, freq_win[1:]    , linewidth= 0.4, color='black' , label ="FFT" , marker="o", markeredgecolor='black' , markersize=2.0)
 
-        # FFT vs Frequency ####################################################
-        plt.subplot(3,1,3)
-        #plt.title("FFT Amplitude Spectrum vs. Frequency", fontsize=13, loc = 'left')
+    # Plot FFT vs Frequency ####################################################
+        plt.subplot(2, 4, 6)
         plt.title("FFT Amplitude Spectrum vs. Frequency", fontsize=12, loc = 'left')
-        #plt.xlabel("Frequency ({})".format(frequencyunit), fontsize=13)
+        plotSubTitle = "Recs:" + str(freq.size)
+        plt.title   (plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
         plt.xlabel("Frequency ({})".format(frequencyunit), fontsize=12)
-        #plt.ylabel("FFT Amplitude", fontsize=13)
+        plt.ylabel("FFT Amplitude", fontsize=12)
+        plt.grid(True)
+        plt.ticklabel_format(useOffset=False)
+
+        plt.semilogy (f[1:], freq[1:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.plot (f[:], freq[:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq2[1:] -freq[1:]     , linewidth= 0.4, color='black'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq_win[1:] , linewidth= 0.4, color='black' , label ="FFT" , marker="o", markeredgecolor='black' , markersize=2.0)
+
+        #plt.legend(loc='upper left', fontsize=12)
+
+
+
+# convolution plots ####################################################
+
+        # rect for convolution - 60 vlaues of 1, followed by zeros
+        rect = np.zeros(sigt.size)
+        #rect = np.zeros(5000)
+        #for i in range(12):
+        for i in range(60):
+            rect[i] = 1
+        print "rect:", len(rect), rect
+
+    # Signal vs time
+        bf = range(rect.size)
+        bf = t[:rect.size]
+
+        plt.subplot (2, 4, 3)
+        plt.title   ("Rectangle", fontsize=12, loc = 'left')
+        plotSubTitle = "Recs:" + str(rect.size)
+        plt.title   (plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
+
+        #plt.xlabel  ("Frequency ({})".format(frequencyunit), fontsize=12)
+        #plt.ylabel  ("FFT Amplitude", fontsize=12)
+        plt.xlabel  ("time ({})".format(timeunit), fontsize=12)
+        plt.ylabel  ("Signal Value  ", fontsize=12)
+        plt.grid    (True)
+        plt.ticklabel_format(useOffset=False)
+        #plt.ylim    (0, 10)
+
+        #plt.semilogy (f[1:], freq[1:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.plot (f[:], bfreq[:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.plot (bf, csigt     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        plt.plot (bf, rect     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq2[1:] -freq[1:]     , linewidth= 0.4, color='black'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq_win[1:] , linewidth= 0.4, color='black' , label ="FFT" , marker="o", markeredgecolor='black' , markersize=2.0)
+
+        #plt.legend(loc='upper left', fontsize=12)
+
+
+    # FFT of Signal vs Frequency ####################################################
+
+        cfreq = np.abs(np.fft.rfft(rect     ))
+        print "cfreq:   len:", cfreq.size, "\n", cfreq
+
+        f = np.fft.rfftfreq(t.size, d = cycletime)
+        print "f:   len:", f.size, "\n", f
+
+        p  = np.reciprocal(f[1:])  # skipping 1st value frequency = 0
+        print "Period: len:", p.size, "\n", p
+
+        plt.subplot (2, 4, 7)
+        plt.title   ("FFT of Rectangle", fontsize=12, loc = 'left')
+        plotSubTitle = "Recs:" + str(cfreq.size)
+        plt.title   (plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
+        plt.xlabel  ("Frequency ({})".format(frequencyunit), fontsize=12)
+        plt.ylabel  ("FFT Amplitude", fontsize=12)
+        plt.grid    (True)
+        plt.ticklabel_format(useOffset=False)
+
+        #plt.semilogy (f[1:], freq[1:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.plot (f[:], bfreq[:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        plt.semilogy (f[1:], cfreq[1:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq2[1:] -freq[1:]     , linewidth= 0.4, color='black'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq_win[1:] , linewidth= 0.4, color='black' , label ="FFT" , marker="o", markeredgecolor='black' , markersize=2.0)
+
+        #plt.legend(loc='upper left', fontsize=12)
+
+
+# last columns
+    # upper
+
+
+        #csigt = scipy.signal.convolve(sigt, rect) / 60.
+        csigt = scipy.signal.convolve(rect, sigt ) / 12.
+        #csigt = csigt[60:len(sigt):5]
+        csigt = csigt[60:len(sigt) + 60]
+
+        print "csigt:", len(csigt), csigt
+
+
+        #ccfreq = cfreq[:freq.size] * freq[:cfreq.size]
+        #ccfreq = cfreq * freq
+
+        #bf = range(ccfreq.size)
+
+        plt.subplot (2, 4, 4)
+        plt.title   ("Convolution Count Rate * Rectangle", fontsize=12, loc = 'left')
+        plotSubTitle = "Recs:" + str(csigt.size)
+        plt.title   (plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
+
+        plt.xlabel  ("time ({})".format(timeunit), fontsize=12)
+        plt.ylabel  ("Signal Value", fontsize=12)
+        plt.grid    (True)
+        plt.ticklabel_format(useOffset=False)
+        #plt.ylim    (0, 10)
+
+        #plt.semilogy (f[1:], freq[1:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.plot (f[:], bfreq[:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.plot (bf, csigt     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        plt.plot (t, csigt     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq2[1:] -freq[1:]     , linewidth= 0.4, color='black'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq_win[1:] , linewidth= 0.4, color='black' , label ="FFT" , marker="o", markeredgecolor='black' , markersize=2.0)
+
+        #plt.legend(loc='upper left', fontsize=12)
+
+    # lower
+        ccfreq = cfreq * freq
+
+        plt.subplot (2, 4, 8)
+        plt.title   ("FFT of Convoluted Signal", fontsize=12, loc = 'left')
+        plotSubTitle = "Recs:" + str(cfreq.size)
+        plt.title   (plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
+        plt.xlabel  ("Frequency ({})".format(frequencyunit), fontsize=12)
+        plt.ylabel  ("FFT Amplitude", fontsize=12)
+        plt.grid    (True)
+        plt.ticklabel_format(useOffset=False)
+
+        #plt.semilogy (f[1:], freq[1:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.plot (f[:], bfreq[:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        plt.semilogy (f[1:], ccfreq[1:]     , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq2[1:] -freq[1:]     , linewidth= 0.4, color='black'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.semilogy (f[1:], freq_win[1:] , linewidth= 0.4, color='black' , label ="FFT" , marker="o", markeredgecolor='black' , markersize=2.0)
+
+        #plt.legend(loc='upper left', fontsize=12)
+
+
+
+# arrange sub plots
+        #plt.subplots_adjust(hspace=0.6, wspace=0.2, left=.06, top=0.95, bottom=0.085, right=.95)
+        #plt.subplots_adjust(hspace=0.3, wspace=0.2, left=.06, top=0.95, bottom=0.085, right=.95)
+        plt.subplots_adjust(hspace=0.4, wspace=0.2, left=.06, top=0.95, bottom=0.085, right=.95)
+
+# textboxes ################################################################
+        labout_left  = QtGui.QTextBrowser() # label to hold some data on left side
+        labout_left.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        labout_left.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
+        labout_left.setMinimumHeight(150)
+
+        #labout_left.append("{:22s}= {}"                             .format('File'               , os.path.basename(gglobs.currentFilePath)))
+        labout_left.append("{:22s}= {}"                             .format('File'               , DataSrc))
+        labout_left.append("{:22s}= {}"                             .format("No of Records"      , t.size))
+        labout_left.append("{:22s}= {:4.2f}"                        .format("Count Rate Average" , sigt_mean))
+        labout_left.append("{:22s}= {:4.2f} (Std.Dev:{:5.2f}, Std.Err:{:5.2f})"    .format("Count Rate Variance" , sigt_var, sigt_std, sigt_err))
+        labout_left.append("{:22s}= {:4.2f} sec (overall average)"  .format("Cycle Time"         , cycletime * 60.)) # t is in minutes
+        labout_left.append("{:22s}= {:4.2f} "                       .format("A.corr(lag=  0   sec)", ac[0]))
+        labout_left.append("{:22s}= {:4.2f} "                       .format("A.corr(lag={:5.1f} sec)".format(tnew[1] *60.), ac[1]))
+        labout_left.append("{:22s}= {:4.2f} "                       .format("A.corr(lag={:5.1f} sec)".format(tnew[2] *60.), ac[2]))
+        #labout_left.append("{:22s}= {:4.2f} "                       .format("Autoc(lag={:5.1f} sec)".format(tnew[3] *60.), ac[3]))
+
+        labout_right  = QtGui.QTextBrowser() # label to hold some data on right side
+        labout_right.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        labout_right.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
+        labout_right.setMinimumHeight(120)
+
+        fftmax      = np.max    (freq[1:])
+        fftmaxindex = np.argmax (freq[1:]) + 1
+        f_max       = f         [fftmaxindex ]
+
+        labout_right.append("{:22s}= {:4.0f}"              .format("FFT(f=0)"         , freq[0]) )
+        #labout_right.append("{:22s}= {:4.0f}"              .format("len(t)"         , len(t)) )
+        labout_right.append("{:22s}= {:4.2f} (= FFT(f=0)/No of Records)".format("Count Rate Average", freq[0] / len(t)) )
+        labout_right.append("{:22s}= {:4.2f}"              .format("Max FFT(f>0)"     , fftmax))
+        labout_right.append("{:22s}= {}"                   .format("  @ Index"        , fftmaxindex))
+        labout_right.append("{:22s}= {:4.4f}"              .format("  @ Frequency"    , f_max ))
+        try:
+            labout_right.append("{:22s}= {:4.4f}"              .format("  @ Period"       , p[fftmaxindex] ))
+        except:
+            labout_right.append("{:22s}= {:s}"              .format("  @ Period"       , "undefined" ))
+
+
+# Pop Up  #################################################################
+        d       = QtGui.QDialog()
+        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
+        d.setFont(self.fontstd)
+        d.setWindowTitle("FFT & Autocorrelation" + winTitleLabel)
+        #d.setMinimumHeight(gglobs.window_height)
+        #d.setWindowModality(QtCore.Qt.ApplicationModal)
+        #d.setWindowModality(QtCore.Qt.NonModal)
+        d.setWindowModality(QtCore.Qt.WindowModal)
+
+        bbox    = QtGui.QDialogButtonBox()
+        bbox.setStandardButtons(QtGui.QDialogButtonBox.Ok)
+        bbox.accepted.connect(lambda: d.done(0))
+
+        layoutH   = QtGui.QHBoxLayout()
+        layoutH.addWidget(labout_left)
+        layoutH.addWidget(labout_right)
+
+
+        layoutV   = QtGui.QVBoxLayout(d)
+        layoutV.addWidget(navtoolbar)
+        layoutV.addWidget(canvas3)
+        layoutV.addLayout(layoutH)
+        layoutV.addWidget(bbox)
+
+        fig3.canvas.draw_idle()
+        d.exec_()
+
+
+
+
+
+
+    def plotFFT(self, type = 'plot'):
+        """Plotting FFT and Autocorrelation
+        t       = time
+        sigt    = Signal in time domain, (CPM/CPS here)
+        freq    = Signal in frequency domain
+        """
+
+        if type == 'plot':              # use only data shown in the plot
+            #print "gglobs.logTimeDiffSlice:", len(gglobs.logTimeDiffSlice), "\n", gglobs.logTimeDiffSlice
+            #print "gglobs.logCPMSlice:", len(gglobs.logCPMSlice), "\n", gglobs.logCPMSlice
+            rawt    = gglobs.logTimeDiffSlice
+            rawsigt = gglobs.logCPMSlice
+            winTitleLabel = " (Data from Plot Only)"
+        else:                           # use all data of the file
+            #print "gglobs.logTimeDiff", len(), "\n", gglobs.logTimeDiff
+            #print "gglobs.logCPM", len(gglobs.logCPM), "\n", gglobs.logCPM
+            rawt    = gglobs.logTimeDiff
+            rawsigt = gglobs.logCPM
+            winTitleLabel = " (Data from complete File )"
+
+        if rawsigt is None:
+            self.showStatusMessage("No file available")
+            return
+
+        if rawt.size < 20:
+            self.showStatusMessage("Not enough data")
+            return
+
+        DataSrc = os.path.basename(gglobs.currentFilePath)
+
+        t    = rawt.copy()
+        sigt = rawsigt.copy()
+
+        # if CPS selected in Graph, treat sigt data as CPS
+        if self.yunit.currentText() == "CPS":
+            sigt /= 60.
+            yunit = "CPS"
+        else:
+            yunit = "CPM"
+
+
+####### Window functions ######################################################
+        # the only place to activate Window function is here
+        use_window_functions = False
+
+        if use_window_functions:
+            hamm    = np.hamming (len(t))
+            hann    = np.hanning (len(t))
+            black   = np.blackman(len(t))
+            # Kaiser:
+            # "A beta value of 14 is probably a good starting point"
+            # beta  Window shape
+            # 0     Rectangular
+            # 5     Similar to a Hamming
+            # 6     Similar to a Hanning
+            # 8.6   Similar to a Blackman
+            beta    = 5
+            kaiser  = np.kaiser(len(t), beta)
+
+            # Select one
+            #win     = hamm
+            #win     = hann
+            #win     = black
+            win     = kaiser
+
+            # When using window functions subtract the average in order to avoid
+            # spurious low-frequency peaks!
+            sigt   = sigt - np.mean(sigt)
+            #sigt2  = sigt - np.mean(sigt)
+
+            # Time domain signal with Window function applied
+            sigt_win = sigt * win
+###############################################################################
+
+        t               = t * 1440.0  # convert days to minutes
+        timeunit        = "minutes"
+        frequencyunit   = "1/minute"
+        cycletime       = (t[-1] - t[0]) / (t.size -1)  # in minutes
+
+        sigt_mean       = np.mean(sigt)
+        sigt_var        = np.var(sigt)
+        sigt_std        = np.std(sigt)
+        sigt_var        = np.var(sigt)
+        sigt_err        = sigt_std / np.sqrt(sigt.size)
+
+
+        # FFT calculation #####################################################
+        # using amplitude spectrum, not power spectrum; power would be freq^2
+        freq         = np.abs(np.fft.rfft(sigt     ))
+        #freq2        = np.abs(np.fft.rfft(sigt2    ))
+
+        if use_window_functions:
+            freq_win     = np.abs(np.fft.rfft(sigt_win ))
+
+        #print "t:    len:"       , len(t)        , "\n", t
+        #print "sigt: len:"       , len(sigt)     , "\n", sigt
+        #print "sigt_win:"   , len(sigt_win) , "\n", sigt_win
+        #print "freq:"       , len(freq)     , "\n", freq
+        #for i in range(0,100):  print freq[i]
+        #print "freq_win:"   , len(freq_win) , "\n", freq_win
+        #for i in range(0,100):  print freq_win[i]
+
+        f = np.fft.rfftfreq(t.size, d = cycletime)
+        #print "f:   len:", f.size, "\n", f
+
+        p  = np.reciprocal(f[1:])  # skipping 1st value frequency = 0
+        #print "Period: len:", p.size, "\n", p
+
+        asigt = sigt - sigt_mean
+        #print "np.mean(sigt) , np.var(sigt) :", np.mean(sigt),  np.var(sigt)
+        #print "np.mean(asigt), np.var(asigt):", np.mean(asigt), np.var(asigt)
+
+        asigtnorm = np.var(asigt) * asigt.size  # to normalize autocorrelation
+        ac = np.correlate(asigt, asigt, mode='full') / asigtnorm
+        ac = ac[ac.size/2:]
+        #print "ac: len:", ac.size
+        #print "ac:", "\n", ac
+
+
+# figure and canvas ###################################################
+        fig3 = plt.figure(3, facecolor = "#C9F9F0") # blueish tint
+        plt.clf()
+        # canvas - this is the Canvas Widget that displays the `figure`
+        # it takes the `figure` instance as a parameter to __init__
+        canvas3 = FigureCanvas(fig3)
+        canvas3.setFixedSize(1000, 550)
+        navtoolbar = NavigationToolbar(canvas3, self)
+
+# Data vs Time ################################################################
+        plt.subplot(2,2,1)
+        plt.title("Time Course", fontsize=12, loc = 'left')
+        #plotSubTitle = "Recs:" + str(gglobs.sizePlotSlice)
+        plotSubTitle = "Recs:" + str(sigt.size)
+        plt.title(plotSubTitle, fontsize=10, fontweight='normal', loc = 'right')
+        plt.xlabel("time ({})".format(timeunit), fontsize=12)
+        plt.ylabel("Count Rate  " + yunit, fontsize=12)
+        plt.grid(True)
+        plt.ticklabel_format(useOffset=False)
+
+        plt.plot(t, sigt        ,  linewidth=0.4, color='red'   , label ="Time Domain" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.plot(t, sigt_win    ,  linewidth=0.4, color='black' , label ="Time Domain" , marker="o", markeredgecolor='black' , markersize=2.0)
+
+# Autocorrelation vs Lag #########################################################
+        aax1 =  plt.subplot(2,2,3)
+
+        plt.title("Autocorrelation (normalized) vs. Lag Period", fontsize=12, loc = 'left', y = 1.08)
+        plt.xlabel("lag period ({})".format(timeunit), fontsize=12)
+        plt.ylabel("Autocorrelation", fontsize=12)
+        plt.grid(True)
+        #plt.ticklabel_format(useOffset=False)
+
+        aax2 = aax1.twiny()
+
+        # how many points to show enlarged?
+        for i in range(t.size):
+            if ac[i] < 0: break
+
+        tindex = min(i, t.size * 0.01)
+        tindex = max(25, tindex, 60./(cycletime * 60.))
+        tindex = int(tindex)  # Warning: ./geigerlog:3483: VisibleDeprecationWarning: using a non-integer number instead of an integer will result in an error in the future
+                              # aax2.plot(tnew[:tindex], ac[:tindex], linewidth= 2.0, color='blue' , label ="Expanded Lag Period - Top Scale" , marker="o", markeredgecolor='blue'  , markersize=4.0)
+                              # What is the reason ?????
+        #print "tindex:", tindex
+        #print "type(tindex):", type(tindex)
+
+        tnew = t - t[0]
+        aax1.plot(tnew,          ac         , linewidth= 0.4, color='red'  , label ="Full Lag Period - Bottom Scale" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #aax1.legend(loc='upper right', fontsize=12)
+
+        aax2.plot(tnew[:tindex], ac[:tindex], linewidth= 2.0, color='blue' , label ="Expanded Lag Period - Top Scale" , marker="o", markeredgecolor='blue'  , markersize=4.0)
+        #print "ac:", ac[:10]
+
+        plt.legend(loc='upper right', fontsize=12)
+
+        for a in aax1.get_xticklabels():
+            #a.set_color("red")
+            #a.set_weight("bold")
+            pass
+
+        for a in aax2.get_xticklabels():
+            #a.set_color("green")
+            a.set_color("blue")
+            a.set_weight("bold")
+
+# FFT vs Time #########################################################
+        plt.subplot(2,2,2)
+        plt.title("FFT Amplitude Spectrum vs. Time Period", fontsize=12, loc = 'left')
+        plt.xlabel("time period ({})".format(timeunit), fontsize=12)
+        plt.ylabel("FFT Amplitude", fontsize=12)
+        plt.grid(True)
+        plt.ticklabel_format(useOffset=False)
+
+        plt.loglog(p, freq[1:]        , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.loglog(p, freq2[1:] -freq[1:]       , linewidth= 0.4, color='black'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=2.0)
+        #plt.loglog(p, freq_win[1:]    , linewidth= 0.4, color='black' , label ="FFT" , marker="o", markeredgecolor='black' , markersize=2.0)
+
+# FFT vs Frequency ####################################################
+        plt.subplot(2,2,4)
+        plt.title("FFT Amplitude Spectrum vs. Frequency", fontsize=12, loc = 'left')
+        plt.xlabel("Frequency ({})".format(frequencyunit), fontsize=12)
         plt.ylabel("FFT Amplitude", fontsize=12)
         plt.grid(True)
         plt.ticklabel_format(useOffset=False)
@@ -3388,20 +4115,48 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
 
         #plt.legend(loc='upper left', fontsize=12)
 
-        # arrange sub plots
-        #plt.subplots_adjust(hspace=0.5, wspace=0., left=.15, top=0.95, bottom=0.08, right=.95)
-        plt.subplots_adjust(hspace=0.6, wspace=0., left=.15, top=0.95, bottom=0.085, right=.95)
+# arrange sub plots
+        #plt.subplots_adjust(hspace=0.6, wspace=0.2, left=.06, top=0.95, bottom=0.085, right=.95)
+        #plt.subplots_adjust(hspace=0.3, wspace=0.2, left=.06, top=0.95, bottom=0.085, right=.95)
+        plt.subplots_adjust(hspace=0.4, wspace=0.2, left=.06, top=0.95, bottom=0.085, right=.95)
 
-        # text ################################################################
-        labout  = QtGui.QTextBrowser() # label to hold some data
-        labout.setLineWrapMode(QtGui.QTextEdit.NoWrap)
-        labout.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
-        labout.setMinimumHeight(160)
+# textboxes ################################################################
+        labout_left  = QtGui.QTextBrowser() # label to hold some data on left side
+        labout_left.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        labout_left.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
+        labout_left.setMinimumHeight(150)
 
+        labout_left.append(u"{:22s}= {}"                             .format('File'               , DataSrc))
+        labout_left.append(u"{:22s}= {}"                             .format("No of Records"      , t.size))
+        labout_left.append(u"{:22s}= {:4.2f}"                        .format("Count Rate Average" , sigt_mean))
+        labout_left.append(u"{:22s}= {:4.2f} (Std.Dev:{:5.2f}, Std.Err:{:5.2f})"    .format("Count Rate Variance" , sigt_var, sigt_std, sigt_err))
+        labout_left.append(u"{:22s}= {:4.2f} sec (overall average)"  .format("Cycle Time"         , cycletime * 60.)) # t is in minutes
+        labout_left.append(u"{:22s}= {:4.2f} "                       .format("A.corr(lag=  0   sec)", ac[0]))
+        labout_left.append(u"{:22s}= {:4.2f} "                       .format("A.corr(lag={:5.1f} sec)".format(tnew[1] *60.), ac[1]))
+        labout_left.append(u"{:22s}= {:4.2f} "                       .format("A.corr(lag={:5.1f} sec)".format(tnew[2] *60.), ac[2]))
+
+        labout_right  = QtGui.QTextBrowser() # label to hold some data on right side
+        labout_right.setLineWrapMode(QtGui.QTextEdit.NoWrap)
+        labout_right.setTextInteractionFlags(QtCore.Qt.LinksAccessibleByMouse|QtCore.Qt.TextSelectableByMouse)
+        labout_right.setMinimumHeight(120)
+
+        fftmax      = np.max    (freq[1:])
+        fftmaxindex = np.argmax (freq[1:]) + 1
+        f_max       = f         [fftmaxindex ]
+
+        labout_right.append("{:22s}= {:4.0f}"              .format("FFT(f=0)"         , freq[0]) )
+        labout_right.append("{:22s}= {:4.2f} (= FFT(f=0)/No of Records)".format("Count Rate Average", freq[0] / len(t)) )
+        labout_right.append("{:22s}= {:4.2f}"              .format("Max FFT(f>0)"     , fftmax))
+        labout_right.append("{:22s}= {}"                   .format("  @ Index"        , fftmaxindex))
+        labout_right.append("{:22s}= {:4.4f}"              .format("  @ Frequency"    , f_max ))
+        labout_right.append("{:22s}= {:4.4f}"              .format("  @ Period"       , p[fftmaxindex] ))
+
+
+# Pop Up  #################################################################
         d       = QtGui.QDialog()
-        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(gglobs.sharePath + 'icon_geigerlog.png')))
+        d.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
         d.setFont(self.fontstd)
-        d.setWindowTitle("FFT")
+        d.setWindowTitle("FFT & Autocorrelation" + winTitleLabel)
         #d.setMinimumHeight(gglobs.window_height)
         #d.setWindowModality(QtCore.Qt.ApplicationModal)
         #d.setWindowModality(QtCore.Qt.NonModal)
@@ -3411,36 +4166,88 @@ A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf
         bbox.setStandardButtons(QtGui.QDialogButtonBox.Ok)
         bbox.accepted.connect(lambda: d.done(0))
 
+        layoutH   = QtGui.QHBoxLayout()
+        layoutH.addWidget(labout_left)
+        layoutH.addWidget(labout_right)
+
+
         layoutV   = QtGui.QVBoxLayout(d)
         layoutV.addWidget(navtoolbar)
         layoutV.addWidget(canvas3)
-        layoutV.addWidget(labout)
+        layoutV.addLayout(layoutH)
         layoutV.addWidget(bbox)
-
-        fftmax      = np.max    (freq[1:])
-        fftmaxindex = np.argmax (freq[1:]) + 1
-        f_max       = f         [fftmaxindex ]
-
-        labout.append("{:20s}= {}"                   .format('File'             , os.path.basename(gglobs.currentFilePath)))
-        labout.append("{:20s}= {}"                   .format("No of Records"    , len(t)))
-        labout.append("{:20s}= {:4.2f} sec"          .format("Cycle Time"       , cycletime * 60.)) # t is in minutes
-        labout.append("{:20s}= {:4.0f}"              .format("FFT(f=0)"         , freq[0]) )
-        labout.append("{:20s}= {:4.2f} (= FFT(f=0)/No of Records)".format("Average", freq[0] / len(t)) )
-        labout.append("{:20s}= {:4.2f}"              .format("Max FFT(f>0)"     , fftmax))
-        labout.append("{:20s}= {}"                   .format("  @ Index"        , fftmaxindex))
-        labout.append("{:20s}= {:4.4f}"              .format("  @ Frequency"    , f_max ))
-        labout.append("{:20s}= {:4.4f}"              .format("  @ Period"       , p[fftmaxindex] ))
 
         fig3.canvas.draw_idle()
         d.exec_()
 
 
-    def qbtntest(self):
+
+    def btnAlpha(self):
+        """Eval_plotFFT()"""
+
         #dprint(gglobs.debug, "qbtntest: turnHeartbeatOn:", gcommands.turnHeartbeatOn(gglobs.ser))
         #self.plotFFT(type = 'plot')
-        #self.selectUSB()
-        defineDevice(0)
+        #defineDevice(0)
+        #self.evalAutocorr()
+        self.Eval_plotFFT()
 
+
+    def btnBeta(self):
+        """createSyntheticLog()"""
+
+        self.createSyntheticLog()
+
+
+    def btnGamma(self):
+        """changeOptions()"""
+
+        self.changeOptions()
+
+
+    def evalAutocorr(self):
+        """rewriting a log file to avoid autocorrelation. Omitting all values
+        within last minute in CPM mode"""
+
+        dprint(gglobs.debug, u"evalAutocorr: Begin.")
+        debugIndent(1)
+
+        dlg=QtGui.QFileDialog(directory = gglobs.dataPath, caption= "Get Log File for evalAutocorr - select from existing")
+        dlg.setWindowIcon(QtGui.QIcon(QtGui.QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png'))))
+        dlg.setFileMode(QtGui.QFileDialog.ExistingFile)
+        dlg.setViewMode(QtGui.QFileDialog.Detail)
+        dlg.setFilter("Logging Files (*.log)")
+
+        if dlg.exec_() == QtGui.QDialog.Accepted: # (=1)
+            fnames  = dlg.selectedFiles()
+            fn      = unicode(fnames[0])
+            ext     = os.path.splitext(fn)[1]
+            if ext != ".log":  fn += ".log"      # forces the ".log" extension
+
+        else: # QtGui.QDialog.Rejected (= 0)
+            debugIndent(0)
+            dprint(gglobs.debug, u"evalAutocorr: Done. (FileDialog Cancel)")
+            return
+
+        # rewriting a log file to avoid autocorrelation
+
+        cdata = readFileLines(fn)
+        dprint(gglobs.debug, "file: len:", len(cdata), fn)
+
+        writeFileW(fn + ".short.log", "")
+        lasttime = 0
+        for a in cdata:
+            if a[0] == "#":
+                writeFileA(fn + ".short.log", a[:-1])
+            else:
+                newtime = datestr2num(a[8:27])
+                if newtime - lasttime >= 60:
+                    writeFileA(fn + ".short.log", a[:-1])
+                    lasttime = newtime
+                else:
+                    pass
+
+        debugIndent(0)
+        dprint(gglobs.debug, u"evalAutocorr: Done.")
 
 
 ######## class ggeiger ends ###################################################
@@ -3457,17 +4264,35 @@ def defineDevice(index):
     if gglobs.calibrationMode == 'fixed':
         oldcal = gglobs.calibration
 
-    if   index == 0:                                    #u"GMC-300E Plus v4.20"
+    if gglobs.device == u"GMC-300":
+        #######################################################################
+        # the "GMC-300" delivers the requested page after ANDing with 0fff
+        # hence when you request 4k (=1000hex) you get zero
+        # therefore use pagesize 2k only
+        #######################################################################
+        gglobs.memory               = 2**16
+        gglobs.page                 = 2048
+        gglobs.cleanPipelineFlag    = False
+        gglobs.calibration          = 0.0065
+
+
+    elif gglobs.device == u"GMC-300E+":
+        #######################################################################
+        # when using a page of 4k, you need the datalength workaround in
+        # gcommand
+        #######################################################################
         gglobs.memory               = 2**16
         gglobs.page                 = 4096
         gglobs.cleanPipelineFlag    = False
         gglobs.calibration          = 0.0065
 
-    elif index == 1:                                    #u"GMC-320"
+
+    elif gglobs.device == u"GMC-320":
         #######################################################################
         # make sure there are no extra bytes in pipeline, before reading history!
         # may not be relevant for GMC 320, future will tell
         # gglobs.cleanPipelineFlag    = True
+        # future tells: no, not necessary on 320
         # use:   extra = gcommands.getExtraByte(gglobs.ser)
         #######################################################################
         gglobs.memory               = 2**20
@@ -3475,7 +4300,22 @@ def defineDevice(index):
         gglobs.cleanPipelineFlag    = False
         gglobs.calibration          = 0.0065
 
-    elif index == 2:                                    #u"GMC-500"
+
+    elif gglobs.device == u"GMC-320+":
+        #######################################################################
+        # make sure there are no extra bytes in pipeline, before reading history!
+        # may not be relevant for GMC 320, future will tell
+        # gglobs.cleanPipelineFlag    = True
+        # future tells: no, not necessary on 320
+        # use:   extra = gcommands.getExtraByte(gglobs.ser)
+        #######################################################################
+        gglobs.memory               = 2**20
+        gglobs.page                 = 4096
+        gglobs.cleanPipelineFlag    = False
+        gglobs.calibration          = 0.0065
+
+
+    elif gglobs.device == u"GMC-500":
         #######################################################################
         # make sure there are no extra bytes in pipeline, before reading history!
         # gglobs.cleanPipelineFlag    = True
@@ -3488,21 +4328,61 @@ def defineDevice(index):
         gglobs.cleanPipelineFlag    = True
         gglobs.calibration          = 0.0065
 
-    elif index == 3:                                    #u"GMC-300 v3.20"
+
+    elif gglobs.device == u"GMC-500+":
         #######################################################################
-        # the "GMC-300 v3.20" delivers the requested page after ANDing with 0fff
-        # hence when you request 4k (=1000hex) you get zero
-        # therefore use pagesize 2k only
+        # make sure there are no extra bytes in pipeline, before reading history!
+        # gglobs.cleanPipelineFlag    = True
+        # use:    extra = gcommands.getExtraByte(gglobs.ser)
         #######################################################################
-        gglobs.memory               = 2**16
-        gglobs.page                 = 2048
-        gglobs.cleanPipelineFlag    = False
+        gglobs.memory               = 2**20
+        #gglobs.page                 = 4096  # es werden nur 4095 bytes rückgegeben
+                                             # ist bug jetzt behoben oder auf altem Stand???
+        gglobs.page                 = 2048   # Workaround erstmal auf 2048 bytes
+        gglobs.cleanPipelineFlag    = True
+        gglobs.calibration          = 0.0065 # needs different calibration??????
+
+
+    elif gglobs.device == u"GMC-600":
+        #######################################################################
+        # make sure there are no extra bytes in pipeline, before reading history!
+        # gglobs.cleanPipelineFlag    = True
+        # use:    extra = gcommands.getExtraByte(gglobs.ser)
+        #######################################################################
+        gglobs.memory               = 2**20
+        #gglobs.page                 = 4096  # es werden nur 4095 bytes rückgegeben
+                                             # ist bug jetzt behoben oder auf altem Stand???
+        gglobs.page                 = 2048   # Workaround erstmal auf 2048 bytes
+        gglobs.cleanPipelineFlag    = True
         gglobs.calibration          = 0.0065
 
-    else:                                               #fallback; should never be reached
+
+    elif gglobs.device == u"GMC-600+":
+        #######################################################################
+        # make sure there are no extra bytes in pipeline, before reading history!
+        # gglobs.cleanPipelineFlag    = True
+        # use:    extra = gcommands.getExtraByte(gglobs.ser)
+        # Amazon:   https://www.amazon.de/gmc-600-Plus-Geiger-Counter-Detektor-Dosimeter/dp/B077V7QSHP
+        #           Hohe Empfindlichkeit Pancake Geiger Röhre LND 7317 installiert
+        # LND 7317: https://shop.kithub.cc/products/pancake-geiger-mueller-tube-lnd-7317
+        #           Gamma sensitivity Co60 (cps/mr/hr) 58
+        # SBM20 :   http://www.gstube.com/data/2398/
+        #           Gamma Sensitivity Ra226 (cps/mR/hr) : 29
+        #           Gamma Sensitivity Co60 (cps/mR/hr) : 22
+        #######################################################################
+        gglobs.memory               = 2**20
+        #gglobs.page                 = 4096  # es werden nur 4095 bytes rückgegeben
+                                             # ist bug jetzt behoben oder auf altem Stand???
+        gglobs.page                 = 2048   # Workaround erstmal auf 2048 bytes
+        gglobs.cleanPipelineFlag    = True
+        # re calib: see user Kaban here: http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=4948
+        gglobs.calibration          = 0.002637
+
+
+    else:                                    #fallback; should never be reached
         dprint(True, "in defineDevice(): reached fallback position - PROGRAMMING ERROR!")
         gglobs.memory               = 2**16
-        gglobs.page                 = 4096
+        gglobs.page                 = 2048
         gglobs.cleanPipelineFlag    = False
         gglobs.calibration          = 0.0065
 
@@ -3519,154 +4399,246 @@ def readGeigerConfig():
     """reading the configuration file, return if not available.
     Not-available or illegal options are being ignored with only a debug message"""
 
-    cfg_file = getProgPath() + '/geigerlog.cfg'
+    dprint(gglobs.debug, "readGeigerConfig: Begin. Using config file:", gglobs.configPath)
+    debugIndent(1)
 
-    if not os.path.isfile(cfg_file): # does the config file exist?
-        dprint(gglobs.debug, "WARNING: Configuration file '{}' does not exist".format(cfg_file))
-        return
+    while True:
+        if not os.path.isfile(gglobs.configPath): # does the config file exist?
+            dprint(True, "WARNING: Configuration file '{}' does not exist. Continuing with default values.".format(gglobs.configPath))
+            #return
+            break
 
-    try:
-        config = ConfigParser.ConfigParser()
-        config.readfp(open(cfg_file))
-        dprint(gglobs.debug, "Configuration file '{}' was read".format(cfg_file))
-    except:
-        dprint(True, "WARNING: Configuration file '{}' exists, but cannot be read".format(cfg_file))
-        return
+        try:
+            config = ConfigParser.ConfigParser()
+            config.readfp(open(gglobs.configPath))
+        except:
+            dprint(True, "WARNING: Configuration file '{}' exists, but cannot be read. Continuing with default values.".format(gglobs.configPath))
+            dprint(True, "WARNING: Error message:", str(sys.exc_info()))
+            #return
+            break
 
-# Serial Port
-    try:
-        gglobs.usbport = config.get("Serial Port", "port")
-    except:
-        dprint(True, "WARNING: Config port not available")
+    # Serial Port
+        try:
+            gglobs.usbport = config.get("Serial Port", "port")
+            dprint(gglobs.debug, "INFO: Using port: ", gglobs.usbport)
+        except:
+            dprint(True, "WARNING: Config port not available")
 
-    try:
-        b = config.getint("Serial Port", "baudrate")
-        if b in gglobs.baudrates:
-            gglobs.baudrate = b
-    except:
-        dprint(True, "WARNING: Config baudrate not available")
+        try:
+            b = config.getint("Serial Port", "baudrate")
+            if b in gglobs.baudrates:
+                gglobs.baudrate = b
+            dprint(gglobs.debug, "INFO: Using baudrate: ", gglobs.baudrate)
+        except:
+            dprint(True, "WARNING: Config baudrate not available")
 
-    try:
-        t = config.getfloat("Serial Port", "timeout")
-        if t >= 0:
-            gglobs.timeout = t
-    except:
-        dprint(True, "WARNING: Config timeout not available")
+        try:
+            t = config.getfloat("Serial Port", "timeout")
+            if t >= 0:
+                gglobs.timeout = t
+            dprint(gglobs.debug, "INFO: Using timeout: {} sec ".format(gglobs.timeout))
+        except:
+            dprint(True, "WARNING: Config timeout not available")
 
-    try:
-        t = config.get("Serial Port", "ttyS")
-        if t.upper() == 'INCLUDE':
-            gglobs.ttyS = 'include'
-        else:
-            gglobs.ttys = 'ignore'
-    except:
-        dprint(True, "WARNING: Config ttyS not available")
-
-# Device active
-    try:
-        t = int(config.get("Device", "active_device"))
-        if t >= 0 and t <= 3:
-            gglobs.devicesIndex = t
-        else:
-            gglobs.devicesIndex = 0
-    except:
-        gglobs.devicesIndex = 0
-        dprint(True, "WARNING: Config active device not available; using default")
-    gglobs.device = gglobs.devices[gglobs.devicesIndex]
-
-    defineDevice(gglobs.devicesIndex)
-
-# Device memory
-    try:
-        t = config.get("Device", "memory")
-        if t.upper() == '1MB':
-            gglobs.memory     = 2**20
-            gglobs.memoryMode = 'fixed'
-
-        elif t.upper() == '64KB':
-            gglobs.memory     = 2**16
-            gglobs.memoryMode = 'fixed'
-
-        else:                               # auto
-            gglobs.memoryMode = 'auto'
-    except:
-        dprint(True, "WARNING: Config memory not available")
-
-# Device calibration
-    try:
-        t = config.get("Device", "calibration")
-        if t.upper() == 'AUTO':
-            gglobs.calibration      = 0.0065
-            gglobs.calibrationMode = 'auto'
-        else:
-            if float(t) > 0:
-                gglobs.calibration      = float(t)
-                gglobs.calibrationMode = 'fixed'
+        try:
+            t = config.get("Serial Port", "ttyS")
+            if t.upper() == 'INCLUDE':
+                gglobs.ttyS = 'include'
             else:
+                gglobs.ttys = 'ignore'
+            dprint(gglobs.debug, "INFO: Ports of ttyS type: ", gglobs.ttys)
+        except:
+            dprint(True, "WARNING: Config ttyS not available")
+
+    # Device active
+        try:
+            t = config.get("Device", "active_device")
+            #print "readGeigerConfig: Device active: ", t
+            if t in gglobs.devices:
+                gglobs.devicesIndex = gglobs.devices.index(t)
+                #print "gglobs.devicesIndex:", gglobs.devicesIndex
+            else:
+                gglobs.devicesIndex = gglobs.devicesIndexDefault
+                #print "gglobs.devicesIndex: Default:", gglobs.devicesIndex
+                dprint(True, "WARNING: Config active device improperly defined; using default device:", gglobs.devices[gglobs.devicesIndex])
+
+            gglobs.device = gglobs.devices[gglobs.devicesIndex]
+            dprint(gglobs.debug, "INFO: Preselected Active Device is: ", gglobs.device)
+        except:
+            gglobs.devicesIndex = gglobs.devicesIndexDefault
+            gglobs.device = gglobs.devices[gglobs.devicesIndex]
+            dprint(True, "WARNING: Config active device not available; using default device:", gglobs.device)
+
+        defineDevice(gglobs.devicesIndex)
+
+    # Device memory
+        try:
+            t = config.get("Device", "memory")
+            if t.upper() == '1MB':
+                gglobs.memory     = 2**20
+                gglobs.memoryMode = 'fixed'
+
+            elif t.upper() == '64KB':
+                gglobs.memory     = 2**16
+                gglobs.memoryMode = 'fixed'
+
+            else:                               # auto
+                gglobs.memoryMode = 'auto'
+            dprint(gglobs.debug, "INFO: Memory is: {}, Memory mode is: {}".format(gglobs.memory, gglobs.memoryMode))
+        except:
+            dprint(True, "WARNING: Config memory not available")
+
+    # Device calibration
+        try:
+            t = config.get("Device", "calibration")
+            if t.upper() == 'AUTO':
                 gglobs.calibration      = 0.0065
                 gglobs.calibrationMode = 'auto'
-    except:
-        dprint(True, "WARNING: Config calibration not available")
-
-# Logging
-    try:
-        t = config.getfloat("Logging", "logcycle")
-        if t >= 0.1:
-            gglobs.logcycle = t
-    except:
-        dprint(True, "WARNING: Config logcycle not available")
-
-# Graphic
-    try:
-        t = config.getfloat("Graphic", "mav_initial")
-        if t >= 1:
-            gglobs.mav_initial = t
-    except:
-        dprint(True, "WARNING: Config mav_initial not available")
-
-# Window
-    try:
-        w = config.getint("Window", "width")
-        h = config.getint("Window", "height")
-        if w > 500 and w < 5000 and h > 100 and h < 5000:
-            gglobs.window_width  = w
-            gglobs.window_height = h
-        else:
-            dprint(True, "WARNING: Config Window dimension ignored")
-    except:
-        dprint(True, "WARNING: Config Window dimension not available")
-
-# Manual
-    try:
-        fn = config.get("Manual", "manual_name")
-        if fn.upper() != 'AUTO' and fn > '':
-            manual_file = getProgPath() + "/" + fn
-            #print "readGeigerConfig manual_file:", manual_file
-            if os.path.isfile(manual_file): # does the config file exist?
-                # it exists
-                gglobs.manual_filename = fn
             else:
-                # it does not exist
+                if float(t) > 0:
+                    gglobs.calibration      = float(t)
+                    gglobs.calibrationMode = 'fixed'
+                else:
+                    gglobs.calibration      = 0.0065
+                    gglobs.calibrationMode = 'auto'
+            dprint(gglobs.debug, "INFO: Calibration is: {}, Calibration mode is: {}".format(gglobs.calibration, gglobs.calibrationMode))
+        except:
+            dprint(True, "WARNING: Config calibration not available")
+
+    # Folder data
+        errmsg = "glaub ich nicht"
+        try:
+            t = config.get("Folder", "data")
+            #print "gglobs.dataPath:", gglobs.dataPath
+            #print "t:", t
+            if t == "":
+                pass    # no change to default
+            else:
+                if os.path.isabs(t):  # is absolute path?
+                    testpath = t
+                else:
+                    testpath = gglobs.dataPath + "/" + t
+
+                #
+                # Make sure that data directory exists; create it if needed
+                # ignore if it cannot be made or is not writable
+                #
+                if os.access(testpath , os.F_OK):
+                    # dir exists, ok
+                    if not os.access(testpath , os.W_OK):
+                        # dir exists, but is not writable
+                        errmsg = "Configured data directory '{}' exists, but is not writable".format(testpath)
+                        raise NameError
+                    else:
+                        # dir exists and is writable
+                        gglobs.dataPath = testpath
+                else:
+                    # dir does not exist; make it
+                    try:
+                        os.mkdir(testpath)
+                        gglobs.dataPath = testpath
+                    except:
+                        # dir cannot be made
+                        errmsg = "Could not make configured data directory '{}'".format(testpath)
+                        raise NameError
+
+            dprint(gglobs.debug, "INFO: Data directory is: {}".format(gglobs.dataPath))
+        except:
+            dprint(True, "WARNING: " + errmsg)
+
+    # Logging
+        try:
+            t = config.getfloat("Logging", "logcycle")
+            if t >= 0.1:
+                gglobs.logcycle = t
+            dprint(gglobs.debug, "INFO: Logcycle is: {} sec".format(gglobs.logcycle))
+        except:
+            dprint(True, "WARNING: Config logcycle not available")
+
+    # Graphic
+        try:
+            t = config.getfloat("Graphic", "mav_initial")
+            if t >= 1:
+                gglobs.mav_initial = t
+            dprint(gglobs.debug, "INFO: Moving Average is: {} sec".format(gglobs.mav_initial))
+        except:
+            dprint(True, "WARNING: Config mav_initial not available")
+
+    # Plotstyle
+        try:
+            g1 = config.get("Plotstyle", "linestyle")
+            g2 = config.get("Plotstyle", "linecolor")
+            g3 = config.get("Plotstyle", "linewidth")
+            g4 = config.get("Plotstyle", "markerstyle")
+            g5 = config.get("Plotstyle", "markersize")
+            gglobs.linestyle           = g1
+            gglobs.linecolor           = g2
+            gglobs.linewidth           = g3
+            gglobs.markerstyle         = g4
+            gglobs.markersize          = g5
+
+        except:
+            dprint(True, "WARNING: Could not recognize all plot style settings")
+
+    # Window
+        try:
+            w = config.getint("Window", "width")
+            h = config.getint("Window", "height")
+            if w > 500 and w < 5000 and h > 100 and h < 5000:
+                gglobs.window_width  = w
+                gglobs.window_height = h
+                dprint(gglobs.debug, "INFO: Window dimensions are: {} x {} pixel".format(gglobs.window_width, gglobs.window_height))
+            else:
+                dprint(True, "WARNING: Config Window dimension out-of-bound; ignored: {} x {} pixel".format(gglobs.window_width, gglobs.window_height))
+        except:
+            dprint(True, "WARNING: Config Window dimension not available")
+
+    # Window size
+        try:
+            t = config.get("Window", "size")
+            if t.upper() == 'MAXIMIZED':
+                gglobs.window_size = 'maximized'
+            else:
+                gglobs.window_size = None
+            dprint(gglobs.debug, "INFO: Window Size is: {}".format( t))
+        except:
+            dprint(True, "WARNING: Window size not available")
+
+    # Manual
+        try:
+            fn = config.get("Manual", "manual_name")
+            if fn.upper() != 'AUTO' and fn > '':
+                manual_file = getProgPath() + "/" + fn
+                #print "readGeigerConfig manual_file:", manual_file
+                if os.path.isfile(manual_file): # does the config file exist?
+                    # it exists
+                    gglobs.manual_filename = fn
+                    dprint(gglobs.debug, "INFO: Manual file is: '{}'".format( fn))
+                else:
+                    # it does not exist
+                    gglobs.manual_filename = None
+                    dprint(gglobs.debug, "WARNING: Manual file '{}' does not exist".format(fn))
+            else:   # entry == auto or no entry
                 gglobs.manual_filename = None
-                dprint(gglobs.debug, "WARNING: Manual file '{}' does not exist".format(fn))
+                dprint(gglobs.debug, "INFO: Manual file is set to auto or is undefined; it will be searched for")
+        except:
+            dprint(True, "WARNING: Config for manual file not available")
 
-        else:   # entry == auto or no entry
-            gglobs.manual_filename = None
-            dprint(gglobs.debug, "INFO: Manual file is set to auto or undefined; it will be searched for")
+    # Style
+        #try:
+        #    t = config.get("Style", "style")
+        #    s = [a.upper() for a in ('Breeze',  "Cleanlooks", "Windows", "Plastique")]
+        #    if t.upper() in s :
+        #        gglobs.style = t
+        #    else:
+        #        gglobs.style = None
+        #except:
+        #    dprint(True, "Config style not available")
 
-    except:
-        dprint(True, "WARNING: Config for manual file not available")
+        break
 
-# Style
-    #try:
-    #    t = config.get("Style", "style")
-    #    s = [a.upper() for a in ('Breeze',  "Cleanlooks", "Windows", "Plastique")]
-    #    if t.upper() in s :
-    #        gglobs.style = t
-    #    else:
-    #        gglobs.style = None
-    #except:
-    #    dprint(True, "Config style not available")
+    debugIndent(0)
+    dprint(gglobs.debug, "readGeigerConfig: Done.")
 
 
 def strFontInfo(origin, fi):
@@ -3684,16 +4656,27 @@ def version_status():
     gglobs.python_version = sys.version.replace('\n', "")
 
     #https://wiki.python.org/moin/PyQt/Getting%20the%20version%20numbers%20of%20Qt%2C%20SIP%20and%20PyQt
-    from PyQt4.QtCore import QT_VERSION_STR
-    from PyQt4.Qt import PYQT_VERSION_STR
-    from sip import SIP_VERSION_STR
-    import serial
+    from PyQt4.QtCore   import QT_VERSION_STR
+    from PyQt4.Qt       import PYQT_VERSION_STR
+    from sip            import SIP_VERSION_STR
 
+# scipy
     try:
         import scipy
         scipy_version = scipy.__version__
     except:
         scipy_version = "module not available"
+
+# serial
+    serial_version = "Version not available, see log for details" # to be replaced
+    try:
+        serial_version = serial.__version__
+    except:
+        dprint(True, "ERROR in serial.__version__:" + str(sys.exc_info()))
+        try:
+            serial_version = serial.VERSION
+        except:
+            dprint(True, "ERROR in serial.VERSION :" + str(sys.exc_info()))
 
     version_status = []
     version_status.append([u"GeigerLog",    "{}".format(gglobs.__version__)])
@@ -3703,7 +4686,7 @@ def version_status():
     version_status.append([u"Qt version",   "{}".format(QT_VERSION_STR)])
     version_status.append([u"SIP version",  "{}".format(SIP_VERSION_STR)])
     version_status.append([u"PyQt version", "{}".format(PYQT_VERSION_STR)])
-    version_status.append([u"pyserial",     "{}".format(serial.__version__)])
+    version_status.append([u"pyserial",     "{}".format(serial_version)])
     version_status.append([u"scipy",        "{}".format(scipy_version)])
 
     return version_status
@@ -3712,21 +4695,24 @@ def version_status():
 def main():
     global usage, app, media, styles
 
-    # set the directories, needed if not started from working directory!
-    gglobs.sharePath = getIconPath(gglobs.shareDirectory)
-    gglobs.dataPath  = getDataPath(gglobs.dataDirectory)
-    vprint(gglobs.verbose, "gglobs.sharePath:",          gglobs.sharePath)
-    vprint(gglobs.verbose, "gglobs.dataPath:",           gglobs.dataPath)
+    # set directories and file names
+    gglobs.progName     = getProgName()
+    gglobs.progPath     = getProgPath()
+    gglobs.gresPath     = getGresPath()
+    gglobs.dataPath     = getDataPath()
+    gglobs.proglogPath  = getProglogPath()
+    gglobs.plogPath     = getPlogPath()
+    gglobs.configPath   = getConfigPath()
 
     #
     # Make sure that data directory exists; create it if needed
-    # exit if it cannot be made
+    # exit if it cannot be made or is not writable
     #
     if os.access(gglobs.dataPath , os.F_OK):
         # dir exists, ok
         if not os.access(gglobs.dataPath , os.W_OK):
             # dir exists, but is not writable
-            print "ERROR: main: Data directory '" + gglobs.dataDirectory + "' exists, but is not writable"
+            print "ERROR: main: Data directory '{}' exists, but is not writable".format(gglobs.dataDirectory)
             return 1
     else:
         # dir does not exist; make it
@@ -3734,117 +4720,88 @@ def main():
             os.mkdir(gglobs.dataPath )
         except:
             # dir cannot be made
-            print "ERROR: main: could not make data directory " + gglobs.dataDirectory
+            print "ERROR: main: Could not make data directory '{}'".format(gglobs.dataDirectory)
             return 1
-
-    clearProgramLogFile() #clear the program log file 'geigerlog.proglog'
-
-    usage = """
-Usage:  geigerlog [Options] [Commands]
-
-By default, data files will be read-from/written-to the
-data directory "data", a subdirectory to the program
-directory
-
-Options:
-    -h, --help          Show this help and exit
-    -d, --debug         Run with printing debug info
-                        Default is debug = False
-    -v, --verbose       Be more verbose
-                        Default is verbose = False
-    -V, --Version       Show version status and exit
-    -p, --port name     Sets the USB-Port to name
-                        Default is name = /dev/geiger
-    -b, --baudrate N    Sets the baudrate to N
-                        Default is N = 57600
-        -style name     Sets the style; see
-                        Commands showstyles
-                        Default is set by your system
-
-Commands:
-    showstyles          Show a list of styles avail-
-                        able on your system and exit.
-                        For usage details see manual
-    keepFF              Keeps all hexadecimal FF
-                        (Decimal 255) values as a
-                        real value and not an 'Empty'
-                        one. See manual in chapter
-                        on parsing strategy
-
-To watch debug and verbose output start the program
-from the command line in a terminal. The output will
-print to the terminal.
-"""
 
     #
     # parse command line options
-    #
     # sys.argv[0] is progname
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hdvVp:b:s:", ["help", "debug", "verbose", "Version", "port=", "baudrate=", "style="])
-
-        # processing the options
-        for opt, optval in opts:
-            if opt in ("-h", "--help"):
-                print usage
-                return
-
-            elif opt in ("-d", "--debug"):
-                gglobs.debug = True
-
-            elif opt in ("-v", "--verbose"):
-                gglobs.verbose = True
-
-            elif opt in ("-V", "--Version"):
-                print "Version status:"
-                for a in version_status():
-                    print "   {:13s}: {}".format(a[0], a[1])
-                return
-
-        dprint(True, stime())
-        vs = ""
-        for a in version_status():
-            vs += "{}: {},  ".format(a[0], a[1])
-        dprint(True, "Version status:", vs)
-        dprint(gglobs.debug,"Startup: sys.argv:", sys.argv, ", options:", opts, ", commands:", args)
-
-        for arg in args:
-            if arg in ("showstyles"):
-                print "Styles found on system: "
-                for a in QtGui.QStyleFactory.keys(): print "   " + a
-                print "See configuration file geigerlog.cfg, section [Style] for details"
-                return
-
-            if arg in ("keepFF"):
-                gglobs.keepFF = True
-
-            if arg in ("test"):
-                gglobs.test = True
-
-            if arg in ("fullhist"):
-                gglobs.fullhist = True
-
-        # commands need debug state and must be processed before command line
-        # options, as latter are allowed to override config options
-        readGeigerConfig()                       # reads the configuration file
-
-        # processing the remaining options;; will overwrite any setting in config
-        for opt, optval in opts:
-            if opt in ("-p", "--port"):
-                gglobs.usbport = optval
-
-            elif opt in ("-b", "--baudrate"):
-                gglobs.baudrate = optval
-
-            elif opt in ("-s", "--style"):
-                gglobs.style = optval
-
-
+        opts, args = getopt.getopt(sys.argv[1:], "hdvRVp:b:s:", ["help", "debug", "verbose", "Redirect", "Version", "port=", "baudrate=", "style="])
     except getopt.GetoptError as errmessage :
         # print info like "option -a not recognized", then continue
-        dprint(True, "ERROR: " + str(errmessage) + ",", "use './geigerlog -h' for help" )
+        dprint(True, "ERROR: '{}', use './geigerlog -h' for help".format(errmessage) )
+        return 1
 
-    dprint(gglobs.debug, "Current Device is:", unicode(gglobs.device))
+    # processing the options
+    for opt, optval in opts:
+        if opt in ("-h", "--help"):
+            print usage
+            return
+
+        elif opt in ("-d", "--debug"):
+            gglobs.debug = True
+
+        elif opt in ("-v", "--verbose"):
+            gglobs.verbose = True
+
+        elif opt in ("-R", "--Redirect"):
+            gglobs.redirect = True
+
+        elif opt in ("-V", "--Version"):
+            print "Version status:"
+            for a in version_status():
+                print "   {:13s}: {}".format(a[0], a[1])
+            return
+
+    # processing the args
+    for arg in args:
+        if arg == "showstyles":
+            print "Styles found on system: "
+            for a in QtGui.QStyleFactory.keys(): print "   " + a
+            print "See configuration file geigerlog.cfg, section [Style] for details"
+            return
+
+        if arg == "keepFF":
+            gglobs.keepFF   = True
+
+        if arg == "devel":
+            gglobs.devel    = True
+
+        if arg == "fullhist":
+            gglobs.fullhist = True
+
+    clearProgramLogFile() #clear and initialize the program log file 'geigerlog.proglog'
+
+    dprint(gglobs.debug, u"Startup:    sys.argv: {}".format(sys.argv))
+    dprint(gglobs.debug, u"Recognized: options:  {}, commands:{}".format(opts, args))
+    dprint(gglobs.debug, u"Operating System: {}".format(platform.platform()))
+    dprint(gglobs.debug, u"Machine: {}, {}".format(platform.machine(), platform.architecture()[0]))
+    vs = ""
+    for a in version_status(): vs += "{}: {},  ".format(a[0], a[1])
+    dprint(True, "Version status:", vs)
+
+    vprint(gglobs.verbose, "progName:     " + gglobs.progName)
+    vprint(gglobs.verbose, "progPath:     " + gglobs.progPath)
+    vprint(gglobs.verbose, "dataPath:     " + gglobs.dataPath)
+    vprint(gglobs.verbose, "gresPath:     " + gglobs.gresPath)
+    vprint(gglobs.verbose, "proglogPath:  " + gglobs.proglogPath)
+    vprint(gglobs.verbose, "configPath:   " + gglobs.configPath)
+
+    """
+    Phonon:
+    Phonon searches the backend in a certain place!
+    The backend needs to be in the subdirectory "/phonon_backend/" of the qt library paths
+    (find out with: QCoreApplication::libraryPaths();)
+    so my solution was to put the backend-files from the "qt/plugins/phonon_backend/"-folder into
+    the folder in which I executed the programm - but in the subdirectory "/phonon_backend/"
+    NOTE: did not work!
+    """
+    if len(QtCore.QCoreApplication.libraryPaths()) == 0:
+        vprint(gglobs.verbose, "QCoreApplication.libraryPaths():", "No Library Paths")
+    else:
+        for a in QtCore.QCoreApplication.libraryPaths():
+            vprint(gglobs.verbose, "QCoreApplication.libraryPaths():", a)
 
     #
     # Styles:
@@ -3870,9 +4827,15 @@ print to the terminal.
 
     styles = []
     for a in QtGui.QStyleFactory.keys(): styles.append(str(a))
-    dprint(gglobs.debug, "Styles found on system: ", styles)
+    vprint(gglobs.verbose, "Style: found on system: ", styles)
 
+    # Start the GUI
     app = QtGui.QApplication(sys.argv)
+    # This makes the program name 'geigerlog' to the application name
+    #print "get Application Name:", app.applicationName()
+    # setting to desired name
+    app.setApplicationName("GeigerLog")
+    #print "get Application Name:", app.applicationName()
 
     # sets the style
     if gglobs.style != None:
@@ -3891,41 +4854,57 @@ print to the terminal.
                 pass
                 break
 
-    #app = QtGui.QApplication([])    # sys.argv NOT given; cannot be used to set options!
-
     gglobs.style = app.style().metaObject().className()
-    dprint(gglobs.debug, "Style active:", gglobs.style)
+    vprint(gglobs.verbose, "Style: active:", gglobs.style)
 
-    #app.font().setBold(False)      # has no effect???
-    #app.font().setItalic(False)
-    #app.font().setWeight(200)
-    dprint(gglobs.debug,"Fonts: Application -", strFontInfo("", app.font()))  # print font info for QApplication
-
-    app.setApplicationName("GeigerLog") # phonon useage requires an application name
-
-    #allows copy&Paste also on Win, but makes all Messageboxes as HTML coding
+    # allows copy&Paste also on Win, but makes all Messageboxes as HTML coding
     # cumbersome with using tabs
     #app.setStyleSheet("QMessageBox { messagebox-text-interaction-flags: 5; }")
 
     # sound file for Error message
     media = Phonon.MediaObject()
+    # Next line results in this message, but seems to be a bug in KDE:
+    #   klauncher(3545) kdemain: No DBUS session-bus found.
+    #   Check if you have started the DBUS server.
+    #   kdeinit4: Communication error with launcher. Exiting!
     audio = Phonon.AudioOutput(Phonon.MusicCategory)
     Phonon.createPath(media, audio)
 
     # the file could be set elsewhere,
     # but currently only one is needed, so ok to do it here
-    f = gglobs.sharePath + "sonar.ogg"
+    f = os.path.join(gglobs.gresPath, "sonar.ogg")
     media.setCurrentSource(Phonon.MediaSource(f))
 
+    # The configuration file may override some default options in gglobs.py
+    readGeigerConfig()                       # reads the configuration file
+
+    # command line options may override config options, so must be
+    # processed AFTER reading the configuation file!
+    # processing the remaining options; will overwrite any previous setting
+    for opt, optval in opts:
+        if opt in ("-p", "--port"):
+            gglobs.usbport = optval
+            dprint(gglobs.debug, "Command line setting for: Port: '{}', overriding GeigerConfig".format(gglobs.usbport))
+
+        elif opt in ("-b", "--baudrate"):
+            gglobs.baudrate = optval
+            dprint(gglobs.debug, "Command line setting for: Baudrate: '{}', overriding GeigerConfig".format(gglobs.baudrate))
+
+        elif opt in ("-s", "--style"):
+            gglobs.style = optval
+            dprint(gglobs.debug, "Command line setting for: Style: '{}', overriding GeigerConfig".format(gglobs.style))
+
+    # now starting the GUI
+    dprint(gglobs.debug, "Starting the GUI.")
     ex = ggeiger()
     status = app.exec_()
+    #app.closeAllWindows()
+
     dprint(gglobs.debug, "Exited app.exec_() with status of:", status)
 
     # switching off the heartbeat function of the counter
     if gglobs.ser != None:
-        rec = "X"
         rec = gcommands.turnHeartbeatOFF(gglobs.ser)
-        dprint(gglobs.debug, "Exiting - turnHeartbeatOFF:", rec)
     else:
         dprint(gglobs.debug, "Exiting - No serial connection available")
 

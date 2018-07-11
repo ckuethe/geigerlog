@@ -1,9 +1,8 @@
-DESCRIPTION version 0.9.05
+DESCRIPTION version 0.9.06
 
 GeigerLog (previously named just Geiger) is a Python based GUI program for
-use with GQ Electronic's GMC-3xx line of Geiger counters (but
-can be adapted to other data loggers as well). It now also supports
-logging and history from the GMC-5xx Geiger counters.
+use with GQ Electronic's GMC-3xx, GMC-5xx, and GMC-6xx line of Geiger counters
+(but can be adapted to other data loggers as well).
 
 It has been run on Linux and Windows 7, 8 and 10. For installation instructions
 see the manual. Some graph quality issues on Windows have been corrected.
@@ -18,12 +17,12 @@ counters in particular.
 
 GeigerLog is available in two versions:
 
-- geigerlog-scripts-v0.9.05.zip
+- geigerlog-scripts-v0.9.06.zip
 
   provides the python scripts and resources (such as icons); it will
   run where a proper Python 2.7 and PyQt4 environment exists
 
-- geigerlog-bundle-v0.9.05.zip
+- geigerlog-bundle-v0.9.06.zip
 
   is an All-In-One package, which in addition also provides the runtime
   environment. No Python installation is required. However, it is

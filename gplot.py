@@ -361,7 +361,7 @@ def makePlot(fprintMAV = False):
         return
 
     stopprep   = time.time()
-    stopwatch  = "{:6.1f}ms for data load and prep, ".format((stopprep - start) * 1000.)
+    stopwatch  = "makePlot: {:6.1f}ms for data load and prep, ".format((stopprep - start) * 1000.)
 
     ###########################################################################
     # prepare the graph
@@ -403,7 +403,6 @@ def makePlot(fprintMAV = False):
     # add labels to the axis
     #
     # add a label to the X-axis
-    #plt.xlabel(xLabelStr, fontsize=13, fontweight='bold')
     plt.xlabel(xLabelStr, fontsize=12, fontweight='bold')
     # add a label to the Y-axis; rescale if needed
     if gglobs.Yunit == "CPM":
@@ -417,28 +416,52 @@ def makePlot(fprintMAV = False):
         plotCPMSlice = gglobs.logCPMSlice * gglobs.calibration
         ylabel = u"µSv/h"
 
-    #plt.ylabel(ylabel, fontsize=18, fontweight='bold')
     plt.ylabel(ylabel, fontsize=16, fontweight='bold')
 
     #
     # plot the data
     #
     # differs by plt.plot vs  plt.plot_date
+    plotstyle        = {'color'             : gglobs.linecolor,
+                        'linestyle'         : gglobs.linestyle,
+                        'linewidth'         : gglobs.linewidth,
+                        'label'             : "",
+                        'markeredgecolor'   : gglobs.linecolor,
+                        'marker'            : gglobs.markerstyle,
+                        'markersize'        : gglobs.markersize,
+                        }
+
+    plotstyleDefault = {'color'             : 'blue',
+                        'linestyle'         : 'solid',
+                        'linewidth'         : .5,
+                        'label'             : "",
+                        'markeredgecolor'   : 'blue',
+                        'marker'            : "o",
+                        'markersize'        : 2,
+                        }
+
+    plotErrMsg = "ERROR Plotting: Unrecognized style; check configuration file: "
     if gglobs.Xunit == "Time":
         ax.xaxis_date()
         fig.autofmt_xdate(rotation = 15)
-        locator = mpld.AutoDateLocator()
-        formatter = mpld.AutoDateFormatter(locator)
-        xfmt = mpld.DateFormatter(xFormatStr)
+        locator     = mpld.AutoDateLocator()
+        formatter   = mpld.AutoDateFormatter(locator)
+        xfmt        = mpld.DateFormatter(xFormatStr)
         ax.xaxis.set_major_formatter(xfmt)
         ax.xaxis.set_label_coords(0.5, -0.2)
-
         ax.xaxis.set_tick_params(labelsize=8)
 
-        rdplt, = plt.plot_date(gglobs.plotTimeSlice, plotCPMSlice, color=color['cpm'], linestyle='solid', linewidth=.5, label ="", markeredgecolor=color['cpm'], marker="o", markersize=2)
+        try:
+            rdplt, = plt.plot_date(gglobs.plotTimeSlice, plotCPMSlice, **plotstyle)
+        except Exception as e:
+            fprint(plotErrMsg, e)
+            rdplt, = plt.plot_date(gglobs.plotTimeSlice, plotCPMSlice, **plotstyleDefault)
     else:
-        rdplt, = plt.plot     (gglobs.plotTimeSlice, plotCPMSlice, color=color['cpm'], linestyle='solid', linewidth=.5, label ="", markeredgecolor=color['cpm'], marker="o", markersize=2)
-
+        try:
+            rdplt, = plt.plot     (gglobs.plotTimeSlice, plotCPMSlice, **plotstyle)
+        except Exception as e:
+            fprint(plotErrMsg, e)
+            rdplt, = plt.plot     (gglobs.plotTimeSlice, plotCPMSlice, **plotstyleDefault)
 
     ax.format_coord = lambda x, y: "" # to hide the cursor position in the toolbar
 
@@ -485,9 +508,10 @@ def makePlot(fprintMAV = False):
     if gglobs.avgChecked:
         cpm_avg = np.mean(plotCPMSlice)
         cpm_std = np.std (plotCPMSlice)
+        cpm_err = cpm_std / np.sqrt(plotCPMSlice.size)
         avCPM   = [cpm_avg, cpm_avg]
         avTime  = [gglobs.plotTimeSlice[0], gglobs.plotTimeSlice[-1]]
-        plt.plot(avTime, avCPM,                  color=color['avg'], linewidth=2, label= u"Avg={:<3.1f}±{:<6.1f}".format(cpm_avg, cpm_std))
+        plt.plot(avTime, avCPM,                  color=color['avg'], linewidth=2, label= u"Avg={:<3.1f}±{:<3.1f} (Err=±{:<3.1f})".format(cpm_avg, cpm_std, cpm_err))
         if (cpm_avg - cpm_std * 1.96) > 0: # negative lower bound indicates invalid data; do not draw neither lower nor upper limit
             plt.plot(avTime, avCPM - cpm_std * 1.96, color=color['avg'], linewidth=2, linestyle= '--')
             plt.plot(avTime, avCPM + cpm_std * 1.96, color=color['avg'], linewidth=2, linestyle= '--')
@@ -498,6 +522,12 @@ def makePlot(fprintMAV = False):
     if gglobs.avgChecked or gglobs.mavChecked:
         plt.legend(bbox_to_anchor=(1.01, .9), loc=2, borderaxespad=0.)
         plotLegend()
+
+    # placing free text. positioning is difficult!
+    #x= -0.1
+    #y= -0.15
+    #s= gglobs.deviceDetected
+    #plt.text(x, y, s, fontsize=12,  transform=ax.transAxes, bbox=dict(facecolor='red', alpha=0.5))
 
     # refresh the figure
     fig.canvas.draw_idle()
@@ -518,7 +548,6 @@ def plotLegend():
 
 
 def my_format_function(x, pos=None):
-#def my_format_function(x, pos=0):
     """from: http://matplotlib.org/api/dates_api.html """
     # does not work. bug? https://github.com/matplotlib/matplotlib/issues/1343/
 

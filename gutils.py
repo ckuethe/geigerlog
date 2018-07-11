@@ -10,12 +10,13 @@ from utils include *
 
 import sys
 import os
+import io
 import inspect
-import codecs
 import time         # time formatting and more
 import datetime     # date and time conversions
-import gglobs
 from PyQt4 import QtGui
+
+import gglobs
 
 __author__      = "ullix"
 __copyright__   = "Copyright 2016"
@@ -23,27 +24,49 @@ __credits__     = [""]
 __license__     = "GPL"
 
 
+def getProgName():
+    """Return program base name, i.e. 'geigerlog' even if it was named
+    'geigerlog.py' """
+
+    progname          = os.path.basename(sys.argv[0])
+    progname_base     = os.path.splitext(progname)[0]
+
+    return progname_base
+
+
 def getProgPath():
     """Return full path of the program directory"""
-
     dp = os.path.dirname(os.path.realpath(__file__))
-
     return dp
 
 
-def getDataPath(datadir):
+def getDataPath():
     """Return full path of the data directory"""
-
-    dp = getProgPath() + datadir
-
+    dp = os.path.join(getProgPath(), gglobs.dataDirectory)
     return dp
 
 
-def getIconPath(icondir):
-    """Return full path of the icon directory"""
+def getGresPath():
+    """Return full path of the resource (icons, sounds) directory"""
+    dp = os.path.join(getProgPath(), gglobs.gresDirectory)
+    return dp
 
-    dp = getProgPath() + icondir
 
+def getProglogPath():
+    """Return full path of the proglog file"""
+    dp = os.path.join(gglobs.dataPath, gglobs.progName + ".proglog")
+    return dp
+
+
+def getPlogPath():
+    """Return full path of the geigerlog.plog file"""
+    dp = os.path.join(gglobs.dataPath, gglobs.progName + ".stdlog")
+    return dp
+
+
+def getConfigPath():
+    """Return full path of the geigerlog.cfg file"""
+    dp = os.path.join(gglobs.progPath, gglobs.progName + ".cfg")
     return dp
 
 
@@ -73,13 +96,28 @@ def convertBytesToAscii(bytestring):
     which has ASCII characters when printable and '.' else"""
 
     asc = ""
-    for i in range(0, len(bytestring)):
-        a = ord(bytestring[i])
-        if a < 128 and a > 31:
-            asc += bytestring[i]
+    if bytestring != None:
+        for i in range(0, len(bytestring)):
+            a = ord(bytestring[i])
+            if a < 128 and a > 31:
+                asc += bytestring[i]
+            else:
+                asc += "."
+
+    return asc
+
+
+def cleanStringToAscii(string):
+    """get a string with all bytes from 0...255, and convert to string
+    which has ASCII characters from ord=0 ...128 and '.' else"""
+
+    asc = ""
+    for i in range(0, len(string)):
+        a = ord(string[i])
+        if a < 128:
+            asc += string[i]
         else:
             asc += "."
-
     return asc
 
 
@@ -96,7 +134,11 @@ def orig(thisfile):
     lineno = inspect.currentframe().f_back.f_lineno
     fn = os.path.basename(thisfile)
 
-    return fn, lineno
+    #print "orig:", inspect.currentframe().__name__
+    #print "orig:", inspect.getmembers()
+    #print "orig:",sys._getframe(1).f_code.co_name
+
+    return fn, sys._getframe(1).f_code.co_name, lineno
 
 
 def remove_trailing(rlist, remove_value=None):
@@ -139,7 +181,6 @@ def fprint(*args):
         if args[s] == "debug":
             forcedebug = True
         else:
-            #ps += unicode(args[s])
             ps += getUnicodeString(args[s])
 
     gglobs.NotePad.append(ps)
@@ -160,109 +201,204 @@ def strprint(self, *args):
 
 
 def vprint(verbose, *args):
-    """verbose print: if verbose is true then print all args"""
+    """verbose print:
+    if verbose is true then:
+    - Write timestamp and args as a single line to progname.proglog file
+    - Print args as single line
+    else
+    - do nothing
+    """
 
     if verbose:
-        #line = "{:35s}".format(str(args[0]))
-        line = u"{:35s}".format(args[0])
-        for s in range(1, len(args)):
-            #line += str(args[s])
-            #line += unicode(args[s])
+        tag      = u"{:19s}  VERBOSE ".format(stime())
+        line     = u""
+        #line     = u"{:35s}".format(args[0])
+        #for s in range(1, len(args)):
+        for s in range(0, len(args)):
             line += getUnicodeString(args[s])
 
-        if sys.stdout.isatty(): print "VERBOSE:", line # print only if in console
+        line = gglobs.debugindent + line
+        writeFileA(gglobs.proglogPath, tag + line)
+
+        if gglobs.redirect:
+            line = cleanStringToAscii(line)
+            print tag + line
+        else:
+            print "VERBOSE:", line
 
 
 def dprint(debug, *args):
     """debug print:
     if debug is true then:
-    - Write timestamp, name of calling prog, process id, and
-      args as a single line to progname.proglog file
+    - Write timestamp and args as a single line to progname.proglog file
     - Print args as single line
     else
     - do nothing
     """
 
     if debug:
-        progname = os.path.basename(sys.argv[0])
-        pid      = os.getpid()
-        tag      = u"{:19s}  {:s}  {:d} ".format(stime(), progname, pid)
+        tag      = u"{:19s}  DEBUG   ".format(stime())
         line     = u""
 
         for arg in args:
-            line += getUnicodeString(arg) + " "
+            line += getUnicodeString(arg) + u" "
 
-        progname_base     = os.path.splitext(progname)[0]
-        writeFileA(gglobs.dataPath + progname_base + ".proglog", tag + line)
+        line = gglobs.debugindent + line
+        writeFileA(gglobs.proglogPath, tag + line)
 
-        if sys.stdout.isatty(): print "DEBUG:  ", line  # print only if in console
+        #if sys.stdout.isatty(): print "DEBUG:  ", line  # print only if in console macht Problem in Windows
+        if gglobs.redirect:
+            line = cleanStringToAscii(line)
+            print tag + line
+        else:
+            print "DEBUG  :", line
+
+
+def exceptPrint(e, excinfo, srcinfo):
+    """Print exception details (errmessage, file, line no)"""
+
+    exc_type, exc_obj, exc_tb = excinfo
+    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
+    dprint(True, "ERROR: '{}' in file: '{}' in line {}".format(e, fname, exc_tb.tb_lineno))
+    dprint(True, srcinfo)
+
+
+def debugIndent(arg):
+    if arg > 0:
+        gglobs.debugindent += "   "
+    else:
+        gglobs.debugindent = gglobs.debugindent[:-3]
 
 
 def clearProgramLogFile():
     """To clear the debug file at the beginning of each run"""
 
-    progname        = os.path.basename(sys.argv[0])
-    progname_base   = os.path.splitext(progname)[0]
-    writeFileW(gglobs.dataPath + progname_base + ".proglog", "")
+    tag      = u"{:19s}  PROGRAM {:s}  pid: {:d} ".format(stime(), gglobs.progName, os.getpid())
+    line     = tag + u"#"*100
+
+    if gglobs.redirect:
+        sys.stdout = open(gglobs.plogPath, 'w', buffering=0)
+        sys.stdout = open(gglobs.plogPath, 'a', buffering=0)
+        sys.stderr = open(gglobs.plogPath, 'a', buffering=0)
+
+    writeFileW(gglobs.proglogPath, line )
+
+    print line
+
+
+def readBinaryFile(path):
+    """Read all of the file into data; return data as string"""
+
+    try:
+        with io.open(path, 'rb') as f:
+            data = f.read()
+        vprint(gglobs.verbose, "readBinaryFile: data=[:100]:", data[:100])
+        return data
+    except:
+        dprint(True, "sys.exc_info():", sys.exc_info())
+        return "ERROR: Could not read file: " + path
+
+
+def writeBinaryFile(path, data):
+    """Create file and write data to it as binary"""
+
+    with io.open(path, 'wb') as f:
+        f.write(data)
+
+
+def detectFileType(path):
+
+    try:
+        import chardet
+        detector = chardet.universaldetector.UniversalDetector()
+        detector.reset()
+        linecount = 0
+        starttime = time.time()
+        for line in file(path, 'rb'):
+            #print "line:", line[:-1]
+            detector.feed(line)
+            linecount += 1
+            if detector.done: break
+            if (time.time() - starttime) > 2: break
+        detector.close()
+        dprint(gglobs.debug, "detectFileType: Path:{}, Linecounts:{}, Result:{}".format(path, linecount, detector.result))
+
+        if detector.result['confidence'] > 0.7:
+            return detector.result['encoding']
+        else:
+            return None
+    except:
+        dprint(gglobs.debug, "Problem with using detector chardet: ", sys.exc_info())
+        dprint(gglobs.debug, "Detector chardet can be installed via: 'pip install chardet' from the CMD line")
+        return None
 
 
 def readFile(path):
     """Read all of the file into data; return data as string"""
 
+    enc = detectFileType(path)
+    #print "encoding determined:", enc
+
+    if enc == None: enc = "utf_8"
+    #print "encoding selected=", enc
+
     try:
-        f = open(path, "r")
-        #f = codecs.open(path, "r", 'utf-8')
-        data = f.read()
-        #print " data:", data
-        f.close
+        with io.open(path, 'rt', encoding=enc, errors='replace') as f:
+            data = f.read()
+        vprint(gglobs.verbose, "readFile: data=[:100]:\n", data[:100])
         return data
     except:
-        return "ERROR: Could not read file: " + path
+        data = [u"ERROR: readFile: Could not read file: " + path]
+        dprint(True, sys.exc_info())
+        return data
 
 
 def readFileLines(path):
     """Read all of the file into lines, ending with linefeed.
     return data as list of lines"""
 
+    enc = detectFileType(path)
+    #print "encoding determined:", enc
+    if enc == None: enc = "utf_8"
+    #print "encoding selected=", enc
+
     try:
-        #f = open(path, "r")
-        f = codecs.open(path,'r','utf-8')
-        data = f.readlines()
-        f.close
+        with io.open(path, 'rt', encoding= enc, errors='replace') as f:
+            data = f.readlines()
+        #vprint(gglobs.verbose,  "readFileLines: data=[:5]:\n", data[:5])
         return data
     except:
-        data = [u"ERROR: Could not read file: " + path]
+        data = [u"ERROR: readFileLines: Could not read file: " + path]
+        dprint(True, sys.exc_info())
         return data
 
 
 def writeFileW(path, writestring, linefeed = True):
     """Create file if not available, and write to it if writestring
     is not empty; add linefeed unless excluded"""
-    writestring = unicode(writestring)
 
-    f = open(path, "w", buffering=1)
-    if writestring > "":
-        if linefeed: writestring += "\n"
-        #f.write(writestring)
-        f.write(writestring.encode('utf8'))
-    f.close
+    #writestring = unicode(writestring)
+    #print "writeFileW: path:", path, ", write: '", writestring, "'", type(writestring)
+    with io.open(path, 'wt', encoding="utf_8", errors='replace', buffering = 1) as f:
+        if writestring > "":
+            if linefeed: writestring += "\n"
+            f.write(writestring)
 
 
 def writeFileA(path, writestring):
     """Write-Append data; add linefeed"""
 
-    # buffering=0 to switch off buffering
-    # buffering=1 to select line buffering (only usable in text mode)
-    #f = open(path, "a", buffering=1)
-    f = open(path, "a", buffering=0)
-    f.write((writestring + "\n").encode("utf-8"))
-    f.close
+    #writestring = unicode(writestring)
+    #print "writeFileA: path:", path, ", write: '", writestring, "'", type(writestring)
+    with io.open(path, 'at', encoding="utf_8", errors='replace', buffering = 1) as f:
+        f.write((writestring + u"\n"))
+
 
 
 def beep():
     """make ping if on console and if no Qt4 sound"""
 
-    if sys.stdout.isatty(): print "\7",
+    print "\7"
 
 
 def printVarsStatus(debug, origin = ""):

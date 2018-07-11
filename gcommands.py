@@ -38,13 +38,21 @@ def getVER(ser):
     # send <GETVER>> and read 14 bytes
     # returns total of 14 bytes ASCII chars from GQ GMC unit.
     # includes 7 bytes hardware model and 7 bytes firmware version.
-    # e.g.: GMC-300Re 4.20
+    # e.g.: 'GMC-300Re 4.20'
     # use byteformat=False to NOT convert into int but return ASCII string
 
-    rec = serialCOMM(ser, b'<GETVER>>', 14, orig(__file__), False)
-    dprint(gglobs.debug, "getVER:", rec, ", len(rec[0]):", len(rec[0]))
+    dprint(gglobs.debug, u"getVER: Begin.")
+    debugIndent(1)
 
-    return rec
+    rec, error, errmessage = serialCOMM(ser, b'<GETVER>>', 14, orig(__file__), False)
+    extra = getExtraByte(ser)
+
+    rec   = convertBytesToAscii(rec)   # problem observed only in defect system
+
+    debugIndent(0)
+    dprint(gglobs.debug, u"getVER: Done. rec='{}', error='{}', errmessage='{}'".format(rec, error, errmessage))
+
+    return (rec, error, errmessage)
 
 
 def getCPMS(ser, CPMflag = True):
@@ -70,23 +78,17 @@ def getCPMS(ser, CPMflag = True):
     #                 or 16383 * 60 = 982980 CPM
     # return CPM even if CPS requested (then return is CPS*60 )
 
-    if CPMflag:  # CPM
+    if CPMflag:  # measure as CPM
         rec, error, errmessage = serialCOMM(ser, b'<GETCPM>>', 2, orig(__file__))
         vprint(gglobs.verbose, "getCPMS: CPMflag=True, rec=", rec)
-        #dprint(gglobs.debug, "getCPMS: CPMflag=True, rec=", rec)    # only for GMC-500 testing
-        #dprint(gglobs.debug, "getCPMS: Cleaning pipeline after <GETCPM>>")    # only for GMC-500 testing
-        #getExtraByte(ser)
-        if error == 0 or error == 1:
-            rec = rec[0]<< 8 | rec[1]
 
-    else:       # CPS
+        if error == 0 or error == 1: rec = rec[0]<< 8 | rec[1]
+
+    else:       # measure as CPS
         rec, error, errmessage = serialCOMM(ser, b'<GETCPS>>', 2, orig(__file__))
         vprint(gglobs.verbose, "getCPMS: CPMflag=False, rec=", rec)
-        #dprint(gglobs.debug, "getCPMS: CPMflag=False, rec=", rec)    # only for GMC-500 testing
-        #dprint(gglobs.debug, "getCPMS: Cleaning pipeline after <GETCPS>>")    # only for GMC-500 testing
-        #getExtraByte(ser)
-        if error == 0 or error == 1:
-            rec =  ((rec[0] & 0x3f) << 8 | rec[1]) * 60
+
+        if error == 0 or error == 1: rec = ((rec[0] & 0x3f) << 8 | rec[1]) * 60
         #print "Testing:    len={:}, MSB:{:x}={:d}, LSB:{:x}={:d}, value:{:d} ".format(len(rec), (rec[0]), (rec[0]), (rec[1]), (rec[1]), r)
 
     return (rec, error, errmessage)
@@ -102,10 +104,19 @@ def turnHeartbeatOn(ser):
     #           The highest bit 15 and bit 14 are reserved data bits.
     # Firmware supported:  GMC-280, GMC-300  Re.2.10 or later
 
-    if ser == None: return ("", 1, "No serial connection")
+    dprint(gglobs.debug, u"turnHeartbeatOn: Begin.")
+    debugIndent(1)
 
-    rec, error, errmessage = serialCOMM(ser, b'<HEARTBEAT1>>', 0, orig(__file__))
-    dprint(gglobs.debug, "turnHeartbeatON: rec='{}', error='{}', errmessage='{}'".format(rec, error, errmessage))
+    if ser == None:
+        rec         = ""
+        error       = 1
+        errmessage  = "No serial connection"
+    else:
+        rec, error, errmessage = serialCOMM(ser, b'<HEARTBEAT1>>', 0, orig(__file__))
+        extra                  = getExtraByte(ser)
+
+    debugIndent(0)
+    dprint(gglobs.debug, u"turnHeartbeatOn: Done. rec='{}', error='{}', errmessage='{}'".format(rec, error, errmessage))
 
     return (rec, error, errmessage)
 
@@ -116,10 +127,19 @@ def turnHeartbeatOFF(ser):
     # Return:   None
     # Firmware supported:  Re.2.10 or later
 
-    if ser == None: return ("", 1, "No serial connection")
+    dprint(gglobs.debug, u"turnHeartbeatOFF: Begin.")
+    debugIndent(1)
 
-    rec, error, errmessage = serialCOMM(ser, b'<HEARTBEAT0>>', 0, orig(__file__))
-    dprint(gglobs.debug, "turnHeartbeatOFF: rec='{}', error='{}', errmessage='{}'".format(rec, error, errmessage))
+    if ser == None:
+        rec         = ""
+        error       = 1
+        errmessage  = "No serial connection"
+    else:
+        rec, error, errmessage = serialCOMM(ser, b'<HEARTBEAT0>>', 0, orig(__file__))
+        extra                  = getExtraByte(ser)
+
+    debugIndent(0)
+    dprint(gglobs.debug, u"turnHeartbeatOFF: Done. rec='{}', error='{}', errmessage='{}'".format(rec, error, errmessage))
 
     return (rec, error, errmessage)
 
@@ -129,17 +149,55 @@ def getVOLT(ser):
     # send <GETVOLT>> and read 1 byte
     # returns one byte voltage value of battery (X 10V)
     # e.g.: return 62(hex) is 9.8V
-    # Example: Geiger counter GMC-300E Plus v4.20
+    # Example: Geiger counter GMC-300E+
     # with Li-Battery 3.7V, 800mAh (2.96Wh)
     # -> getVOLT reading is: 4.2V
     # -> Digital Volt Meter reading is: 4.18V
+    #
+    # GMC 500 scheint anders zu sein! Scheint 5 bytes zu liefern, die als
+    # ASCII interpretiert werden müssen
+    # z.B.[52, 46, 49, 49, 118] = "4.11v"
 
-    rec, error, errmessage = serialCOMM(ser, b'<GETVOLT>>', 1, orig(__file__))
-    dprint(gglobs.debug, "getVOLT:", rec)
+    dprint(gglobs.debug, u"getVOLT: Begin. Using device: '{}'".format(gglobs.devices[gglobs.devicesIndex]))
+    debugIndent(1)
 
-    if error == 0 or error == 1:
-        rec = rec[0]/10.0
-    dprint(gglobs.debug, "getVOLT:", rec, " Volt")
+    if ser == None:
+        rec         = ""
+        error       = 1
+        errmessage  = "No serial connection"
+
+    elif gglobs.device in ["GMC-300", "GMC-320", "GMC-320+", "GMC-300E+"]:
+        rec, error, errmessage = serialCOMM(ser, b'<GETVOLT>>', 1, orig(__file__))
+        dprint(gglobs.debug, "VOLT: raw:", rec)
+        extra = getExtraByte(gglobs.ser)
+
+        if error == 0 or error == 1:
+            rec = rec[0]/10.0
+
+    elif gglobs.device in ["GMC-500", "GMC-500+", "GMC-600", "GMC-600+"]:
+        rec, error, errmessage = serialCOMM(ser, b'<GETVOLT>>', 5, orig(__file__))
+
+        # TEST!!!!!!!!!!!
+        #rec         = [52, 46, 49, 49, 118] # 4.11 V
+        #error       = 1
+        #errmessage  = "testing"
+        ###############
+
+        dprint(gglobs.debug, "VOLT: raw:", rec)
+        extra = getExtraByte(gglobs.ser)
+
+        arec = ""
+        if error == 0 or error == 1:
+            for i in range(4):
+                arec += chr(rec[i])
+            rec = arec
+    else:
+        rec         = ""
+        error       = 1
+        errmessage  = "Illegal Setting for Device; check configuration"
+
+    debugIndent(0)
+    dprint(gglobs.debug, u"getVOLT: Done. Volt='{}', error='{}', errmessage='{}'".format(rec, error, errmessage))
 
     return (rec, error, errmessage)
 
@@ -170,48 +228,78 @@ def getSPIR(ser, address = 0, datalength = 4096):
 
     # This contains a WORKAROUND:
     # it asks for only (datalength - 1) bytes,
-    # but then reads one more byte, so the original datalength
+    # but as it then reads one more byte, the original datalength is obtained
+
+    dprint(gglobs.debug, u"getSPIR: Begin.")
+    debugIndent(1)
 
     # pack address into 4 bytes, big endian; then clip 1st byte = high byte!
     ad = struct.pack(">I", address)[1:]
-    vprint(gglobs.verbose, "SPIR address:", "{:5d}, hex chars in SPIR command: {:02x} {:02x} {:02x}".format(address, ord(ad[0]), ord(ad[1]), ord(ad[2])))
 
     ###########################################################################
-    # BUG ALERT - WORKAROUND
     # pack datalength into 2 bytes, big endian; use all bytes
-    # NOTE: this workaround is for "GMC-300E Plus v4.20" and "GMC-320"
-    # for GMC-300 v3.20 the '- 1' must be dropped!
-    # gglobs.devicesIndex= 3 --> "GMC-300 v3.20"
-    # GMC-500: bei Lesen von 4095 bytes werden nur 4095 und KEINE 4096 zurückgegeben
+    #
+    # BUG ALERT - WORKAROUND
+    # GMC-300E+ : use workaround 'datalength - 1'
+    # GMC-320   : same as GMC-300E+
+    # GMC-320+  : same as GMC-300E+
+    # GMC-300   : the '- 1' must be dropped and only 2k bytes read
+    # GMC-500   : bei Lesen von 4095 bytes werden nur 4095 und KEINE 4096 zurückgegeben
     # ist der Bug behoben oder nur auf altem Stand von GMC-300 zurück?
     # workaround dafür ist nur 2048 anzufordern und zu lesen
-    if   gglobs.devicesIndex == 3:            # GMC-300 v3.20
+    # GMC-500+  : treated as a GM-500
+    # GMC-600   : treated as a GM-500
+    # GMC-600+  : treated as a GM-500
+
+    if   gglobs.device == "GMC-300":
         dl = struct.pack(">H", datalength)
-    elif gglobs.devicesIndex == 2:            # GMC-500
+
+    elif gglobs.device == "GMC-300E+":
+        dl = struct.pack(">H", datalength - 1)
+
+    elif gglobs.device == "GMC-320":
+        dl = struct.pack(">H", datalength - 1)
+
+    elif gglobs.device == "GMC-320+":
+        dl = struct.pack(">H", datalength - 1)
+
+    elif gglobs.device == "GMC-500":
         dl = struct.pack(">H", datalength)
-    elif gglobs.devicesIndex == 1:            # GMC-320
-        dl = struct.pack(">H", datalength - 1)
-    else: # gglobs.devicesIndex == 0          # GMC-300E Plus v4.20
-        dl = struct.pack(">H", datalength - 1)
+
+    elif gglobs.device == "GMC-500+":
+        dl = struct.pack(">H", datalength)      # same as GMC-500
+
+    elif gglobs.device == "GMC-600":
+        dl = struct.pack(">H", datalength)      # same as GMC-500
+
+    elif gglobs.device == "GMC-600+":
+        dl = struct.pack(">H", datalength)      # same as GMC-500
+
+    else:
+        dprint(True, "Illegal setting for device; check configuration file")
+        sys.exit()
+
     ###########################################################################
 
-    vprint(gglobs.verbose,   "SPIR datalength requested:","{:5d}, hex chars in SPIR command: {:02x} {:02x}".format(datalength, ord(dl[0]), ord(dl[1])))
-    dprint(gglobs.debug,     "SPIR requested: address:{:5d}, datalength:{:5d}".format(address, datalength))
+    dprint(gglobs.debug, "SPIR requested: address: {:5d}, datalength:{:5d}   (hex: address: {:02x} {:02x} {:02x}, datalength: {:02x} {:02x})".format(address, datalength, ord(ad[0]), ord(ad[1]), ord(ad[2]), ord(dl[0]), ord(dl[1])))
+    rec, error, errmessage = serialCOMM(ser, b'<SPIR'+ad+dl+'>>', datalength, orig(__file__), False) # returns ASCII string
 
-    rec = serialCOMM(ser, b'<SPIR'+ad+dl+'>>', datalength, orig(__file__), False) # returns ASCII string
-
-    if rec[0] != None :
-        dprint(gglobs.debug, "SPIR received:                 datalength:{:5d}".format(len(rec[0])))
+    if rec != None :
+        msg = "SPIR received: datalength:{:5d}".format(len(rec))
     else:
-        dprint(gglobs.debug, "SPIR received:   ERROR: No data received!")
+        msg = "SPIR received: ERROR: No data received!"
 
-    return rec
+    debugIndent(0)
+    dprint(gglobs.debug, u"getSPIR: Done. msg='{}', error='{}', errmessage='{}'".format(msg, error, errmessage))
+
+    return (rec, error, errmessage)
 
 
 def getHeartbeatCPS(ser):
     """read bytes until no further bytes coming"""
 
     if not gglobs.debug: return  # execute only in debug mode
+
     eb= 0
     while True:                  # read more until nothing is returned
                                  # (actually, never more than 1 more is returned)
@@ -234,44 +322,39 @@ def getHeartbeatCPS(ser):
         """
         break
 
-    #dprint(gglobs.debug, "read extra {} bytes to total{},".format(len(rec), rec), type(rec))
-
     return cps
 
 
 def getExtraByte(ser):
-    """read bytes until no further bytes coming"""
+    """read single bytes until no further bytes coming"""
 
-    rec     = b""
+    dprint(gglobs.debug, u"getExtraByte: Begin.")
+    debugIndent(1)
 
-    if gglobs.ser.in_waiting == 0:
-        dprint(gglobs.debug, u"getExtraByte: No bytes waiting")
-        return rec
+    rec          = b""
+    try: # failed when called from 2nd instance of GeigerLog; just to avoid error
+        bytesWaiting = gglobs.ser.in_waiting
+    except:
+        bytesWaiting = 0
 
-    byteno  = 0
-    dprint(gglobs.debug, u"getExtraByte: Bytes waiting:{}".format(gglobs.ser.in_waiting))
-    while True:                  # read single byte until nothing is returned
-        x = ser.read(1)
-
-        if len(x) > 0:
-            byteno += 1
-            if ord(x) < 128 and ord(x) > 31:
-                xu = x
-            else:
-                xu = "."
-            #dprint(gglobs.debug, u"getExtraByte: #{} got byte:'{:1s}'    value(dec):{:3d}, waiting:{}".format(byteno, xu, ord(x), gglobs.ser.in_waiting))
-            rec += x
-        else:
-            #dprint(gglobs.debug, u"getExtraByte: no more bytes")
-            break
-
-    #rec += "ABC---xyz" #for testing
-
-    if len(rec) == 0:
-        dprint(gglobs.debug, "getExtraByte: No bytes in pipeline")
+    #bytesWaiting += 5   # TESTING ONLY
+    if bytesWaiting == 0:
+        msg = u"No extra bytes waiting for reading"
     else:
-        dprint(gglobs.debug, "getExtraByte: Cleaned {} bytes from pipeline:".format(len(rec)), map(ord, rec))
-        dprint(gglobs.debug, "getExtraByte: Cleaned bytes as ASCII: '{}'".format(convertBytesToAscii(rec)))
+        msg = ""
+        dprint(True, u"Bytes waiting: {}".format(bytesWaiting))
+        while True:                # read single byte until nothing is returned
+            x = ser.read(1)
+            if len(x) == 0: break
+            rec += x
+
+        dprint(True, "Got {} extra bytes from reading-pipeline:".format(len(rec)), map(ord, rec))
+        dprint(True, "Extra bytes as ASCII: '{}'".format(convertBytesToAscii(rec)))
+
+    #rec = ["A", "B", "C", "D"]  # testing
+
+    debugIndent(0)
+    dprint(gglobs.debug, u"getExtraByte: Done. " + msg)
 
     return rec
 
@@ -280,6 +363,9 @@ def getCFG(ser):
     # Get configuration data
     # send <GETCFG>> and read 256 bytes
     # returns the configuration data as a Python list of 256 int
+
+    # NOTE: 300series uses 256 bytes; 500series 512 bytes; 600 series 512(?)
+    # Reading 256 bytes first, and if more available then until all done
 
     """
     The meaning is: (from: http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=4447)
@@ -358,30 +444,35 @@ def getCFG(ser):
     Save_DateTimeStamp, //this one uses 6 byte space
     """
 
-    # NOTE: 300series uses 256 bytes; 500series 512 bytes
-    # Reading 256 bytes first, and if more available then until all done
+    dprint(gglobs.debug, u"getCFG: Begin.")
+    debugIndent(1)
 
-    rec = serialCOMM(ser, b'<GETCFG>>', 256, orig(__file__))
+    rec, error, errmessage = serialCOMM(ser, b'<GETCFG>>', 256, orig(__file__))
 
-    time.sleep(1)       # zu schnell um frische bytes in die pipeline zu kriegen?
+    while True:
+        if rec == None:
+            dprint(True, "ERROR: Failed to get configuration data")
+            break
 
-    if gglobs.ser.in_waiting > 0:
-        extra = getExtraByte(gglobs.ser)
-        comb  = rec[0] + map(ord, extra)
-        rec   = (comb, rec[1], rec[2])
-    else:
-        if rec[0] == None:
-            reclen = "None"
-            asc    = "none"
+        dprint(gglobs.debug, u"Got {} bytes".format(len(rec)))
+        time.sleep(1)       # zu schnell um frische bytes in die pipeline zu kriegen?
+        if ser.in_waiting > 0:
+            dprint(gglobs.debug, "found {} bytes waiting".format(ser.in_waiting))
+            extra = getExtraByte(ser)
+            rec   = rec + map(ord, extra)
         else:
-            reclen = len(rec[0])
-            asc    = convertBytesToAscii("".join(map(chr,rec[0])))
-        dprint(gglobs.debug, "getCFG: got: {} bytes; no bytes waiting".format(reclen))
+            dprint(gglobs.debug, "found no bytes waiting")
 
-    dprint(gglobs.debug, "getCFG: CFG bytes as list: ", rec[0])
-    dprint(gglobs.debug, "getCFG: CFG bytes as ASCII: '{}'".format(asc))
+        asc    = convertBytesToAscii("".join(map(chr,rec)))
 
-    return rec
+        dprint(gglobs.debug, "CFG bytes as list of length {}:\n".format(len(rec)), rec)
+        dprint(gglobs.debug, "CFG bytes as ASCII: '{}'".format(asc))
+        break
+
+    debugIndent(0)
+    dprint(gglobs.debug, u"getCFG: Done.")
+
+    return rec, error, errmessage
 
 
 def writeConfigData(ser, cfg, cfgaddress, value):
@@ -431,8 +522,13 @@ def getSERIAL(ser):
     #
     # This routine returns the serial number as a 14 character ASCII string
 
+    dprint(gglobs.debug, u"getSERIAL: Begin.")
+    debugIndent(1)
+
     rec, error, errmessage  = serialCOMM(ser, b'<GETSERIAL>>', 7, orig(__file__))
-    dprint(gglobs.debug, "getSERIAL:", rec)
+    dprint(gglobs.debug, "getSERIAL: raw:", rec)
+
+    extra = getExtraByte(ser)
 
     if error == 0 or error == 1:  # Ok or Warning
         hexlookup = "0123456789ABCDEF"
@@ -443,7 +539,8 @@ def getSERIAL(ser):
             sn  += hexlookup[n1] + hexlookup[n2]
         rec = sn
 
-    dprint(gglobs.debug, u"getSERIAL: rec={}, error={}, errmessage='{}'".format(rec, error, errmessage))
+    debugIndent(0)
+    dprint(gglobs.debug, u"getSERIAL: Done. rec={}, error={}, errmessage='{}'".format(rec, error, errmessage))
 
     return (rec, error, errmessage)
 
@@ -460,15 +557,25 @@ def setDATETIME(ser):
     # CORRECT! 6 bytes, no square brackets
     # <SETDATETIME[YY][MM][DD][hh][mm][ss]>>
 
+    dprint(gglobs.debug, u"setDATETIME: Begin.")
+    debugIndent(1)
+
     tl      = list(time.localtime())
+    #print "tl:", tl
     tl[0]  -= 2000
     tlstr   = b''
-    for i in range(0,6):
-        tlstr += chr(tl[i])
+    for i in range(0,6):  tlstr += chr(tl[i])
+    #print "tlstr:", tlstr
+    #for a in tlstr: print ord(a),
+    #print
+    rec, error, errmessage = serialCOMM(ser, b'<SETDATETIME'+ tlstr +'>>', 1, orig(__file__))
 
-    rec = serialCOMM(ser, b'<SETDATETIME'+ tlstr +'>>', 1, orig(__file__))
-    dprint(gglobs.debug, "setDATETIME:", rec)
-    return rec
+    extra = getExtraByte(ser)
+
+    debugIndent(0)
+    dprint(gglobs.debug, u"setDATETIME: Done. rec={}, error={}, errmessage='{}'".format(rec, error, errmessage))
+
+    return (rec, error, errmessage)
 
 
 def getDATETIME(ser):
@@ -480,10 +587,16 @@ def getDATETIME(ser):
     #       YYYY-MM-DD HH:MM:SS
     # e.g.: 2017-12-31 14:03:19
 
-    localdebug = gglobs.debug
+    dprint(gglobs.debug, u"getDATETIME: Begin.")
+    debugIndent(1)
+
     rec, error, errmessage = serialCOMM(ser, b'<GETDATETIME>>', 7, orig(__file__))
-    #rec = [25, 65, 28, 0, 0, 0, 63] # output from GMC-500
-    dprint(localdebug, "getDATETIME():", rec, ", len(rec):"+str(len(rec)))
+    extra                  = getExtraByte(ser)
+
+    if rec != None:
+        dprint(gglobs.debug, "raw:", rec, ", len(rec):"+str(len(rec)))
+    else:
+        dprint(gglobs.debug, "raw", rec)
 
     if error == 0 or error == 1:  # Ok or only Warning
         try:
@@ -501,7 +614,9 @@ def getDATETIME(ser):
                 errmessage  = "ERROR getting Date & Time"
                 localdebug  = True
 
-    dprint(localdebug, u"getDATETIME(): rec={}, error={}, errmessage='{}'".format(rec, error, errmessage))
+    debugIndent(0)
+    dprint(gglobs.debug, u"getDATETIME: Done. rec={}, error={}, errmessage='{}'".format(rec, error, errmessage))
+
     return (rec, error, errmessage)
 
 
@@ -514,20 +629,35 @@ def getTEMP(ser):
     #       BYTE2 is the decimal part of the temperature.
     #       BYTE3 is the negative signe if it is not 0.  If this byte is 0,
     #       then current temperture is greater than 0, otherwise the temperature is below 0.
-    #       BYTE4 always 0xAA
+    #       BYTE4 always 0xAA (=170dec)
+
+    dprint(gglobs.debug, u"getTEMP: Begin.")
+    debugIndent(1)
 
     rec, error, errmessage  = serialCOMM(ser, b'<GETTEMP>>', 4, orig(__file__))
-    dprint(gglobs.debug, "getTEMP:", rec)
+    #rec = [28, 8, 1, 170 ]  # TESTING example
+    extra                   = getExtraByte(ser)
+    dprint(gglobs.debug, "Temp raw: rec={}, error={}, errmessage='{}'".format(rec, error, errmessage))
 
     if error == 0 or error == 1:  # Ok or Warning
-        temp = rec[0] + rec[1]/10.0     # unclear: is  decimal part rec[1] single digit or a 2 digit?
-                                        # 3 digit not possible as byte value is from 0 ... 255
-                                        # expecting rec[1] always from 0 ... 9
-        if rec[2] <> 0 : temp *= -1
-        if rec[1]  > 9 : temp  = str(temp) + " ERROR: illegal value found for decimal part of temperature ={}".format(rec[1])
-        rec = temp
+        if gglobs.device in ["GMC-300", "GMC-300E+", "GMC-320", "GMC-320+"]:
+            temp = rec[0] + rec[1]/10.0     # unclear: is  decimal part rec[1] single digit or a 2 digit?
+                                            # 3 digit not possible as byte value is from 0 ... 255
+                                            # expecting rec[1] always from 0 ... 9
+            if rec[2] <> 0 : temp *= -1
+            if rec[1]  > 9 : temp  = str(temp) + " ERROR: illegal value found for decimal part of temperature ={}".format(rec[1])
+            rec = temp
 
-    dprint(gglobs.debug, "getTEMP:", rec)
+        elif gglobs.device in ["GMC-500", "GMC-500+", "GMC-600", "GMC-600+"]:
+            temp = rec[0] + rec[1]/10.0     # unclear: is  decimal part rec[1] single digit or a 2 digit?
+                                            # 3 digit not possible as byte value is from 0 ... 255
+                                            # expecting rec[1] always from 0 ... 9
+            if rec[2] <= 0 : temp *= -1     # guessing: value=1 looks like positive Temperature. Negative is???
+            if rec[1]  > 9 : temp  = str(temp) + " ERROR: illegal value found for decimal part of temperature ={}".format(rec[1])
+            rec = temp
+
+    debugIndent(0)
+    dprint(gglobs.debug, u"getTEMP: Done. rec={}, error={}, errmessage='{}'".format(rec, error, errmessage))
 
     return (rec, error, errmessage)
 
@@ -542,17 +672,21 @@ def getGYRO(ser):
     #       BYTE5,BYTE6 are the Z position data in 16 bits value. The first byte is MSB byte data and second byte is LSB byte data.
     #       BYTE7 always 0xAA
 
+    dprint(gglobs.debug, u"getGYRO: Begin.")
+    debugIndent(1)
+
     rec, error, errmessage  = serialCOMM(ser, b'<GETGYRO>>', 7, orig(__file__))
-    dprint(gglobs.debug, "getGYRO:", rec)
+    extra                   = getExtraByte(ser)
+    dprint(gglobs.debug, "GYRO: raw: rec={}, error={}, errmessage='{}'".format(rec, error, errmessage))
 
     if error == 0 or error == 1:  # Ok or Warning
         x = rec[0] * 256 + rec[1]
         y = rec[2] * 256 + rec[3]
         z = rec[4] * 256 + rec[5]
-        rec = (x,y,z)
         rec = "X=0x{:04x}, Y=0x{:04x}, Z=0x{:04x}   ({},{},{})".format(x,y,z,x,y,z)
 
-    dprint(gglobs.debug, "getGYRO:", rec)
+    debugIndent(0)
+    dprint(gglobs.debug, u"getGYRO: Done. rec={}, error={}, errmessage='{}'".format(rec, error, errmessage))
 
     return rec, error, errmessage
 
@@ -616,19 +750,16 @@ def isPowerOn():
     cfg    = gglobs.cfg
 
     try:
-        if gglobs.devicesIndex in [0, 1, 3]: # all 300series
+        if gglobs.device in ["GMC-300", "GMC-300E+", "GMC-320", "GMC-320+"]: # all 300series
             c = cfg[gglobs.cfgOffsetPower]
-        else:                                # 500series
-            c = 99999
+        else:                                # 500, 500+, 600, 600+
+            c = "Unknown due to unddisclosed firmware changes"
     except:
-        c = 99999
+        c = "Unknown"
 
-    if   c == 0:
-        p = "ON"
-    elif c == 255:
-        p = "OFF"
-    else:
-        p = "Unknown (Logging can be started, but if Power is OFF will yield 0 only!)"
+    if   c == 0:            p = "ON"
+    elif c == 255:          p = "OFF"
+    else:                   p = c
 
     return p
 
@@ -640,16 +771,16 @@ def isAlarmOn():
     cfg    = gglobs.cfg
 
     try:
-        c = cfg[gglobs.cfgOffsetAlarm]
+        if gglobs.device in ["GMC-300", "GMC-300E+", "GMC-320", "GMC-320+"]: # all 300series
+            c = cfg[gglobs.cfgOffsetAlarm]
+        else:                                # 500, 500+, 600, 600+
+            c = "Unknown due to unddisclosed firmware changes"
     except:
-        c = 99999
+        c = "Unknown"
 
-    if   c == 0:
-        p = "OFF"
-    elif c == 1:
-        p = "ON"
-    else:
-        p = "Unknown"
+    if   c == 0:            p = "OFF"
+    elif c == 1:            p = "ON"
+    else:                   p = c
 
     return p
 
@@ -661,16 +792,16 @@ def isSpeakerOn():
     cfg    = gglobs.cfg
 
     try:
-        c = cfg[gglobs.cfgOffsetSpeaker]
+        if gglobs.device in ["GMC-300", "GMC-300E+", "GMC-320", "GMC-320+"]: # all 300series
+            c = cfg[gglobs.cfgOffsetSpeaker]
+        else:                                # 500, 500+, 600, 600+
+            c = "Unknown due to unddisclosed firmware changes"
     except:
-        c = 99999
+        c = "Unknown"
 
-    if   c == 0:
-        p = "OFF"
-    elif c == 1:
-        p = "ON"
-    else:
-        p = "Unknown"
+    if   c == 0:            p = "OFF"
+    elif c == 1:            p = "ON"
+    else:                   p = c
 
     return p
 
@@ -690,16 +821,18 @@ def getSaveDataType():
     cfg    = gglobs.cfg
 
     try:
-        sdt    = cfg[gglobs.cfgOffsetSDT]
+        if gglobs.device in ["GMC-300", "GMC-300E+", "GMC-320", "GMC-320+"]: # all 300series
+            sdt    = cfg[gglobs.cfgOffsetSDT]
+        else:                                # 500, 500+, 600, 600+
+            sdt = 999
     except:
-        sdt = 99999
+        sdt = 888
 
     #print "sdt:", sdt
     try:
-        if sdt <= len(sdttxt):
-            txt = sdttxt[sdt]
-        else:
-            txt = "Unknown"
+        if sdt <= len(sdttxt):  txt = sdttxt[sdt]
+        elif sdt == 999:        txt = "Unknown due to unddisclosed firmware changes"
+        else:                   txt = "Unknown"
     except:
         txt= "Error in getSaveDataType, undefined type: {}".format(sdt)
 
@@ -712,6 +845,7 @@ def getBAUDRATE():
     # Note: kind of pointless, because in order to read the config data
     # from the device you must already know the baudrate,
     # or the comm will fail :-/
+
     """
     baudrate = 1200         # config setting:  64
     baudrate = 2400         # config setting: 160
@@ -734,10 +868,15 @@ def getBAUDRATE():
     #    print "{:08b} {:3d} {:6d}".format(key, key, value)
 
     try:
-        key = cfg[57]
-        rec = brdict[key]
+        if gglobs.device in ["GMC-300", "GMC-300E+", "GMC-320", "GMC-320+"]: # all 300series
+            key = cfg[57]
+            rec = brdict[key]
+        else:                                # 500, 500+, 600, 600+
+            rec = "Unknown due to unddisclosed firmware changes"
+            dprint(True, rec + "; cfg[57]={}".format(key))
     except:
-        rec = "ERROR: Baudrate for cfg[57]={} is unknown".format(key)
+        rec = "ERROR: Baudrate unknown; cfg[57]={}".format(key)
+        dprint(True, rec)
 
     return rec
 
@@ -749,16 +888,17 @@ def autoBAUDRATE(usbport):
     NOTE: the device port can be opened without error at any baudrate,
     even when no communication can be done, e.g. due to wrong baudrate.
     Therfore we test for successful communication by checking for correct
-    number of bytes returned. ON success, this baudrate will be returned.
+    number of bytes returned and the return string begins with 'GMC'.
+    ON success, this baudrate will be returned.
     A baudrate=0 will be returned when all communication fails.
     On a serial error, a hard exit will occur.
     """
 
-    dprint(True, "autoBAUDRATE: Autodiscovery of baudrate on port: '{}'".format(usbport))
+    dprint(True, "autoBAUDRATE: Begin. Autodiscovery of baudrate on port: '{}'".format(usbport))
+    debugIndent(1)
 
     baudrates = gglobs.baudrates
     baudrates.sort(reverse=True) # to start with highest baudrate
-    foundit = False
     for baudrate in baudrates:
         dprint(True, "Trying baudrate:", baudrate)
         try:
@@ -766,58 +906,51 @@ def autoBAUDRATE(usbport):
             ser.write(b'<GETVER>>')
             rec = ser.read(14)
             ser.close()
-            if len(rec) == 14:
-                foundit = True
+            #print "autoBAUDRATE: usbport: '{}', rec: '{}'".format(usbport, rec)
+
+            if len(rec) == 14 and rec.startswith("GMC"):
                 dprint(True, "Success with {}".format(baudrate))
                 break
-        #except:
         except ( serial.SerialException,  ValueError) as err:
-            #dprint(True, "autoBAUDRATE: ERROR: Serial communication error on finding baudrate on port ", usbport, sys.exc_info())
-            dprint(True, "autoBAUDRATE: ERROR: Serial communication error on finding baudrate:", unicode(err))
-            fprint("ERROR: Serial communication error on finding baudrate:\n   " + unicode(err))
-            return None
+            dprint(True, "ERROR: autoBAUDRATE: Serial communication error on finding baudrate:", unicode(err))
+            baudrate = None
+            break
 
-    return baudrate if foundit else 0
+        baudrate = 0
+
+    debugIndent(0)
+    dprint(True, "autoBAUDRATE: Done. Found baudrate: {}".format(baudrate))
+
+    return baudrate
 
 
 def autoPORT():
     """Tries to find a working port and baudrate by testing all serial
     ports for successful communication by auto discovery of baudrate.
     All available ports will be listed with the highest baudrate found.
-    The program will exit and a restart with port and baudrate as found
-    isrequired
     Ports are found as:
     /dev/ttyS0 - ttyS0              # a regular serial port
     /dev/ttyUSB0 - USB2.0-Serial    # a USB-to-Serial port
     """
 
-    dprint(True, "autoPORT: Autodiscovery of Serial Ports")
+    dprint(True, "autoPORT: Begin. Autodiscovery of Serial Ports")
+    debugIndent(1)
 
     time.sleep(0.5) # a freshly plugged in device, not fully recognized
                     # by system, sometimes produces errors
 
     ports =[]
-    lp = serial.tools.list_ports.comports()
-    #print "lp", lp, type(lp)
-    #for p in lp :
-    #    print p
-
-    #lp = serial.tools.list_ports.comports(include_links=True)
-    lp = serial.tools.list_ports.comports()
-
-    #print "lp", lp, type(lp)
-    #for p in lp :
-    #    print p
-
-    #lp.append("/dev/ttyS0 - ttyS0") # for testing only
+    # Pyserial: include_links (bool) – include symlinks under /dev when they point to a serial port
+    #lp = serial.tools.list_ports.comports(include_links=True) # also shows e.g. /dev/geiger
+    lp = serial.tools.list_ports.comports(include_links=False) # default; no symlinks shown
+    #lp.append("/dev/ttyS0 - ttyS0") # for TESTING only
 
     if len(lp) == 0:
-        errmessage = "autoPORT: ERROR: No available serial ports found"
+        errmessage = "ERROR: autoPORT: No available serial ports found"
         dprint(True, errmessage)
         return None, errmessage
-
     else:
-        dprint(True, "autoPORT: Found these ports:")
+        dprint(True, "Found these ports:")
         for p in lp :
             dprint(True, "   ", p)
             ports.append(str(p).split(" ",1)[0])
@@ -825,133 +958,157 @@ def autoPORT():
     ports.sort()
     ports_found = []
 
-    dprint(True, "autoPORT: Testing all ports for communication:")
+    dprint(True, "Testing all ports for communication:")
     for port in ports:
         #dprint(True, "Port:", port)
 
         if "/dev/ttyS" in port:
             if gglobs.ttyS == 'include':
-                dprint(True, "autoPORT: Include Flag is set for port: '{}'".format(port))
+                dprint(True, "Include Flag is set for port: '{}'".format(port))
             else:
-                dprint(True, "autoPORT: Ignore Flag is set for port: '{}'".format(port))
+                dprint(True, "Ignore Flag is set for port: '{}'".format(port))
                 continue
 
         abr = autoBAUDRATE(port)
         if abr > 0:
             ports_found.append((port, abr))
         elif abr == 0:
-            dprint(True, "autoPORT: Failure - no communication at any baudrate on port: '{}'".format(port))
+            dprint(True, "Failure - no communication at any baudrate on port: '{}'".format(port))
         else: # abr = None
-            dprint(True, "autoPORT: ERROR: Failure during Serial Communication on port: '{}'".format(port))
+            dprint(True, "ERROR: autoPORT: Failure during Serial Communication on port: '{}'".format(port))
 
     if len(ports_found) == 0:
         errmessage = "ERROR: No communication at any serial port and baudrate"
-        dprint(True, errmessage)
-        return None, errmessage
+        ports_found = None
     else:
-        return ports_found, ""
+        errmessage = ""
+
+    debugIndent(0)
+    dprint(True, "autoPORT: Done. " + errmessage)
+    return ports_found, errmessage
 
 
 #
 # Communication with serial port with exception handling
 #
-def serialCOMM(ser, sendtxt, returnlength, caller = ("", -1), byteformat = True):
+def serialCOMM(ser, sendtxt, returnlength, caller = ("", "", -1), byteformat = True):
     # write to and read from serial port, exit on serial port error
-    # when not enough bytes returned, try send+read again up to 5 times.
+    # when not enough bytes returned, try send+read again up to 3 times.
     # exit if it still fails
     # if byteformat is True, then convert string to list of int
     # before returning the record
 
-    #fprint("Caller is: {} in line no:{}".format(caller[0], caller[1]),"")
+    vprint(gglobs.verbose, "serialCOMM: Begin. sendtxt: '{}', caller: '{}'".format(getUnicodeString(sendtxt), caller))
+    debugIndent(1)
 
-    rec     = None
-    error   = 0
-    errmessage = ""
+    rec         = None
+    error       = 0
+    errmessage  = ""
 
-    if ser == None:
-        return ( "", -1, "Serial Port is closed")
+    while True:
+        if ser == None:
+            error       = -1
+            errmessage  = u"Serial Port is closed"
+            break
 
-    time.sleep(0.03)  # occasional failures, when it goes too fast
+        time.sleep(0.03)  # occasional failures, when it goes too fast
 
-    try:
-        ser.write(sendtxt)
-    except:
-        dprint(True, "serialCOMM: ERROR: WRITE failed in function serialCOMM")
-        dprint(True, "serialCOMM: ERROR: sys.exc_info(): ", sys.exc_info())
-        dprint(True, "serialCOMM: ERROR: caller is: {} in line no:{}".format(caller[0], caller[1]))
-        dprint(True, traceback.format_exc())
         try:
-            ser.close()
+            rec = ser.write(sendtxt)  # rec = no of bytes written
         except:
-            pass
+            dprint(True, u"ERROR: serialCOMM: WRITE failed in function serialCOMM")
+            dprint(True, u"ERROR: serialCOMM: sys.exc_info(): ", sys.exc_info())
+            dprint(True, u"ERROR: serialCOMM: caller is: {} in line no:{}".format(caller[0], caller[1]))
+            #dprint(True, traceback.format_exc()) # more extensive info
+            try:
+                ser.close()
+            except:
+                pass
 
-        error   = -1
-        errmessage = "serialCOMM: ERROR: WRITE failed in function serialCOMM. See log for details"
-        return (rec, error, errmessage)
+            rec         = None
+            error       = -1
+            errmessage  = u"ERROR: serialCOMM: WRITE failed in function serialCOMM. See log for details"
+            break
 
-    time.sleep(0.03)
+        time.sleep(0.03)
 
-    #print "\nserialCOMM: after ser.write({}): serial.in_waiting:{}".format(sendtxt, gglobs.ser.in_waiting)
-    #print "serialCOMM: after ser.write: serial.out_waiting:", gglobs.ser.out_waiting
+        #print "\nserialCOMM: after ser.write({}): serial.in_waiting:{}".format(sendtxt, gglobs.ser.in_waiting)
+        #print "serialCOMM: after ser.write: serial.out_waiting:", gglobs.ser.out_waiting
 
-    try:
-        rec = ser.read(returnlength)
-    except:
-        dprint(True, "serialCOMM: ERROR: READ failed in function serialCOMM")
-        dprint(True, "serialCOMM: ERROR: sys.exc_info(): ", sys.exc_info())
-        dprint(True, "serialCOMM: ERROR: caller is: {} in line no:{}".format(caller[0], caller[1]))
-        dprint(True, traceback.format_exc())
         try:
-            ser.close()
-        except:
-            pass
-
-        error   = -1
-        errmessage = "serialCOMM: ERROR: READ failed in function serialCOMM. See log for details"
-        return (rec, error, errmessage)
-
-    #print "serialCOMM: after ser.read: serial.in_waiting:", gglobs.ser.in_waiting
-    #print "serialCOMM: after ser.read: serial.out_waiting:", gglobs.ser.out_waiting
-
-
-    if len(rec) < returnlength:
-        fprint("Found a device but got ERROR communicating via serial port '{}', baudrate={}, timeout={}. Retrying.".format(gglobs.usbport, gglobs.baudrate, gglobs.timeout))
-        dprint(True, "ERROR: in serialCOMM: Received length:{} is less than requested:{}".format(len(rec), returnlength))
-
-        error    = 1
-        errmessage  = "ERROR: serialCOMM: Record too short: Received bytes:{} < requested:{}".format(len(rec), returnlength)
-
-        # RETRYING
-        count    = 1
-        #countmax = 5
-        countmax = 3
-        while True:
-            beep()
-            dprint(True, "serialCOMM: RETRY: to get full return record, trial #", count)
-            fprint("ERROR communicating via serial port. Retrying again.")
-
-            time.sleep(1)
-            ser.write(sendtxt)
-
-            time.sleep(0.3)
             rec = ser.read(returnlength)
+        except:
+            dprint(True, u"ERROR: serialCOMM: READ failed in function serialCOMM")
+            dprint(True, u"ERROR: serialCOMM: sys.exc_info(): ", sys.exc_info())
+            dprint(True, u"ERROR: serialCOMM: caller is: {} in line no:{}".format(caller[0], caller[1]))
+            dprint(True, traceback.format_exc()) # more extensive info
+            try:
+                ser.close()
+            except:
+                pass
 
-            if len(rec) == returnlength:
-                dprint(True, "serialCOMM: RETRY: returnlength is {} bytes. OK now. Continuing normal cycle".format(len(rec)))
-                errmessage += "; ok after {} retry".format(count)
-                break
-            else:
-                dprint(True, "serialCOMM: RETRY: returnlength is {} bytes. Still NOT ok; trying again".format(len(rec)))
+            rec         = None
+            error       = -1
+            errmessage  = u"ERROR: serialCOMM: READ failed in function serialCOMM. See log for details"
+            break
 
-            count += 1
-            if count >= countmax:
-                dprint(True, "serialCOMM: RETRY: Tried {} times, always failure, giving up".format(count))
-                dprint(True, "serialCOMM: ERROR: Serial communication error. Is the baudrate set correctly?")
-                error = -1
-                errmessage = "serialCOMM: ERROR communicating  - giving up - is the baudrate set correctly?"
-                return (None, error, errmessage)
+        #print "serialCOMM: after ser.read: serial.in_waiting:", gglobs.ser.in_waiting
+        #print "serialCOMM: after ser.read: serial.out_waiting:", gglobs.ser.out_waiting
 
-    if byteformat: rec = map(ord,rec) # convert string to list of int
+        if len(rec) < returnlength:
+            fprint("Found a device but got communication error. Retrying.")
+
+            dprint(True, "ERROR: serialCOMM: Received length: {} is less than requested: {}".format(len(rec), returnlength))
+
+            dprint(gglobs.debug, "rec (raw):", rec)
+            strrec = ""
+            for a in rec:
+                strrec += str(ord(a)) + ", "
+            dprint(gglobs.debug, "rec (val):", strrec[:-2])
+
+            error       = 1
+            errmessage  = "ERROR: serialCOMM: Record too short: Received bytes: {} < requested: {}".format(len(rec), returnlength)
+
+            # RETRYING
+            count    = 0
+            countmax = 3
+            while True:
+                count += 1
+                #beep()
+                dprint(True, "RETRY: serialCOMM: to get full return record, trial #", count)
+
+
+                time.sleep(1)
+                ser.write(sendtxt)
+
+                time.sleep(0.3)
+                rec = ser.read(returnlength)
+
+                if len(rec) == returnlength:
+                    dprint(True,  u"RETRY: serialCOMM: returnlength is {} bytes. OK now. Continuing normal cycle".format(len(rec)))
+                    errmessage += u"; ok after {} retry".format(count)
+                    break
+                else:
+                    #dprint(True,  u"RETRY: serialCOMM: returnlength is {} bytes. Still NOT ok; trying again".format(len(rec)))
+                    pass
+
+                if count >= countmax:
+                    dprint(True, u"RETRY: serialCOMM: Retried {} times, always failure, giving up".format(count))
+                    dprint(True, u"ERROR: serialCOMM: Serial communication error. Is the baudrate set correctly?")
+                    rec         = None
+                    error       = -1
+                    errmessage  = u"ERROR communicating via serial port. Giving up."
+                    break
+
+                fprint("ERROR communicating via serial port. Retrying again.")
+
+        if byteformat and rec != None:
+            #dprint(gglobs.debug, "rec=", rec)
+            rec = map(ord,rec) # convert string to list of int
+        break
+
+    debugIndent(0)
+    vprint(gglobs.verbose, "serialCOMM: Done. ")
 
     return (rec, error, errmessage)
 
@@ -962,62 +1119,87 @@ def serialOPEN(usbport, baudrate, timeout):
             on failure: None, errmessage
     """
 
-    cfg         = ""
+    msg         = u"port='{}', baudrate={}, timeout={}".format(usbport, baudrate, timeout)
+    gglobs.ser  = None
     error       = 0
-    errmessage  = "unknown error"
-    try:
-        #usbport = 'com3'
-        dprint(gglobs.debug, "serialOPEN: opening Serial Port '{}' with baudrate '{}' and timeout '{}'".format(usbport, baudrate, timeout))
-        gglobs.ser = serial.Serial(usbport, baudrate, timeout=timeout)
-        # ser is like: Serial<id=0x7f2014d371d0, open=True>(port='/dev/gqgmc', baudrate=115200, bytesize=8, parity='N', stopbits=1, timeout=20, xonxoff=False, rtscts=False, dsrdtr=False)
-    except serial.SerialException as e:
-        errmessage1  = str(e.strerror) if e.strerror != None else ""
-        #print "errmessage1:", errmessage1, type(errmessage1)
-        errmessage2  = "Settings tried: port='{}', baudrate={}, timeout={}".format(usbport, baudrate, timeout)
-        dprint(True, "serialOPEN: ERROR: " + errmessage1)
-        dprint(True, "serialOPEN: ERROR: " + errmessage2)
+    errmessage  = ""
+    errmessage1 = ""
 
-        return None, "ERROR connecting device<br>{}<br>{}".format(errmessage1.replace('[Errno 2]', '<br>'), errmessage2)
+    dprint(gglobs.debug, "serialOPEN: Begin. Settings: " + msg)
+    debugIndent(1)
 
-    dprint(gglobs.debug, "serialOPEN: Serial port '{}' successfully opened with baudrate={}, timeout={}".format(usbport, baudrate, timeout))
+    while True:
+        try:
+            gglobs.ser = serial.Serial(usbport, baudrate, timeout=timeout)
+            # ser is like: Serial<id=0x7f2014d371d0, open=True>(port='/dev/gqgmc', baudrate=115200, bytesize=8, parity='N', stopbits=1, timeout=20, xonxoff=False, rtscts=False, dsrdtr=False)
+        except serial.SerialException as e:
+            errmessage1 = u"ERROR: Connection problem with device @ " + msg + ( str(e) if str(e) != None else str(sys.exc_info()))
+            gglobs.ser  = None
+            dprint(True, errmessage1 )
+            break
 
-    # NOTE: the device port can be opened without error even when no
-    # communication can be done, e.g. due to wrong baudrate
-    # This tests for successful communication
-    try:
-        test, error, errmessage = getVER(gglobs.ser)
-    except:
-        errmessage1  = "serialOPEN: ERROR: communication with device failed. Baudrate correct?"
-        errmessage2  = "serialOPEN: ERROR: settings tried: port='{}', baudrate={}, timeout={}".format(usbport, baudrate, timeout)
-        dprint(True, errmessage, sys.exc_info())
-        dprint(True, errmessage1)
-        dprint(True, errmessage2)
+        # NOTE: the device port can be opened without error even when no
+        # communication can be done, e.g. due to wrong baudrate
+        # This tests for successful communication
+        dprint(gglobs.debug, u"Port opened ok, now testing communication")
+        try:
+            ver, error, errmessage = getVER(gglobs.ser)
+        except Exception as e:
+            errmessage1  = u"ERROR: Port opened ok, but Communication failed. Is baudrate correct?"
+            exceptPrint(e, sys.exc_info(), errmessage1)
+            gglobs.ser  = None
+            break
 
-        return None, "{}\n{}\n{}".format(errmessage, errmessage1, errmessage2)
+        if error < 0:
+            errmessage1  = u"ERROR: Communication problem: " + errmessage
+            dprint(True, errmessage1 )
+            gglobs.ser  = None
+            break
 
-    if error < 0:
-        dprint(True, "serialOPEN: ERROR: Communication problem with device:", errmessage)
-        return None, errmessage
+        if ver.startswith("GMC"):
+            gglobs.deviceDetected = ver
+        else:
+            gglobs.deviceDetected = u"ERROR: No device detected"
+            dprint(True, u"ERROR: No device detected")
+            gglobs.ser  = None
 
-    dprint(gglobs.debug, "serialOPEN: Serial communication successful with device at serial port: '{}', baudrate: {}, timeout: {} sec".format(gglobs.ser.name, gglobs.ser.baudrate, gglobs.ser.timeout))
-    return gglobs.ser, ""
+        break
+
+    if gglobs.ser == None:
+        rmsg = u"{}".format(errmessage1.replace('[Errno 2]', '<br>'))
+    else:
+        dprint(gglobs.debug, "Communication ok")
+        rmsg = ""
+
+    debugIndent(0)
+    dprint(gglobs.debug, "serialOPEN: Done.")
+
+    return gglobs.ser, rmsg
 
 
 def getDeviceConfig():
     """ Get the device configuration"""
 
+    dprint(gglobs.debug, "getDeviceConfig: Begin.")
+    debugIndent(1)
+
     try:
-        dprint(gglobs.debug, "getDeviceConfig: calling getCFG")
         cfg, error, errmessage = getCFG(gglobs.ser)
     except:
         cfg = None
-        dprint(gglobs.debug, "getDeviceConfig: ERROR getting config, sys.exc_info:'{}'".format(sys.exc_info()))
+        dprint(gglobs.debug, "ERROR: not getting config, sys.exc_info:'{}'".format(sys.exc_info()))
 
     gglobs.cfg = cfg
+
+    debugIndent(0)
+    dprint(gglobs.debug, "getDeviceConfig: Done.")
 
 
 def fprintDeviceInfo():
     """Print device info via fprint"""
+
+    dprint(gglobs.debug, "fprintDeviceInfo: Begin.")
+    debugIndent(1)
 
     forcedebug = "debug"
     while True:
@@ -1030,36 +1212,40 @@ def fprintDeviceInfo():
             #cfg = [255] * 512    # dummy list to satisfy functions
 
         # device name
-        fprint(u"Selected device:", gglobs.device)
+        fprint(u"Selected device (Model Name):", gglobs.device, forcedebug)
 
-        # firmware version number
+        # device name and firmware version reading from device
         ver, error, errmessage = getVER(gglobs.ser)
         if error < 0:
-            fprint(u"ERROR getting Device Firmware Version: '{}'".format(errmessage), forcedebug)
+            fprint(u"ERROR detecting device & firmware: '{}'".format(errmessage), forcedebug)
         else:
             try:
-                fprint(u"Device Firmware Version:",  ver)
+                fprint(u"Detected device & firmware:",  ver, forcedebug)
+                gglobs.deviceDetected = ver
             except:
                 # ver is not in ASCII format
-                errmessage  = "ERROR getting Device Firmware Version; not ASCII - got:" + str( map(ord,ver))
+                errmessage  = "ERROR detecting device & firmware; not ASCII - got:" + str( map(ord,ver))
                 fprint(errmessage, forcedebug)
 
         # serial number
         sn, error, errmessage = getSERIAL(gglobs.ser)
         if error < 0:
             fprint(u"ERROR getting Device Serial Number: '{}'".format(errmessage), forcedebug)
+        else:
+            dprint(gglobs.debug, "Serial Number is:", sn)
 
         # connected port
-        fprint(u"Device connected with port:", u"{} (Timeout:{} sec)".format(gglobs.usbport, gglobs.timeout))
+        fprint(u"Device connected with port:", u"{} (Timeout:{} sec)".format(gglobs.usbport, gglobs.timeout), forcedebug)
 
         # baudrate as read from device
-        fprint(u"Baudrate read from device:", getBAUDRATE())
+        fprint(u"Baudrate read from device:", getBAUDRATE(), forcedebug)
 
         # baudrate as set in program
-        fprint(u"Baudrate set by program:",  gglobs.baudrate)
+        fprint(u"Baudrate set by program:",  gglobs.baudrate, forcedebug)
 
         # get date and time from device, compare with computer time
         rec, error, errmessage = getDATETIME(gglobs.ser)
+
         if error < 0:
             fprint(u"Device Date and Time:", errmessage, forcedebug)
         else:
@@ -1075,21 +1261,21 @@ def fprintDeviceInfo():
 
             fprint("Date and Time from device:", devtime, forcedebug)
             fprint("Date and Time from computer:", cmptime, forcedebug)
-            fprint("", dtxt)
+            fprint("", dtxt, forcedebug)
 
         # voltage
         rec, error, errmessage = getVOLT(gglobs.ser)
         if error < 0:
-            fprint(u"ERROR getting Device Battery Voltage: '{}'".format(errmessage), forcedebug)
+            fprint(u"Device Battery Voltage:", "{}".format(errmessage), forcedebug)
         else:
-            fprint("Device Battery Voltage:", "{} V".format(rec))
+            fprint(u"Device Battery Voltage:", "{} V".format(rec), forcedebug)
 
         # temperature
         rec, error, errmessage = getTEMP(gglobs.ser)
         if error < 0:
             fprint(u"ERROR getting Device Temperature: '{}'".format(errmessage), forcedebug)
         else:
-            fprint(u"Device Temperature:", u"{} DEG (°C or °F)".format(rec ))
+            fprint(u"Device Temperature:", u"{} °C ".format(rec ), forcedebug)
             fprint(u"", "(only GMC-320 Re.3.01 and later)")
 
         # gyro
@@ -1097,33 +1283,39 @@ def fprintDeviceInfo():
         if error < 0:
             fprint(u"ERROR getting Device Gyro Data: '{}'".format(errmessage), forcedebug)
         else:
-            fprint(u"Device Gyro data:", rec)
+            fprint(u"Device Gyro data:", rec, forcedebug)
             fprint(u"", "(only GMC-320 Re.3.01 and later)")
 
         # power state
-        fprint(u"Device Power State:", isPowerOn())
+        fprint(u"Device Power State:", isPowerOn(), forcedebug)
 
         # Alarm state
-        fprint(u"Device Alarm State:", isAlarmOn())
+        fprint(u"Device Alarm State:", isAlarmOn(), forcedebug)
 
         # Speaker state
-        fprint(u"Device Speaker State:", isSpeakerOn())
+        fprint(u"Device Speaker State:", isSpeakerOn(), forcedebug)
 
         # Save Data Type
         sdt, sdttxt = getSaveDataType()
-        fprint(u"Device Save Mode:", sdttxt)
+        fprint(u"Device Save Mode:", sdttxt, forcedebug)
 
         # MaxCPM
         try:
-            value = cfg[gglobs.cfgOffsetMaxCPM] * 256 + cfg[gglobs.cfgOffsetMaxCPM +1]
+            if gglobs.device in ["GMC-300", "GMC-300E+", "GMC-320", "GMC-320+"]: # all 300series
+                value = cfg[gglobs.cfgOffsetMaxCPM] * 256 + cfg[gglobs.cfgOffsetMaxCPM +1]
+            else:
+                value = "Unknown due to unddisclosed firmware changes"
         except:
             value = "Unknown"
-        fprint(u"Max CPM (invalid if 65535!):", value)
+        fprint(u"Max CPM (invalid if 65535!):", value, forcedebug)
 
         # Calibration
         fprint(ftextCalibration(), forcedebug)
 
         break
+
+    debugIndent(0)
+    dprint(gglobs.debug, "fprintDeviceInfo: Done.")
 
 
 def ftextCFG():
@@ -1137,7 +1329,7 @@ def ftextCFG():
         fText += errmessage
     else:
         lencfg      = len(cfg)
-        fText += "The configuration is:  (Format: dec byte_number: hex value=dec value)\n"
+        fText += u"The configuration is:  (Format: dec byte_number: hex value=dec value)\n"
 
         while cfg[-1] == 255:  cfg.pop()  # remove trailing FF
 
@@ -1146,14 +1338,14 @@ def ftextCFG():
             pcfg = ""
             for j in range(0, 6):
                 k = i+j
-                if k < lencfg_pop: pcfg += "%3d:%02x=%3d |" % (k, cfg[k], cfg[k])
+                if k < lencfg_pop: pcfg += u"%3d:%02x=%3d |" % (k, cfg[k], cfg[k])
             fText += pcfg[:-2] + "\n"
 
         if lencfg_pop < lencfg:
-            fText += "Remaining {} values up to address {} are all 'ff=255'\n".format(lencfg -lencfg_pop, lencfg - 1)
+            fText += u"Remaining {} values up to address {} are all 'ff=255'\n".format(lencfg -lencfg_pop, lencfg - 1)
 
         asc = convertBytesToAscii(map(chr, cfg))
-        fText += "The configuration as ASCII is (non-ASCII characters as '.'):\n" + asc
+        fText += u"The configuration as ASCII is (non-ASCII characters as '.'):\n" + asc
 
     dprint(gglobs.debug, "ftextCFG: " + fText)
 
@@ -1171,12 +1363,11 @@ def ftextCalibration():
         cal_CPM.append(struct.unpack(">H", chr(cfg[14]) + chr(cfg[15]) )[0])
         cal_CPM.append(struct.unpack(">H", chr(cfg[20]) + chr(cfg[21]) )[0])
 
-        #gglobs.devicesIndex = 2 --> u"GMC-500":
-        if gglobs.devicesIndex == 2:
-            #print "using 500er, use big-endian"
+        if gglobs.device in ["GMC-500", "GMC-500+", "GMC-600", "GMC-600+"]:
+            #print "using 500er, 600er:  use big-endian"
             fString = ">f"
         else:
-            #print "using other than 500er, use little-endian"
+            #print "using other than 500er and 600er: use little-endian"
             fString = "<f"
 
         cal_uSv = []
@@ -1189,9 +1380,13 @@ def ftextCalibration():
 
         ftext = u"Device Calibration:\n"
         for i in range(0,3):
-            ftext += u"{:35s}{:6d} CPM = {:6.2f} µSv/h  ({:0.5f} µSv/h / CPM)\n".format(u"   Calibration Point {:}:".format(i + 1), cal_CPM[i], cal_uSv[i], cal_uSv[i] / cal_CPM[i])
-        #print "ftextCalibration:", ftext[:-1], type(ftext[:-1])
+            if gglobs.device in ["GMC-300", "GMC-300E+", "GMC-320", "GMC-320+"]: # all 300series
+                ftext += u"   Calibration Point {:}:  {:6d} CPM ={:7.2f} µSv/h   ({:0.5f} µSv/h / CPM)\n".format(i + 1, cal_CPM[i], cal_uSv[i], cal_uSv[i] / cal_CPM[i])
+            else:
+                ftext += u"   Calibration Point {:}:  Unknown due to unddisclosed firmware changes\n".format(i + 1)
+
     except:
+        #print sys.exc_info()
         ftext = u"{:35s}{:s}\n".format(u"Device Calibration:", u"Unknown")
 
     return ftext[:-1] # remove last newline char

@@ -30,28 +30,45 @@ def makeHIST(ser, sourceHIST, binFilePath, lstFilePath, hisFilePath):
     """make the History by reading data either from file or from device,
     parse them, sort them by date&time, and write into files"""
 
+    str_data_origin = b"Downloaded {} from device '{}'"
     #
     # get binary HIST data - either from file or from device
     #
     if sourceHIST == "Binary File":     # from file
         fprint("Reading data from binary file:", binFilePath)
+        hist    = readBinaryFile(binFilePath)
+        if "ERROR" in hist[:6]: # hist contains error message
+            error = -1
+            return (error, "ERROR: Cannot Make History: " + hist)
 
-        hist    = readFile(binFilePath)
-        if "ERROR" in hist[:6]:
-            return (-1, "ERROR: Cannot Make History: " + hist)
+        if hist[0:11] == "DataOrigin:":
+            data_origin = hist[11:128].rstrip(" ")
+            vprint(gglobs.verbose, "'{}', len:{}".format(data_origin, len(data_origin)))
+            hist = hist[128:]
+        else:
+            data_origin = str_data_origin.format("<Date Unknown>", "<Device Unknown>")
+            vprint(gglobs.verbose,  "no Data Origin label found, " + data_origin)
 
         # only for testing: to cut a short piece of bin data
-        #writeFileW(binFilePath + ".short", hist[0:100], linefeed = False)
+        #writeBinaryFile(binFilePath + ".short", hist[0:100])
 
     elif sourceHIST == "Device":         # from device
-        fprint("Reading data from:"             , "device: {}".format(gglobs.device))
 
-        hist    = ""
+        gglobs.deviceDetected, error, errmessage = gcommands.getVER(ser)
+        if error < 0: # getVER gave an error message
+            return (error, "ERROR: Cannot Make History: " + errmessage)
+
+        data_origin = str_data_origin.format(stime(), gglobs.deviceDetected)
+        fprint("Reading from detected device:", "{}".format(gglobs.deviceDetected))
+
+        hist = ""
+
         page    = gglobs.page # e.g. 4096, or 2048, see: defineDevice(index)
         FFpages = 0           # number of successive pages having only FF
 
         #
         # Cleaning pipeline BEFORE reading history - relevant at least for GMC-500
+        # and perhaps relevant for the GMC-600
         #
         dprint(gglobs.debug, "makeHIST: Cleaning pipeline BEFORE reading history")
         extra = gcommands.getExtraByte(gglobs.ser)
@@ -59,7 +76,7 @@ def makeHIST(ser, sourceHIST, binFilePath, lstFilePath, hisFilePath):
         for address in range(0, gglobs.memory, page):       # prepare to read all memory
             time.sleep(0.1) # fails occasionally to read all data when
                             # sleep is only 0.1; still not ok at 0.2 sec
-                            #wieder auf 0.1, da GQ Datavier deutlich scneller ist
+                            # wieder auf 0.1, da GQ Dataviewer deutlich scneller ist
             fprint("Reading page of size {} @address:".format(page)  , address)
             rec, error, errmessage = gcommands.getSPIR(ser, address , page)
             if error == 0 or error == 1:
@@ -84,7 +101,8 @@ def makeHIST(ser, sourceHIST, binFilePath, lstFilePath, hisFilePath):
                 return (error, "ERROR: Cannot Make History: " + errmessage)
 
         #
-        # Cleaning pipeline AFTER reading history - relevant at least for GMC-500
+        # Cleaning pipeline AFTER reading history - perhaps relevant for GMC-500
+        # and perhaps the GMC-600
         #
         dprint(gglobs.debug, "makeHIST: Cleaning pipeline AFTER reading history")
         extra = gcommands.getExtraByte(gglobs.ser)
@@ -92,6 +110,7 @@ def makeHIST(ser, sourceHIST, binFilePath, lstFilePath, hisFilePath):
     else:
         # "Parsed File" - is already *.his; does not need makeHIST
         return (0, "")
+
 
     histlen  = len(hist)          # Total length; should always be 64k or 1MB, now: could be any length!
     histFF   = hist.count('\xFF') # total count of FF bytes
@@ -107,58 +126,93 @@ def makeHIST(ser, sourceHIST, binFilePath, lstFilePath, hisFilePath):
     fprint("Count of data bytes:"              , "{} Bytes".format(histRClen))
     fprint("Count of FF bytes within data:"    , "{} Bytes".format(histRCFF))
 
+    # writing data from device as binary; add the device info to the beginning
     if sourceHIST == "Device":
-        # writing data as binary
-        fprint("Writing data as binary to:", binFilePath)
-        f = open(binFilePath, "w", buffering=1)
-        f.write(hist)
-        f.close
+        exthist = ("DataOrigin:" + data_origin + " " * 128 )[0:128] + hist
+        vprint(gglobs.verbose, "hist: len():{}, exthist: len:{} exthist:{}".format(len(hist), len(exthist), exthist[:140]))
+        writeBinaryFile(binFilePath, exthist)
 
+# Preparing the *.lst file
     # prepare to write binary data to '*.lst' file (= lstFilePath) in human readable format
-    lstlines  = "#Binary History Data - created {}\n".format(stime())   # write header
-    lstlines += "#Format: byte_index hex=dec : value hex=dec | \n"
+    lstlines  = u"#History Download - Binary Data in Human-Readable Form\n"  # write header
+    lstlines += u"#{}\n".format(data_origin)
+    lstlines += u"#Format: bytes:  index:value  as: 'hex=dec :hex=dec|'\n"
     histInt   = map(ord, histRC)                                        # convert string to list of int
-    pagesize  = 1024                                                    # for the breaks in printing
+    ppagesize = 1024                                                    # for the breaks in printing
 
-    # This reads the full history independent of the memory setting of the currently
-    # selected counter
-    for i in range(0, histRClen, pagesize):
-        for j in range(0, pagesize, 4):
+    # This reads the full hist data, but clipped for FF, independent of the
+    # memory setting of the currently selected counter
+    for i in range(0, histRClen, ppagesize):
+        for j in range(0, ppagesize, 4):
             lstline =""
             for k in range(0, 4):
-                if j + k >= pagesize:   break
+                if j + k >= ppagesize:   break
                 l  = i + j + k
                 if l >= histRClen:         break
                 lstline += "{:04x}={:<5d}:{:02x}={:<3d}|".format(l, l, histInt[l], histInt[l])
             lstlines += lstline[:-1] + "\n"
             if l >= histRClen:         break
 
-        lstlines += "Reading Page {} of size {} bytes complete; next address: 0x{:04x}={:5d} {}\n".format(i/pagesize, pagesize, i+pagesize, i+pagesize, "-" * 6)
+        lstlines += u"Reading Page {} of size {} bytes complete; next address: 0x{:04x}={:5d} {}\n".format(i/ppagesize, ppagesize, i+ppagesize, i+ppagesize, "-" * 6)
         #print "(l +1)", (l+1), "(l +1) % 4096", (l+1) % 4096
         if (l + 1) % 4096 == 0 :
-            lstlines += "Reading Page {} of size {} Bytes complete {}\n".format(i/4096, 4096, "-" * 35)
+            lstlines += u"Reading Page {} of size {} Bytes complete {}\n".format(i/4096, 4096, "-" * 35)
         if l >= histRClen:         break
+
     if histRClen < histlen:
-        lstlines += "Remaining {} Bytes to the end of history (size:{}) are all ff\n".format(histlen -histRClen, histlen)
+        lstlines += u"Remaining {} Bytes to the end of history (size:{}) are all ff\n".format(histlen -histRClen, histlen)
     else:
-        lstlines += "End of history reached\n"
+        lstlines += u"End of history reached\n"
 
     fprint("Writing data as list to:", lstFilePath)
     writeFileW(lstFilePath, lstlines, linefeed = False)
+# end for *.lst file
 
     # for testing only - highlicht the FF bytes
     #testwrite(hist, lstFilePath)
 
-    # parse HIST data, preserve a copy with parsing comments
-    fprint("Parsing binary file")
+# Prepare the *.his file
+    # parse HIST data; preserve a copy with parsing comments if on debug
+    fprint("Parsing binary file", "debug")
     histLogList, histLogListComment = parseHIST(hist, hisFilePath)
 
+    hisClines  = u"#HEADER, File created from History Download Binary Data\n"  # header
+    hisClines += u"#ORIGIN: {}\n".format(data_origin)
+    hisClines += u"#FORMAT: '<#>ByteIndex,Date&Time, CPM' (Line beginning with '#' is comment)\n"
+
+    if gglobs.debug:
+        path = hisFilePath + ".parse"
+        fprint("Writing commented parsed data to:", path, "debug")
+        with io.open(path, 'wt', encoding="utf_8", errors='replace', buffering = 1) as f:
+        #with io.open(path, 'wt', errors='replace', buffering = 1) as f:
+            f.write(hisClines)
+            for a in histLogListComment:
+                # ensure ASCII chars
+                asc     = ""
+                ordasc  = ""
+                ordflag = False
+                for i in range(0, len(a)):
+                    ai = ord(a[i])
+                    if ai < 128 and ai > 31:
+                        asc    += a[i]
+                        ordasc += a[i]
+                    else:
+                        ordflag = True
+                        asc    += "."
+                        ordasc += "[{}]".format(ai)
+                #print "a  :", a
+                #print "asc:", asc
+                #f.write(a + u"\n")
+                f.write(asc + u"\n")
+                if ordflag :
+                    f.write(ordasc + u"\n")
+                    print "ordasc:", ordasc
+
     # sort parsed data by date&time
-    fprint("Sorting parsed file on time")
+    fprint("Sorting parsed data on time", "debug")
     histLogList = sortHistLog(histLogList)
 
     """ Not relevant when all FF are ignored in parser!
-
     # remove trailing records if they have a count resulting from FF
     # i.e. 255 in CPM or 255*50 = 15300 in CPS mode
     trailFF = 0
@@ -187,12 +241,33 @@ def makeHIST(ser, sourceHIST, binFilePath, lstFilePath, hisFilePath):
         fprint("Trailing FF records removed:", "None found; nothing removed")
     """
 
-    # write result to '*.his' file
-    fprint("Writing parsed & sorted data to:", hisFilePath)
-    f = open(hisFilePath, "w")
-    for i in histLogList:
-        f.write(i + "\n")
-    f.close
+    fprint("Writing parsed & sorted data to:", hisFilePath, "debug")
+    with io.open(hisFilePath, 'wt', encoding="utf_8", errors='replace', buffering = 1) as f:
+        f.write(hisClines)
+        for a in histLogList:
+            # ensure ASCII chars
+            asc     = ""
+            ordasc  = ""
+            ordflag = False
+            for i in range(0, len(a)):
+                ai = ord(a[i])
+                if ai < 128 and ai > 31:
+                    asc    += a[i]
+                    ordasc += a[i]
+                else:
+                    ordflag = True
+                    asc    += "."
+                    ordasc += "[{}]".format(ai)
+            #print "a  :", a
+            #print "asc:", asc
+            #f.write(a + u"\n")
+            f.write(asc + u"\n")
+            if ordflag :
+                f.write(ordasc + u"\n")
+                print "ordasc:", ordasc
+
+
+# end for *.his file
 
     return (0, "")
 
@@ -227,17 +302,8 @@ def parseHIST(hist, hisFilePath):
     histLogList         = []
     histLogListComment  = []
 
-    rs                  = "#HEADER,{}, File created; Format: ByteIndex,Date&Time, CPM".format(stime())  # header
-    histLogList.       append(rs)
-    histLogListComment.append(rs)
-
-    if gglobs.debug:
-        f = open(hisFilePath + ".parse", "w", buffering=1)
-
-    while i < lh -2:
-        #print i,
-        if gglobs.debug:
-            f.write(histLogListComment[-1] + "\n")
+    #while i < lh - 2:
+    while i < lh - 3:  # if tag is ASCII bytes there will be a call of the 3rd byte
 
         r = rec[i]
         if r == 0x55:
@@ -301,13 +367,18 @@ def parseHIST(hist, hisFilePath):
                 elif rec[i+2] == 2: #ascii bytes coming
                     cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
                     count   = rec[i+3]
-                    asc     = ""
-                    for c in range(0,count):
-                        asc += chr(rec[i + 4 + c])
-                    rs      = "#{:5d},{:19s}, Note/Location: '{}' ({:d} Bytes) ".format(i, cpmtime, asc, count)
+                    print "i:", i, "count:", count
+
+                    if (i + 3 + count) <= lh:
+                        asc     = ""
+                        for c in range(0, count):
+                            asc += chr(rec[i + 4 + c])
+                        rs      = "#{:5d},{:19s}, Note/Location: '{}' ({:d} Bytes) ".format(i, cpmtime, asc, count)
+                    else:
+                        rs      = "#{:5d},{:19s}, Note/Location: '{}' (expected {:d} Bytes, got only {}) ".format(i, cpmtime, "ERROR: not enough data in History", count, lh - i - 3)
                     histLogList.       append(rs)
                     histLogListComment.append(rs)
-                    i      += c + 4
+                    i      += count + 3
 
             else: #0x55 is genuine cpm, no tag code
                 cpms   += 1
@@ -336,9 +407,6 @@ def parseHIST(hist, hisFilePath):
 
         i += 1
 
-    if gglobs.debug:
-        f.close
-
     return histLogList, histLogListComment
 
 
@@ -356,23 +424,20 @@ def sortHistLog(histLogList):
             return histLogList
         sortlines.append([t, hline])
 
-    # if a HEADER line exists, don't sort it
-    # can only be the first line!
-    if "#HEADER" in sortlines[0][1]:
-        start = 1
-    else:
-        start = 0
+    #print "sortlines: len():", len(sortlines)
+    #for i in range(5): print sortlines[i]
 
     # sort all records by the newly created Date-Time column
-    newsortlines = sorted(sortlines[start:], key = itemgetter(0))
-
-    # add the HEADER line back as 1st line in sorted list
-    if start == 1:
-        newsortlines.insert(0,sortlines[0])
+    newsortlines = sorted(sortlines, key = itemgetter(0))
+    #print "newsortlines: len():", len(newsortlines)
+    #for i in range(5): print newsortlines[i]
 
     # move back to list with only the log records as 3 csv columns
     # it works, but the function freaks me out :-(
     histLogListsorted = list(zip(*newsortlines)[1])
+
+    #print "histLogListsorted: len():", len(histLogListsorted)
+    #for i in range(5): print histLogListsorted[i]
 
     return histLogListsorted
 

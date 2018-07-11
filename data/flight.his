@@ -1,4 +1,6 @@
-#HEADER,2017-11-24 14:08:49, File created; Format: ByteIndex,Date&Time, CPM
+#HEADER, File created from History Download Binary Data
+#ORIGIN: Downloaded <Date Unknown> from device '<Device Unknown>'
+#FORMAT: '<#>ByteIndex,Date&Time, CPM' (Line beginning with '#' is comment)
 #    0,2017-01-11 20:41:47, Date&Time Stamp; Type:'CPM, save every minute', Interval:60 sec
     12,2017-01-11 20:42:47,     13
     13,2017-01-11 20:43:47,     13
@@ -816,4 +818,3 @@
    968,2017-01-12 10:04:36,     11
    969,2017-01-12 10:05:36,      7
    970,2017-01-12 10:06:36,      9
-   971,2017-01-12 10:07:36,     10
