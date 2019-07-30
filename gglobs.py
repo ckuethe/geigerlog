@@ -30,18 +30,48 @@ __author__          = "ullix"
 __copyright__       = "Copyright 2016, 2017, 2018"
 __credits__         = [""]
 __license__         = "GPL3"
-__version__         = "0.9.07"            # version of next GeigerLog
-#__version__         = "0.9.07.rc17"
+__version__         = "0.9.08a"           # version of next GeigerLog
+#__version__         = "0.9.09.rc1"
+
+# supported plugins
+phonon              = "inactive"          # allow the use of phonon (alt: active)
 
 
-# Versions
-python_version      = "3.5.2"             # at time of development; will be
-                                          # overwritten with auto-determined version in startup
+# pointers
+ex                  = None                # a pointer to ggeiger
+notePad             = None                # pointer to print into notePad area
+btn                 = None                # the cycle time OK button; for inactivation
+
+# constants
+NAN                 = float('nan')        # 'not-a-number'; used as 'missing value'
+datacolsDefault     = 11                  # max number of data columns supported, as:
+                                          # index, DateTime,
+                                          # CPM, CPS, CPM1st, CPM2nd, CPS1st, CPS2nd,
+                                          # Temperature, Pressure, Humidity, RadMon CPM.
+
+# for anything which must be defined even if no connection exists
+DEFcalibration      = 0.0065              # in units of µSv/h/CPM
+DEFcalibration2nd   = 0.194               # in units of µSv/h/CPM
+DEFRMcalibration    = 0.0065              # in units of µSv/h/CPM
+
+# scaling
+ScaleCPM            = "VAL"               # no scaling
+ScaleCPM1st         = "VAL"               # no scaling
+ScaleCPM2nd         = "VAL"               # no scaling
+ScaleCPS            = "VAL"               # no scaling
+ScaleCPS1st         = "VAL"               # no scaling
+ScaleCPS2nd         = "VAL"               # no scaling
+ScaleT              = "VAL"               # no scaling
+ScaleP              = "VAL"               # no scaling
+ScaleH              = "VAL"               # no scaling
+ScaleR              = "VAL"               # no scaling
 
 # flags
 debug               = False               # helpful for debugging, use via command line
 verbose             = False               # more detailed printing, use via command line
 devel               = False               # set some conditions for development CAREFUL !!!
+devel1              = False               # set some ADDITIONAL conditions for development CAREFUL !!!
+devel2              = False               # set some more ADDITIONAL conditions for development CAREFUL !!!
 debugindent         = ""                  # to indent printing
 redirect            = False               # on True redirects output from stdout and stderr to file stdlogPath
 testing             = False               # if true then some testing constructs will be activated CAREFUL !!!
@@ -69,50 +99,89 @@ manual_filename     = "GeigerLog-Manual.pdf" # name of the included manual file
 window_width        = 1366                # the standard screen of 1366 x 768 (16:9),
 window_height       = 768                 #
 window_size         = 'maximized'         # 'auto' or 'maximized'
-ThemeSearchPath     = "/usr/share/icons"  # path to the theme names
-                                          # in Ubuntu Mate 16.04 all found
-                                          # in /usr/share/icons
-ThemeName           = "mate"              # the (only!) theme to be used
-                                          # must be a directory name under
-                                          # the ThemeSearchPath
 style               = "Breeze"            # may also be defined in config file
+
+# RadMon stuff
+RMdevice            = "None"              # can currently be only RadMon+
+RMconnect           = (-99, "")           # flag to signal connection
+RMdisconnect        = (-99, "")           # flag to signal dis-connection
+RMserverIP          = None                # Server IP of the MQTT server, to which
+                                          # the RadMon sends the data
+RMserverPort        = "auto"              # Port of the MQTT server, defaults to 1883
+RMserverFolder      = "auto"              # The MQTT folder as defined in the RadMon+ device
+RMcalibration       = "auto"              # calibration factor for the tube used
+                                          # in the RadMon+ is set to 0.0065 in InitRadMon,
+                                          # unless redefined in config
+RMvariables         = "auto"              # a list of the variables to log, T,P,H,R
+RMtimeout           = 3                   # waiting for "successful connection" confirmation
+
+client              = None                # to be set elsewhere
+rm_cpm              = None                # temporary storage for CPM
+rm_temp             = None                # temporary storage for Temperature
+rm_press            = None                # temporary storage for Pressure
+rm_hum              = None                # temporary storage for Humidity
+rm_rssi             = None                # temporary storage for RSSI
+
 
 # Serial port
 ser                 = None                # serial port pointer
 baudrates           = [1200, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200]
-baudrate            = 57600               # will be overwritten by a setting in geigerlog.cfg file
+baudrate            = 115200              # will be overwritten by a setting in geigerlog.cfg file
 #usbport             = '/dev/geiger'
 usbport             = '/dev/ttyUSB0'      # will be overwritten by a setting in geigerlog.cfg file
 timeout             = 3                   # will be overwritten by a setting in geigerlog.cfg file
+timeout_write       = 1                   # will be overwritten by a setting in geigerlog.cfg file
 ttyS                = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
 
-# Device Options
+# Device Options                          # will be set after reading the version of the counter
 deviceDetected      = "auto"              # will be replaced after connection with full
                                           # name as detected, like 'GMC-300Re 4.20'
                                           # had been 14 chars, can now be longer
-memory              = 2**16               # 64kB. Can be configured for 64kB or 1 MB in the config file
-SPIRpage            = 4096                # size of page to read the history from device
-calibration         = 0.0065              # factory default calibration factor in device is linear
+memory              = "auto"              # Can be configured for 64kB or 1 MB in the config file
+SPIRpage            = "auto"              # size of page to read the history from device
+SPIRbugfix          = "auto"              # if True then reading SPIR gives one byte more than
+                                          # requested  (True for GMC-300 series)
+calibration         = "auto"              # factory default calibration factor in device is linear
                                           # i.e. the same for all 3 calibration points
+calibration2nd      = "auto"              # calibration factor for the 2nd tube in a GMC-500+ counter
                                           # CPM * calibration => µSv/h
-endianness          = "little"            # big- vs- little-endian for calibration value storage
-configsize          = 256                 # 256 bytes in 300series, 512 bytes in 500/600 series
-voltagebytes        = 1                   # 1 byte in the 300 series, 5 bytes in the 500/600 series
+                                          # this is from a calibration point #3 setting
+                                          # of 25CPM=4.85µSv/h
+#calibration2nd     = 0.390               # there was a calibration point #3 setting
+                                          # of 25CPM=9.75µSv/h =>0.39 µSv/h/CPM
+#calibration2nd     = 0.480               # calibration determined in own experiment
+                                          # http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=5369
+                                          # see Reply #10, Quote: “With Thorium = 0.468, and K40 = 0.494,
+                                          # I'd finally put the calibration factor for the 2nd tube, the
+                                          # SI3BG, to 0.48 µSv/h/CPM. Which makes it 74 fold less
+                                          # sensitive than the M4011!”
+
+endianness          = "auto"              # big- vs- little-endian for calibration value storage
+configsize          = "auto"              # 256 bytes in 300series, 512 bytes in 500/600 series
+voltagebytes        = "auto"              # 1 byte in the 300 series, 5 bytes in the 500/600 series
+variables           = "auto"              # a list of the variables to sample, CPM, CPS, 1st, 2nd
+nbytes              = "auto"              # the number of bytes the CPM and CPS calls, as well as
+                                          # the calls to 1st and 2nd tube deliver
+GMCvariables        = "auto"              # which variables are natively supported
 
 cfg                 = None                # Configuration bytes of the counter. 256 bytes in 300series, 512 bytes in 500series
-cfgOffsetPower      = 0                   # Offset in config for Power status (0=OFF, 255= ON)
+#cfgOffsetPower      = 0                   # Offset in config for Power status (0=OFF, 255= ON)
 cfgOffsetAlarm      = 1                   # Offset in config for AlarmOnOff (0=OFF, 1=ON)
 cfgOffsetSpeaker    = 2                   # Offset in config for SpeakerOnOff (0=OFF, 1=ON)
 cfgOffsetSDT        = 32                  # Offset in config to Save Data Type
-cfgOffsetCalibration= 8                   # Offset in config for CPM / µSv/h calibration points
-cfgOffsetMaxCPM     = 49                  # A MaxCPM during what period? of values in Memory??? HiByte@49, LoByte@50
+#cfgOffsetCalibration= 8                   # Offset in config for CPM / µSv/h calibration points
+#cfgOffsetMaxCPM     = 49                  # A MaxCPM during what period? of values in Memory??? HiByte@49, LoByte@50
+#cfgOffsetBattery    = 56                  # Battery Type: 1 is non rechargeable. 0 is chargeable.
 savedatatypes       = (
                         "OFF (no history saving)",
                         "CPS, save every second",
                         "CPM, save every minute",
-                        "CPM, save hourly average"
+                        "CPM, save hourly average",
+                        "CPS, save every second if exceeding threshold",
+                        "CPM, save every minute if exceeding threshold",
                       )
-savedatatype        = "Unknown, run 'Device' -> 'Show Device Info' to get Mode info"
+savedatatype        = "Unknown - will become known when the device is connected"
+savedataindex       = None
 
 #special flags
 test1               = False               # to run a specific test; see gcommands
@@ -123,9 +192,11 @@ test4               = False               # to run a specific test; see gcommand
 # Logging Options
 cpm_counter         = 0                   # counts readings since last start logging; prints as index in log
 logging             = False               # flag for logging
-logcycle            = 3.0                 # time in seconds between CPM or CPS calls in logging
+logcycle            = 1                   # time in seconds between CPM or CPS calls in logging
 cpmflag             = True                # True if CPM, False if CPS
-lastCPM             = None                # last CPM received from device
+lastValues          = None                # last values received from device
+lastRecord          = None                # last records received from devices
+loggingBlocked      = False               # logging not permitted; read-only file, or old version of log file
 
 # History Options
 keepFF              = False               # Flag in startup-options
@@ -135,35 +206,118 @@ keepFF              = False               # Flag in startup-options
 fullhist            = False               # If False breaks history recording when 8k FF is read
                                           # if True reads the whole history from memory
 
-# scratch pads
-NotePad             = None                # pointer to print into notepad area
-
 # Graphic Options
-legendPos           = 0                   # legend placed into upper left corner of graph
+varnames            = ("CPM", "CPS", "CPM1st", "CPM2nd", "CPS1st", "CPS2nd", "T", "P", "H", "R")
+
+vardict             = {                     # short and long names
+                        "CPM"   :"CPM",
+                        "CPS"   :"CPS",
+                        "CPM1st":"CPM1st",
+                        "CPM2nd":"CPM2nd",
+                        "CPS1st":"CPS1st",
+                        "CPS2nd":"CPS2nd",
+                        "T"     :"Temperature",
+                        "P"     :"Pressure",
+                        "H"     :"Humidity",
+                        "R"     :"RadMon CPM",
+                      }
+
+vardictshort        = {                     # short and very short names
+                        "CPM"   :"M",
+                        "CPS"   :"S",
+                        "CPM1st":"M1",
+                        "CPM2nd":"M2",
+                        "CPS1st":"S1",
+                        "CPS2nd":"S2",
+                        "T"     :"T",
+                        "P"     :"P",
+                        "H"     :"H",
+                        "R"     :"R",
+                      }
+
+varunit             = {                     # units of Variable; CPM*, CPS*, T can change
+                        "CPM"   :"CPM",
+                        "CPS"   :"CPS",
+                        "CPM1st":"CPM",
+                        "CPM2nd":"CPM",
+                        "CPS1st":"CPS",
+                        "CPS2nd":"CPS",
+                        "T"     :"°C",
+                        "P"     :"hPa",
+                        "H"     :"%",
+                        "R"     :"CPM",
+                      }
+
+#print("vardict:", vardict)
+#print("vardict.keys:", vardict.keys())
+#print("vardict.values:", vardict.values())
+
+# colors at: https://matplotlib.org/users/colors.html
+varcolor            = {
+                        "CPM"   :"blue",
+                        "CPS"   :"magenta",
+                        "CPM1st":"cyan",
+                        "CPM2nd":"deepskyblue",
+                        "CPS1st":"pink",
+                        "CPS2nd":"violet",
+                        "T"     :"red",
+                        "P"     :"black",
+                        "H"     :"green",
+                        "R"     :"orange",
+                      }
+
+vardevice           = {}                  # stores whether variable is avialble at the device
+for vname in varnames:     vardevice[vname] = False # set all false
+#print("vardevice:", vardevice)
+
+varlog              = {}                  # stores whether variable needs to be logged
+for vname in varnames:     varlog[vname] = False   # set all false
+#print("vardevice:", vardevice)
+
+varlabels           = {}                  # info on avg, StdDev etc; will be set in gplot
+for vname in varnames:     varlabels[vname] = ""    # set all to empty
+#print("varlabels:", varlabels)
+
+varchecked          = {}                  # is variable checked for inclusion in plot
+for vname in varnames:     varchecked[vname] = False    # set all to false
+#print("varchecked:", varchecked)
+
+varcheckedLog       = None #varchecked
+varcheckedHis       = None #varchecked
+
+
+allowGraphUpdate    = True                # to block updates on reading data
+
 Xleft               = None                # time min if entered
 Xright              = None                # time max if entered
 Xunit               = "Time"              # time unit; can be Time, auto, second, minute, hour, day
 XunitCurrent        = Xunit               # current time unit
-Xscale              = "auto"              # time scale; can be auto or fix
+
 Ymin                = None                # CPM min if entered
 Ymax                = None                # CPM max if entered
 Yunit               = "CPM"               # CPM unit; can be CPM, CPS, µSv/h
-Yscale              = "auto"              # CPM scale; can be auto or fix
-mav_initial         = 60                  # length of Moving Average period in seconds
-mav                 = mav_initial         # currently selected mav period
-avgChecked          = True                # Plot the lines Average, +/- 95% confidence, and Legend with average +/- StdDev value
+YunitCurrent        = Yunit               # current count unit
+
+Y2min               = None                # CPM min if entered
+Y2max               = None                # CPM max if entered
+Y2unit              = "Amb"               # CPM unit; can be CPM, CPS, µSv/h
+Y2unitCurrent       = Yunit               # current count unit
+
+avgChecked          = False               # Plot the lines Average, +/- 95% confidence, and Legend with average +/- StdDev value
 mavChecked          = False               # Plot the Moving Average line, and Legend with MovAvg length ins seconds and data points
-logChecked          = False               # Plot the Log of the Count Rate
-cumChecked          = False               # Plot the Cumulative Average of the Count Rate
-ccdChecked          = False               # Plot the Cumulative Count Rate
+mav_initial         = 120                 # length of Moving Average period in seconds
+mav                 = mav_initial         # currently selected mav period
 
-
-# Plotstyle
+# Plotstyle                               # currently not used
 linestyle           = 'solid'
 linecolor           = 'blue'
 linewidth           = '0.5'
 markerstyle         = 'o'
-markersize          = '2'
+markersize          = '10'
+
+#Graph Y-Limits                           # to calculate cursor position for left, right Y-axis
+y1_limits           = (0, 1)              # (bottom, top) of y left
+y2_limits           = (0, 1)              # (bottom, top) of y right
 
 
 # Data arrays and values
@@ -175,23 +329,117 @@ logTimeFirst        = None                # value: Time of first record of total
 logTimeSlice        = None                # array: selected slice out of logTime
 logTimeDiffSlice    = None                # array: selected slice out of logTimeDiff
 logCPMSlice         = None                # array: selected slice out of logCPM
+logSliceMod         = None
 
-plotTime            = None                # array: either logTime or logTimeDiff depending on time unit;
-                                          #        if Diff then in unit second, minute, hour, day
-plotTimeSlice       = None                # array: selected slice out of plotTime
 sizePlotSlice       = None                # value: size of plotTimeSlice
 
 logFileData         = None                # 2dim numpy array with the log data
 hisFileData         = None                # 2dim numpy array with the his data
 currentFileData     = None                # 2dim numpy array with the currently plotted data
 
+# Data read out from the device config
+cfgLowKeys          = ( "Power",
+                        "Alarm",
+                        "Speaker",
+                        "CalibCPM_0",
+                        "CalibuSv_0",
+                        "CalibCPM_1",
+                        "CalibuSv_1",
+                        "CalibCPM_2",
+                        "CalibuSv_2",
+                        "SaveDataType",
+                        "MaxCPM",
+                        "Baudrate",
+                        "Battery",
+                        "ThresholdMode",
+                        "ThresholdCPM",
+                        "ThresholduSv"
+                      )
+
+cfgLow = {                                       # common to all GMCs
+          "Power"         : None ,
+          "Alarm"         : None ,
+          "Speaker"       : None ,
+          "CalibCPM_0"    : None ,                 # calibration_0 CPM Hi+Lo Byte
+          "CalibuSv_0"    : None ,                 # calibration_0 uSv 4 Byte
+          "CalibCPM_1"    : None ,                 # calibration_1 CPM Hi+Lo Byte
+          "CalibuSv_1"    : None ,                 # calibration_1 uSv 4 Byte
+          "CalibCPM_2"    : None ,                 # calibration_2 CPM Hi+Lo Byte
+          "CalibuSv_2"    : None ,                 # calibration_2 uSv 4 Byte
+          "SaveDataType"  : None ,                 # History Save Data Type
+          "MaxCPM"        : None ,                 # MaxCPM Hi + Lo Byte
+          "Baudrate"      : None ,                 # Baudrate, coded differently for 300 and 500/600 series
+          "Battery"       : None ,                 # Battery Type: 1 is non rechargeable. 0 is chargeable.
+          "ThresholdMode" : None ,                 # Which Modes
+          "ThresholdCPM"  : None ,                 # ??
+          "ThresholduSv"  : None ,                 # ??
+         }
+
+cfgLowndx = {                                      # all GMCs
+          "Power"         : (0,        0 + 1),
+          "Alarm"         : (1,        1 + 1),
+          "Speaker"       : (2,        2 + 1),
+          "CalibCPM_0"    : (8,        8 + 2),     # calibration_0 CPM Hi+Lo Byte
+          "CalibuSv_0"    : (10,      10 + 4),     # calibration_0 uSv 4 Byte
+          "CalibCPM_1"    : (14,      14 + 2),     # calibration_1 CPM Hi+Lo Byte
+          "CalibuSv_1"    : (16,      16 + 4),     # calibration_1 uSv 4 Byte
+          "CalibCPM_2"    : (20,      20 + 2),     # calibration_2 CPM Hi+Lo Byte
+          "CalibuSv_2"    : (22,      22 + 4),     # calibration_2 uSv 4 Byte
+          "SaveDataType"  : (32,      32 + 1),     # History Save Data Type
+          "MaxCPM"        : (49,      49 + 2),     # MaxCPM Hi + Lo Byte
+          "Baudrate"      : (57,      57 + 1),     # Baudrate, coded differently for 300 and 500/600 series
+          "Battery"       : (56,      56 + 1),     # Battery Type: 1 is non rechargeable. 0 is chargeable.
+          "ThresholdMode" : (64,      64 + 1) ,    # Mode: 0:CPM, 1:µSv/h, 2:mR/h
+          "ThresholdCPM"  : (62,      62 + 2) ,    # ??
+          "ThresholduSv"  : (65,      65 + 4) ,    # ??
+         }
+
 # Radiation World maps
-GMCmapURL           = ""                  # to be set in configuration file
-UserID              = ""                  # UserID on gmcmap.com
-CounterID           = ""                  # CounterID on gmcmap.com
+cfgMapKeys          =  ("SSID", "Password", "Website", "URL", "UserID", "CounterID", "Period", "WiFi")
 
+GMCmap = {                                # as defined in configuration file
+          "SSID"        : "",
+          "Password"    : "",
+          "Website"     : "",
+          "URL"         : "",
+          "UserID"      : "",
+          "CounterID"   : "",
+          "Period"      : "",
+          "WiFi"        : "",
+         }
 
+cfgMap = {                               # as read out from the device
+          "SSID"        : "" ,
+          "Password"    : "" ,
+          "Website"     : "" ,
+          "URL"         : "" ,
+          "UserID"      : "" ,
+          "CounterID"   : "" ,
+          "Period"      : "" ,
+          "WiFi"        : "" ,
+         }
 
+cfg512ndx = {                                      # GMC-500/600
+          "SSID"        : (69,     69 + 32),
+          "Password"    : (101,   101 + 32),
+          "Website"     : (133,   133 + 32),
+          "URL"         : (165,   165 + 32),
+          "UserID"      : (197,   197 + 32),
+          "CounterID"   : (229,   229 + 32),
+          "Period"      : (261,   261 +  1),     #
+          "WiFi"        : (262,   262 +  1),     # WiFi OnOff
+         }
+
+cfg256ndx = {                                      # only GMC-320+V5
+          "SSID"        : (69,     69 + 16),
+          "Password"    : (85,     85 + 16),
+          "Website"     : (101,   101 + 25),
+          "URL"         : (126,   126 + 12),
+          "UserID"      : (138,   138 + 12),
+          "CounterID"   : (150,   150 + 12),
+          "Period"      : (112,   112 +  1),     # 112
+          "WiFi"        : (113,   113 +  1),     # 113 WiFi OnOff
+         }
 
 helpOptions = """
 Usage:  geigerlog [Options] [Commands]
@@ -233,19 +481,15 @@ To watch debug and verbose output start the program from the
 command line in a terminal. The output will print to the terminal.
 
 With the Redirect option all output - including Python error
-messages - will go into the redirect file.
+messages - will go into the redirect file geigerlog.stdlog.
 """
 
 helpQuickstart = """
 <style>h3 { color: darkblue; margin:5px 0px 5px 0px; padding:0px; } p, ol, ul { margin:4px 0px 4px 0px; padding:0px;} </style>
-<H3>Mouse Help</H3><p>pointing your mouse cursor over an item of the window shows a status message
-in the<br><b>Statusbar</b> (bottom of the window) providing info on the item!
+<H3>Mouse Help</H3><p>resting your mouse cursor briefly over an item of the window shows a ToolTip message providing info on the item!
 <br><br>Assuming a USB cable is connecting computer and device:</p>
 <h3>USB Port and Baudrate</h3>
-<p>Start GeigerLog with command <span style="font-family:'Courier';">geigerlog</span>
- and in the Help menu select <b>USB Autodiscovery</b>. Take a note of the discovered <b>Port</b> and <b>Baudrate</b> settings. Click OK to use them for the current session.</p>
-
-<p>Once you know the settings, use them with your device by starting GeigerLog with these options:<br>
+<p>If you do know your USB Port and baudrate setting, start GeigerLog with these options:<br>
 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 <span style="font-family:'Courier';margin:30px;">geigerlog -p yourport -b yourbaudrate</span>
 <br>On a Linux system e.g.:
@@ -254,13 +498,12 @@ in the<br><b>Statusbar</b> (bottom of the window) providing info on the item!
 <br>On a Windows system e.g.:
 &nbsp;&nbsp;<span style="font-family:'Courier';margin:30px;">geigerlog -p COM3 -b 57600</span></p>
 
-<p>If these settings will be your standard settings, you might want to modify the configuration file <b>geigerlog.cfg</b>
-in section <b>Serial Port</b> accordingly, and start GeigerLog without options as <span style="font-family:'Courier';">geigerlog</span>.</p>
+<p>If you don't know your settings read the manual first in chapter 'Connecting GMC - Devices' before you start the <b>USB Autodiscovery</b> in the Help menu.</p>
 
 <h3>Start Logging</h3>
 <ol>
-<li>Connect the computer with the device<br>(menu: Device -> Connect Device, or click the 'Click for Connection' button)</li>
-<li>Switch device on (menu: Device -> Switch Power ON)</li>
+<li>Connect the computer with the devices<br>(menu: Device -> Connect Devices, or click the 'Connect' button)</li>
+<li>Switch GMC device on (menu: Device -> GMC Series -> Switch Power ON)</li>
 <li>Load a log file (menu: Logging -> Get Log File or Create New One)<br>
 In the Get Log File dialog enter a new filename and press Enter,
 <br>or select an existing file to <b>APPEND</b> new data to this file</li>
@@ -269,7 +512,7 @@ In the Get Log File dialog enter a new filename and press Enter,
 
 <h3>Get History from Device</h3>
 <ol>
-<li>Connect the computer with the device<br>(menu: Device -> Connect Device, or click the 'Click for Connection' button)</li>
+<li>Connect the computer with the devices<br>(menu: Device -> Connect Devices, or click the 'Connect' button)</li>
 <li>Get history from device (menu: History  -> Get History from Device)</li>
 <li>Enter a new filename (e.g. enter 'myfile' and press Enter) or select an existing file
 <br>Note: selecting an existing file will <b>OVERWRITE</b> this file!</li>
@@ -410,47 +653,49 @@ here; the links will guide you to sites with more extensive specifications.<br><
 
 helpAbout = """
 <!doctype html>
-<p><span style='color:darkblue;'><b>GeigerLog</b></span> is a Python based program for use with GQ Electronic's
-GMC-3xx, GMC-5xx, and GMC-6xx line of Geiger counters. It was developed on Linux Ubuntu Mate 16.04
-but should also work on Windows, Mac and other, as long as a Python 3 with PyQt4 environment is available.
-</p>
+<p><span style='color:darkblue;'><b>GeigerLog</b></span> is a combination of data logger, data presenter, and data analyzer.</p>
 
-<p>The program allows reading of Geiger counter data, printing to screen and logging to \
-file. Comments can be added to the log file during logging. The history stored on the Geiger \
-counter can be extracted and converted into files that can be printed and analyzed.</p>
+<p>It is based on Python (Version 3), hence it runs on Linux, Windows, Macs, and other systems.</p>
 
-<p>From all data - Log data or History data - graphs can be created and shown as Count Rate History versus time.
- The Count Rate can be shown in units of CPM or CPS or µSv/h. The time can be shown as time-of-day, or
-  time since first record in units of sec, min, hours, days, or auto-selected in auto mode.
-  During logging the graph is live auto-updated. Both graph axes can be in either
-  fixed scale or auto-scaled mode. The graphs can be stretched, shifted, and zoomed for details, and saved as pictures
-in various formats (png, jpg, tif, svg, ...).</p>
+<p>GeigerLog had initially been developed for the sole use with Geiger counters, but has now become
+a more universal tool, which equally well handles environmental data like temperature, air-pressure,
+and humidity, and is prepared for future sensors.</p>
 
-<p>Time ranges can be set to analyze statistical properties of the data \
-set within that range and be plotted within that range. The ranges can be entered manually or by
-left and right mouse clicks for left (min) and right (max) range limits. All manipulations \
-can be done during ongoing logging without disturbing it.</p>
+<p>In its present state it can e.g. be deployed as a
+monitor for a remote weather station, complemented with a Geiger counter to monitor radioactivity.</p>
 
-<p>Some Geiger counter functions can be controlled from GeigerLog, and changes made without interrupting logging. All
-communication with the device is checked for errors, which unfortunately do occur occasionally. The program
-attempts to auto-recover from an error, and continues if successful, which it is in most cases.</p>
+<p><br>Currently Supported Devices:</p>
 
-<p>The USB port used and its baudrate for the connection with the device can be auto-discovered.</p>
+<p><b>GMC Devices:</b></p>
+<p>GeigerLog continuous to support GQ Electronics's GMC-3xx, GMC-5xx, and GMC-6xx line
+of classical Geiger counters, including the variants with an additional 2nd Geiger tube.</p>
 
-<p>Genuine recordings of Geiger counter data are included. One is from an international flight,
-showing count rate increase with altitude, and reduction of cosmic rays when going from northern
-latitudes towards the equator.</p>
+<p><b>RadMon+ Devices:</b></p>
+<p><b><span style='color: red;'>New: </span></b>Support of the RadMon+ hardware, which can provide a Geiger counter as well as an
+environmental sensor for temperature, air-pressure (atmospheric-pressure), and humidity.</p>
 
-<p>The most recent version of GeigerLog can be found at project GeigerLog at Sourceforge:
+<p><br>The most recent version of GeigerLog can be found at project GeigerLog at Sourceforge:
 <a href="https://sourceforge.net/projects/geigerlog/">https://sourceforge.net/projects/geigerlog/</a>.
-A <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf">GeigerLog-Manual(pdf)</a> is there as well.</p>
+An up-to-date GeigerLog-Manual is there as well.</p>
 
 <p>References:
 <br>&nbsp;&nbsp;Author.............: {}
 <br>&nbsp;&nbsp;Version GeigerLog..: {}
-<br>&nbsp;&nbsp;Credits............: <a href="https://sourceforge.net/projects/gqgmc/">Phil Gillaspy for extended documentation</a> of Geiger counter commands
-<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-<a href="http://www.gqelectronicsllc.com/">GQ Electronics LLC</a> for documentation
 <br>&nbsp;&nbsp;Copyright..........: {}
 <br>&nbsp;&nbsp;License............: {} see included file 'COPYING' and <a href="http://www.gnu.org/licenses">http://www.gnu.org/licenses</a>
+"""
+
+
+helpFirmwareBugs = """==== Help on Geiger Counter Firmware Bugs ====================================\n
+This provides info on recently discovered bugs in the Geiger counters.
+
+Device Model Name:  GMC-500+
+
+When this device is on firmware 1.18 it identifies itself with an empty identifier,
+which prohibits use on GeigerLog. It should identify itself as 'GMC-500+Re 1.18'.
+
+A work-around is to cycle the connection: ON --> OFF --> ON. Then it should work.
+
+This bug is corrected with firmware 1.21. It is recommended to contact GMC support for an update.
+The Geiger counter will then identify itself as 'GMC-500+Re 1.21'.
 """

@@ -5,9 +5,9 @@
 gplot.py - GeigerLog commands to plot data collected from from Geiger Counter
 
 Data in the form:
-    #BIndx Date&Time            CPM
-        12,2017-01-11 11:01:33, 17
-        13,2017-01-11 11:02:33, 20
+    #Index  Date&Time             CPM, CPS, ...
+        12, 2017-01-11 11:01:33,  117,   2, ...
+        13, 2017-01-11 11:02:33,  120,   3, ...
 """
 
 ###############################################################################
@@ -32,108 +32,21 @@ __copyright__       = "Copyright 2016, 2017, 2018"
 __credits__         = [""]
 __license__         = "GPL3"
 
-import sys
-import os
-import time
+import sys, os, time
+import copy
 import numpy as np
 
 import matplotlib.pyplot as plt
 import matplotlib.dates as mpld
 #import matplotlib.dates  as mdates     # special for axes formatting
 #import matplotlib.ticker as ticker     # special for axes formatting
-from matplotlib.ticker import FuncFormatter
+#from matplotlib.ticker import FuncFormatter
 
 import gglobs
 from   gutils import *
 
-
-# used for the plots
-color = {}
-color['avg']        = 'black'          # line for average
-#color['cpm']        = 'blue'           # CPM, CPS count data #now done via config
-color['mav']        = 'red'            # Moving Average
-color['mavbg']      = 'yellow'         # Moving Average Background
-
-legendPlacement = {0:'upper left', 1:'upper center', 2:'upper right', 3:'center right', 4:'lower right', 5:'lower center', 6:'lower left', 7:'center left', 8:'center'}
-
-
-def printDataProp(alldata = True):
-
-    if gglobs.logging: # due to plot updates not updating the arrays need to call makePlot
-        if gglobs.currentFilePath == gglobs.logFilePath:
-            makePlot()
-
-    if alldata:
-        logTime  = gglobs.logTime
-        cpm      = gglobs.logCPM
-    else:
-        logTime  = gglobs.logTimeSlice
-        cpm      = gglobs.logCPMSlice
-
-    try:
-        sizeSlice    = cpm.size # fails if cpm not built for lack of data
-    except:
-        return
-
-    if gglobs.Yunit == 'CPM':
-        count_factor = 1.0
-        count_text   = "CPM"
-
-    elif gglobs.Yunit == 'CPS':
-        count_factor = 1.0 / 60.0
-        count_text   = "CPS"
-
-    else:
-        count_factor = gglobs.calibration
-        count_text   = "µSv/h"
-
-    count           = cpm * count_factor
-
-    count_max       = count.max()
-    count_min       = count.min()
-    count_avg       = np.mean(count)
-    count_med       = np.median(count)
-    count_var       = np.var(count)
-    count_std       = np.std(count)
-    count_err       = count_std / np.sqrt(count.size)
-    count_sqrt      = np.sqrt(count_avg)
-    count_95        = count_std * 1.96   # 95% confidence range
-
-    logtime_size    = logTime.size
-    logtime_max     = logTime.max()
-    logtime_min     = logTime.min()
-    logtime_delta   = logtime_max - logtime_min # in days
-
-    fprint("Totals")
-    fprint("  Records = {:10,.0f}  Filesize = {:,} Bytes".format(sizeSlice, os.path.getsize(gglobs.currentFilePath)))
-    fprint("  Counts  = {:10,.0f}  Counts calculated as: Average CPM * Log Duration[min]\n".format(np.mean(cpm) * logtime_delta * 24 * 60))
-
-    fprint("{:<5s}                    of avg".format(count_text))
-    fprint("  Average   ={:8.2f}      100%       Min  ={:8.0f}        Max  ={:8.0f}" .format(count_avg,                              count_min,          count_max)          )
-    fprint("  Variance  ={:8.2f} {:8.0f}%"                                          .format(count_var,  count_var  / count_avg * 100.))
-    fprint("  Std.Dev.  ={:8.2f} {:8.0f}%       LoLim={:8.0f}        HiLim={:8.0f}" .format(count_std,  count_std  / count_avg * 100.,  count_avg-count_std,  count_avg+count_std)  )
-    fprint("  Sqrt(Avg) ={:8.2f} {:8.0f}%       LoLim={:8.0f}        HiLim={:8.0f}" .format(count_sqrt, count_sqrt / count_avg * 100.,  count_avg-count_sqrt, count_avg+count_sqrt) )
-    fprint("  Std.Err.  ={:8.2f} {:8.0f}%       LoLim={:8.0f}        HiLim={:8.0f}" .format(count_err,  count_err  / count_avg * 100.,  count_avg-count_err,  count_avg+count_err) )
-    fprint("  Median    ={:8.2f} {:8.0f}%       P_5% ={:8.0f}        P_95%={:8.0f}" .format(count_med,  count_med  / count_avg * 100., np.percentile(count, 5), np.percentile(count, 95)))
-    fprint("  95% Conf*)={:8.2f} {:8.0f}%       LoLim={:8.0f}        HiLim={:8.0f}" .format(count_95,   count_95   / count_avg * 100.,  count_avg-count_95,   count_avg+count_95)   )
-    fprint("  *)Valid for Poisson Distribution only when Average > 10\n")
-
-    oldest   = (str(mpld.num2date(logtime_min)))[:19]
-    youngest = (str(mpld.num2date(logtime_max)))[:19]
-
-    fprint("Time")
-    fprint("  Oldest rec    = {}  (time={:0.3f} d)".format(oldest,   0))
-    fprint("  Youngest rec  = {}  (time={:0.3f} d)".format(youngest, logtime_max - logtime_min))
-    fprint("  Duration      = {:0.0f} s   ={:0.1f} m   ={:0.2f} h   ={:0.3f} d".format(logtime_delta *86400., logtime_delta*1440., logtime_delta *24., logtime_delta))
-    fprint("  Cycle average = {:0.2f} s".format(logtime_delta *86400./ (sizeSlice -1)))
-
-    r = min (sizeSlice, 3)
-    fprint("\nFirst and last {} records:".format(r))
-    fprint("      RecNo  Date&Time                CPM         CPS       µSv/h")
-    for i in range(0, r):
-        fprint("   {:8d}  {:s} {:8.0f}    {:8.2f}    {:8.2f}".format(i, (str(mpld.num2date(logTime[i])))[:19], cpm[i], cpm[i] / 60.0, cpm[i] * gglobs.calibration))
-    for i in range(logtime_size - r, logtime_size):
-        fprint("   {:8d}  {:s} {:8.0f}    {:8.2f}    {:8.2f}".format(i, (str(mpld.num2date(logTime[i])))[:19], cpm[i], cpm[i] / 60.0, cpm[i] * gglobs.calibration))
+# keep - had been used for legend placement
+#legendPlacement = {0:'upper left', 1:'upper center', 2:'upper right', 3:'center right', 4:'lower right', 5:'lower center', 6:'lower left', 7:'center left', 8:'center'}
 
 
 def getTsr(Tfirst, Tdelta):
@@ -284,8 +197,8 @@ def updatePlot(filePath, timetag, cpm):
 
     gglobs.sizePlotSlice += 1
 
-    plotSubTitle = 'File:' + os.path.basename(filePath) + "  Recs:" + str(gglobs.sizePlotSlice)
-    plt.title(plotSubTitle, fontsize=12, fontweight='normal', loc = 'right')
+    subTitle = 'File:' + os.path.basename(filePath) + "  Recs:" + str(gglobs.sizePlotSlice)
+    plt.title(subTitle, fontsize=12, fontweight='normal', loc = 'right')
 
     ax = plt.gca()
     ax.relim()              # recompute the ax.dataLim
@@ -305,11 +218,24 @@ def makePlot(fprintMAV = False):
     Return: nothing
     """
 
-    global plotTime, strFirstRecord, rdplt, fig
+    global plotTime, strFirstRecord, rdplt, fig, ax1, ax2, xFormatStr
+
+    if np.all(gglobs.currentFileData) == None   : return
+    if not gglobs.allowGraphUpdate      : return
+
+    #print("makePlot:  gglobs.currentFileData:", gglobs.currentFileData)
+    #print("makePlot:  gglobs.logFileData:", gglobs.logFileData)
+    #print("makePlot:  gglobs.hisFileData:", gglobs.hisFileData)
+
+    #print("makePlot: gglobs.varchecked:   ", gglobs.varchecked)
+    #print("        : gglobs.varcheckedLog:", gglobs.varcheckedLog)
+    #print("        : gglobs.varcheckedHis:", gglobs.varcheckedHis)
+    #print("        : gglobs.varlog:",        gglobs.varlog)
 
     try:
         if gglobs.currentFileData.size == 0:
             dprint(gglobs.debug, "makePlot: no records; nothing to plot")
+            fprint("Graph: no records; nothing to plot")
             fig = plt.figure(1)
             plt.clf()                                    # clear figure
             fig.canvas.draw_idle()
@@ -325,14 +251,13 @@ def makePlot(fprintMAV = False):
 
     start                   = time.time()            # timing durations
 
-    filePath                = gglobs.currentFilePath
     gglobs.logTime          = gglobs.currentFileData[:,0]           # time data of total file
-    gglobs.logCPM           = gglobs.currentFileData[:,1]           # CPM  data of total file
     gglobs.logTimeFirst     = gglobs.logTime[0]                     # time of first record in total file
     gglobs.logTimeDiff      = gglobs.logTime - gglobs.logTimeFirst  # using time diff to first record in days
 
-    strFirstRecord = (str(mpld.num2date(gglobs.logTimeFirst)))[:19]
+    strFirstRecord          = (str(mpld.num2date(gglobs.logTimeFirst)))[:19]
 
+    # define the data source and label for the X-axis
     if gglobs.Xunit == "Time" :
         plotTime  = gglobs.logTime
         xFormatStr, xLabelStr = getXLabelsToD()
@@ -340,7 +265,19 @@ def makePlot(fprintMAV = False):
         plotTime  = gglobs.logTimeDiff
         xLabelStr = getXLabelsSince(gglobs.Xunit)
 
-    gglobs.plotTime = plotTime
+
+    gglobs.allowGraphUpdate = False     # prevent graph updates due to setting check boxes
+    varcount        = gglobs.currentFileData.shape[1] - 1 # subtract 1 for the x axis
+    gglobs.varcount = varcount
+    #print("makePlot: gglobs.currentFileData.shape[1], varcount:", gglobs.currentFileData.shape[1], varcount)
+    log             = {}
+    for i in range(0, varcount):
+        a       = gglobs.varnames[i]
+        #print("next a:", a)
+        log[a]  = gglobs.currentFileData[:, i + 1]
+    gglobs.allowGraphUpdate = True
+    #print("log:", log)
+
 
     # confine limits to what is available
     Xleft = gglobs.Xleft
@@ -359,12 +296,20 @@ def makePlot(fprintMAV = False):
     #dprint(gglobs.debug, "recmin, recmax:", recmin, recmax)
 
     # slice the arrays; include record #recmax (thus +1)
-    gglobs.logTimeSlice      = gglobs.logTime     [recmin:recmax + 1 ]
-    gglobs.logTimeDiffSlice  = gglobs.logTimeDiff [recmin:recmax + 1 ]
-    gglobs.logCPMSlice       = gglobs.logCPM      [recmin:recmax + 1 ]
-    gglobs.plotTimeSlice     = gglobs.plotTime    [recmin:recmax + 1 ]
+    gglobs.logTimeSlice         = gglobs.logTime     [recmin:recmax + 1 ]
+    gglobs.logTimeDiffSlice     = gglobs.logTimeDiff [recmin:recmax + 1 ]
+    plotTimeSlice               = plotTime           [recmin:recmax + 1 ]   # plotTime had been scaled for the x-axis!
+    x                           = plotTimeSlice # abbreviation for all plot commands
 
-    gglobs.sizePlotSlice = gglobs.plotTimeSlice.size
+    logSlice        = {}
+    gglobs.logSlice = {}
+    for i in range(varcount):
+        vname = gglobs.varnames[i]
+        #logSlice[gglobs.varnames[i]] = log[gglobs.varnames[i]][recmin:recmax + 1 ]
+        logSlice[vname]         = log[vname][recmin:recmax + 1 ]
+        gglobs.logSlice[vname]  = logSlice[vname]
+
+    gglobs.sizePlotSlice        = gglobs.logTimeSlice.size
     #dprint(gglobs.debug, "gglobs.sizePlotSlice:", gglobs.sizePlotSlice)
 
     if gglobs.sizePlotSlice == 0:
@@ -379,84 +324,98 @@ def makePlot(fprintMAV = False):
     ###########################################################################
     fig = plt.figure(1)                          # need fig for later
     plt.clf()                                    # clear figure
-    plt.grid(True)
-    ax  = plt.gca()
-    plt.title('Count Rate History', fontsize=13, fontweight='bold', loc = 'left')
-    #plotSubTitle = 'File:' + os.path.basename(filePath) + "  Recs:" + str(gglobs.sizePlotSlice)
-    plotSubTitle = os.path.basename(filePath) + "  Recs:" + str(gglobs.sizePlotSlice)
-    plt.title(plotSubTitle, fontsize= 9, fontweight='normal', loc = 'right', backgroundcolor='#F9F4C9', va='bottom')
-    plt.subplots_adjust(hspace=None, wspace=None , left=.15, top=0.90, bottom=0.15, right=.97)
+    plt.grid(True)                               # draw grid
 
-    plt.ticklabel_format(useOffset=False)       # avoids showing scale in exponential units
-                                                # works at least on Y-axis
+    # get/set left and right Y-axis
+    ax1 = plt.gca()                              # left Y-axis
+    # set 2nd Y-axis
+    ax2 = ax1.twinx()                            # right Y-Axis
+
+    plt.title('Time Course', fontsize=13, fontweight='bold', loc = 'left')
+    subTitle = os.path.basename(gglobs.currentFilePath) + "  Recs:" + str(gglobs.sizePlotSlice)
+    plt.title(subTitle, fontsize= 9, fontweight='normal', loc = 'right', backgroundcolor='#F9F4C9', va='bottom')
+
+    #plt.subplots_adjust(hspace=None, wspace=None , left=.15, top=0.75, bottom=0.15, right=.85)
+    #plt.subplots_adjust(hspace=None, wspace=None , left=None, top=0.80, bottom=None, right=None)
+    plt.subplots_adjust(hspace=None, wspace=None , left=None, top=0.80, bottom=None, right=.87)
+
+    # avoid "offset" and "scientific notation" on the Y-axis
+    # i.e. showing scale in exponential units
+    # https://stackoverflow.com/questions/28371674/prevent-scientific-notation-in-matplotlib-pyplot
+    ax1.ticklabel_format(useOffset=False, style='plain', axis='y')
+    ax2.ticklabel_format(useOffset=False, style='plain', axis='y')
+    ax1.ticklabel_format(useOffset=False, style='plain', axis='x')
+    ax2.ticklabel_format(useOffset=False, style='plain', axis='x')
+
+    # make ticks red
+    # for larger numbers use option: "labelsize='medium'"
+    #ax2.tick_params(axis='y', colors='red')
+
+    # hide the cursor position from showing in the toolbar
+    ax1.format_coord = lambda x, y: ""
+    ax2.format_coord = lambda x, y: ""
 
     #
-    # Fixed plot limits for x- and y-axis only when requested and possible
+    # add labels to all three axis
     #
     # X-axis
-    if gglobs.Xleft == None or gglobs.Xleft == None or gglobs.Xscale == "auto" :
-        pass # autoscale
-        #print "autoscale", gglobs.Xleft, gglobs.Xleft, gglobs.Xunit, gglobs.Xscale
-    else:
-        plt.xlim(xmin = gglobs.Xleft, xmax = gglobs.Xright)
-
+    ax1.set_xlabel(xLabelStr, fontsize=10, fontweight='bold')
     # Y-axis
-    if gglobs.Ymin == None or gglobs.Ymax == None or gglobs.Yscale == "auto":
-        pass # autoscale
-        #print "autoscale", gglobs.Ymin, gglobs.Ymax, gglobs.Yunit, gglobs.Yscale
-    else:
-        plt.ylim(ymin = gglobs.Ymin, ymax = gglobs.Ymax)
+    if gglobs.Yunit == "CPM":   ylabel = "Counter  [CPM or CPS]"
+    else:                       ylabel = "Counter  [µSv/h]"
+    ax1.set_ylabel(ylabel,      fontsize=12, fontweight='bold')
+    ax2.set_ylabel("Ambient",   fontsize=12, fontweight='bold')
+
 
     #
-    # add labels to both axis
+    # setting the scaling factor
     #
-    # add a label to the X-axis
-    plt.xlabel(xLabelStr, fontsize=10, fontweight='bold')
+    if gglobs.calibration    == "auto":  scale1st = gglobs.DEFcalibration
+    else:                                scale1st = gglobs.calibration
 
-    # add a label to the Y-axis; rescale if needed
-    if gglobs.Yunit == "CPM":
-        # data are handled as CPM even if measured as CPS
-        plotCPMSlice = gglobs.logCPMSlice
-        ylabel = "CPM"
-    elif gglobs.Yunit == "CPS":
-        plotCPMSlice = gglobs.logCPMSlice / 60.0
-        ylabel = "CPS"
-    else:
-        plotCPMSlice = gglobs.logCPMSlice * gglobs.calibration
-        ylabel = "µSv/h"
-    plt.ylabel(ylabel, fontsize=14, fontweight='bold')
+    if gglobs.calibration2nd == "auto":  scale2nd = gglobs.DEFcalibration2nd
+    else:                                scale2nd = gglobs.calibration2nd
 
+    if gglobs.RMcalibration  == "auto":  scaleRM  = gglobs.DEFRMcalibration
+    else:                                scaleRM  = gglobs.RMcalibration
 
-    # modify data to show cumulative counts or log counts
-    # currently neither is used
-    if gglobs.ccdChecked:
-        cpm_avg         = np.ones_like(plotCPMSlice)
-        cpm_avg        *= np.mean(plotCPMSlice)
-        #print("cpm_avg:", cpm_avg)
-        plotCPMSliceMod = np.cumsum(plotCPMSlice) - np.cumsum(cpm_avg)
+    scaleFactor = {}
+    for i in range(0, varcount):
+        vname = gglobs.varnames[i]
+        if vname in ("CPM", "CPS", "CPM1st", "CPS1st"):
+            if gglobs.Yunit == "CPM":
+                scaleFactor[vname] = 1.0
 
-        mavCheckedMod   = False
-        avgCheckedMod   = False
-        plt.ylabel("Cumulative Count Deviation", fontsize=12, fontweight='bold')
-    else:
-        if gglobs.logChecked:
-            plotCPMSliceMod = np.log10(plotCPMSlice)
-            #mavCheckedMod   = False
-            #avgCheckedMod   = False
-            plt.ylabel("Log( CPM )", fontsize=14, fontweight='bold')
+            else: # gglobs.Yunit == "µSv/h"
+                scaleFactor[vname]    = scale1st
+                scaleFactor['CPS']    = scale1st * 60
+                scaleFactor['CPS1st'] = scale1st * 60
+
+        elif vname in ("CPM2nd", "CPS2nd"):
+            if gglobs.Yunit == "CPM":
+                scaleFactor[vname] = 1.0
+
+            else: # gglobs.Yunit == "µSv/h"
+                scaleFactor[vname]    = scale2nd
+                scaleFactor["CPS2nd"] = scale2nd * 60
+
+        elif vname in ("R"):
+            if gglobs.Yunit == "CPM":
+                scaleFactor[vname] = 1.0
+
+            else: # gglobs.Yunit == "µSv/h"
+                scaleFactor[vname] = scaleRM
 
         else:
-            plotCPMSliceMod = plotCPMSlice
-
-        mavCheckedMod   = gglobs.mavChecked
-        avgCheckedMod   = gglobs.avgChecked
-
-
+            scaleFactor[vname] = 1.0
+    #print("scaleFactor:", type(scaleFactor), scaleFactor)
 
     #
-    # plot the data
+    # setting the plotting style
     #
-    # differs by plt.plot vs  plt.plot_date
+    # each variable gets a copy of the plotstyle, which is then corrected for
+    # the color choosen for each variable
+    plotalpha        = 0.9
     plotstyle        = {'color'             : gglobs.linecolor,
                         'linestyle'         : gglobs.linestyle,
                         'linewidth'         : gglobs.linewidth,
@@ -464,153 +423,329 @@ def makePlot(fprintMAV = False):
                         'markeredgecolor'   : gglobs.linecolor,
                         'marker'            : gglobs.markerstyle,
                         'markersize'        : gglobs.markersize,
+                        'alpha'             : plotalpha,
                         }
 
-    plotstyleDefault = {'color'             : 'blue',
-                        'linestyle'         : 'solid',
-                        'linewidth'         : .5,
-                        'label'             : "",
-                        'markeredgecolor'   : 'blue',
-                        'marker'            : "o",
-                        'markersize'        : 2,
-                        }
+    varPlotStyle    = {}    # holds the plotstyle for each variable
+    for i in range(varcount):
+        vname = gglobs.varnames[i]
+        varPlotStyle[vname] = plotstyle.copy()
+        varPlotStyle[vname]['color']              = gglobs.varcolor[vname]
+        varPlotStyle[vname]['markeredgecolor']    = gglobs.varcolor[vname]
 
-    plotErrMsg = "ERROR Plotting: Unrecognized style; check configuration file: "
-    if gglobs.Xunit == "Time":
-        ax.xaxis_date()
-        fig.autofmt_xdate(rotation = 15)
-        locator     = mpld.AutoDateLocator()
-        formatter   = mpld.AutoDateFormatter(locator)
-        xfmt        = mpld.DateFormatter(xFormatStr)
-        ax.xaxis.set_major_formatter(xfmt)
-        ax.xaxis.set_label_coords(0.5, -0.2)
-        ax.xaxis.set_tick_params(labelsize=8)
+    vindex      = gglobs.ex.select.currentIndex()
+    vnameselect = gglobs.varnames[vindex]
+    #print("vnameselect:", vnameselect)
 
-        try:
-            rdplt, = plt.plot_date(gglobs.plotTimeSlice, plotCPMSliceMod, **plotstyle)
-        except Exception as e:
-            fprint(plotErrMsg, e)
-            rdplt, = plt.plot_date(gglobs.plotTimeSlice, plotCPMSliceMod, **plotstyleDefault)
-    else:
-        try:
-            rdplt, = plt.plot     (gglobs.plotTimeSlice, plotCPMSliceMod, **plotstyle)
-        except Exception as e:
-            fprint(plotErrMsg, e)
-            rdplt, = plt.plot     (gglobs.plotTimeSlice, plotCPMSliceMod, **plotstyleDefault)
+    # the selected var will be drawn with thicker lines and full brightness
+    # other lines will be dimmed in color via alpha setting
+    for i in range(varcount):
+        vname = gglobs.varnames[i]
+        if vname == vnameselect:
+            varPlotStyle[vname]['alpha']     = plotalpha
+            #varPlotStyle[vname]['linewidth'] = int(varPlotStyle[vname]['linewidth']) * 2.0
+            varPlotStyle[vname]['linewidth'] = float(varPlotStyle[vname]['linewidth']) * 2.0
+            #print("vname, linewidth:", vname, varPlotStyle[vname]['linewidth'])
+        else:
+            varPlotStyle[vname]['alpha']     = plotalpha * 0.5
 
-    ax.format_coord = lambda x, y: "" # to hide the cursor position in the toolbar
+    #
+    # plot the data
+    #
+    varlines            = {}            # lines objects for legend
+    varlabels           = {}            # labels for legend
+    gglobs.varlabels    = {}            # labels for legend
+    logSliceMod         = {}            # data of the variables
+    gglobs.logSliceMod  = {}            # data; will be used by Stat, Poiss, FFT
+
+    # used like:       VarName  Unit   Avg      StdDev     Variance          Range         LastValue
+    fmtLineLabel     = "{:8s}: {:7s}{:>8.2f} ±{:<8.3g}   {:>8.2f}   {:>7.6g} ... {:<7.6g}    {}"
+    fmtLineLabelTip  = "{:s}: [{}]  Avg: {:<8.2f}  StdDev: {:<0.3g}   Variance: {:<0.3g}   Range: {:>0.6g} ... {:<0.6g}   Last Value: {}"
+
+    # order varnames to have selected variable plot last, i.e. on top of all others
+    vname_ordered = ()
+    for i in range(varcount):
+        vname = gglobs.varnames[i]
+        if vname == vnameselect:
+            continue    # add at the end
+        else:
+            vname_ordered += (vname,)
+    vname_ordered += (vnameselect,)
+    #print("vname, vname_ordered:", vname, vname_ordered)
+
+    #arrprint("MakePlot: logSlice:", logSlice)
+    #arrprint("MakePlot: scaleFactor:", scaleFactor)
+    for vname in vname_ordered:
+        #print("plot the data: vname:", vname)
+
+        if gglobs.ex.vbox[vname].isChecked():
+            #print("logSlice[vname]:", type(logSlice[vname]), logSlice[vname] )
+            #print("scaleFactor[vname]:", type(scaleFactor[vname]), scaleFactor[vname] )
+            y                           = logSlice[vname] * scaleFactor[vname]
+            ymask                       = np.isfinite(y)      # mask for nan values
+            var_y                       = y[ymask]
+            var_x                       = x[ymask]
+
+            if vname == "T" and gglobs.ex.y2unit.currentText() == "°F":  # °C to °F
+                var_y = var_y / 5 * 9 + 32
+
+            gglobs.logSliceMod[vname]   = y  # wozu wird das benötigt???????? y oder var_y
+
+            var_size                    = var_y.size
+            #print("vanme: var_size:", vname, var_size)
+            if var_size == 0: continue
+
+            var_avg                     = np.nanmean(var_y)
+            var_std                     = np.nanstd (var_y)
+            var_var                     = np.nanvar (var_y)
+            var_max                     = np.nanmax (var_y)
+            var_min                     = np.nanmin (var_y)
+            var_size                    = var_y.size
+            var_err                     = var_std / np.sqrt(var_size)
+            if gglobs.lastValues == None:
+                var_lastval = "    N.A."
+            else:
+                var_lastval = "{:>8.2f}".format(gglobs.lastValues[vname][0])
+            #print("var_lastval:", var_lastval)
+            var_unit                    = gglobs.varunit[vname]
+
+            if vname in ("CPM", "CPS", "CPM1st", "CPS1st", "CPM2nd", "CPS2nd", "R"):
+                if gglobs.Yunit == "CPM":
+                    var_unit                    = gglobs.varunit[vname]
+                else:
+                    var_unit                    = "µSv/h"
+
+            if vname in ("T"):
+                if gglobs.ex.y2unit.currentText() == "°C":
+                    var_unit                    = gglobs.varunit[vname]
+                else:
+                    var_unit                    = "°F"
+
+            varlabels[vname]            = fmtLineLabel   .format(vname, "[" + var_unit + "]", var_avg, var_std, var_var, var_min, var_max, var_lastval)
+            gglobs.varlabels[vname]     = varlabels[vname]
+            Tip                         = fmtLineLabelTip.format(gglobs.vardict[vname], var_unit, var_avg, var_std, var_var, var_min, var_max, var_lastval)
+            gglobs.ex.vbox[vname].setToolTip  (Tip)
+            gglobs.ex.vbox[vname].setStatusTip(Tip)
+
+            varPlotStyle[vname]['markersize'] = float(plotstyle['markersize']) / np.sqrt(var_size)
+            varlines[vname] = plotLine(var_x, var_y, gglobs.Xunit, varname=vname, **varPlotStyle[vname])
 
     #
     # Plot the Moving Average
     #
-    if mavCheckedMod:
-        # Plot the moving average over N datapoints with red line on yellow.
-        # Do the average over no more than N/2 data points.
-        # Determine N from time delta between first and last record and the number of records.
-        # Note: improper with long periods of no data, or changing cycle time!
-        # In plot skip the first and last N/2 data points, which are meaningless due to averaging.
-        logCycle    = (gglobs.logTimeSlice.max() - gglobs.logTimeSlice.min()) / gglobs.sizePlotSlice # apparent cycle time in days
-        logCycle   *= 86400.0               # apparent cycle time in sec
-
-        Nmav        = round(gglobs.mav / logCycle) # e.g. 100 sec / 2 sec -> 50 datapoints; rounding to integer value
-
-        if fprintMAV:
-            fprint("\nINFO: Moving Average requested over:", "{:0.2f} seconds; @ {:0.3f} seconds average".format(gglobs.mav, logCycle))
-            fprint("INFO: cycle time this equals {:0.1f} datapoints. Current maximum for MovAvg".format(Nmav))
-            fprint("INFO: is half of {} records = {} datapoints or {:0.0f} seconds".format(gglobs.sizePlotSlice, gglobs.sizePlotSlice/2, gglobs.sizePlotSlice/2 * logCycle))
-
-        if Nmav < 1.0:
-            Nmav   = 1
-            fprint("ALERT: Moving Average of less than 1 datapoint requested")
-            fprint("ALERT: Corrected to 1 - still not useful!")
-
-        N           = int(min(len(gglobs.plotTimeSlice) / 2, Nmav)) # take the smaller of N and half of records
-        new_mav     = N * logCycle
-
-        lower       = int(N/2)
-        upper       = int(gglobs.plotTimeSlice.size - N/2 )
-        #dprint(gglobs.debug, "lower, upper, delta:", lower, upper, upper - lower)
-        if upper - lower > 2: # needs more than a single record
-            plt.plot(gglobs.plotTimeSlice[lower:upper], np.convolve(plotCPMSliceMod, np.ones((N,))/N, mode='same')[lower:upper], color=color['mavbg'], linewidth=4, label ="")
-            plt.plot(gglobs.plotTimeSlice[lower:upper], np.convolve(plotCPMSliceMod, np.ones((N,))/N, mode='same')[lower:upper], color=color['mav']  , linewidth=1, label ="MovAvg, N={:0.0f} ({:0.0f}sec)".format(N, new_mav))
-        else:
-            fprint("ALERT: Not enough data to plot Moving Average")
+    plotMovingAverage(x, logSlice, scaleFactor, varPlotStyle, fprintMAV)
 
     #
-    # plot the horizontal line for the overall average, and +/- Std.Dev.
+    # Plot the Average and +/- 95% as horizontal lines
     #
-    if avgCheckedMod:
-        cpm_avg = np.mean(plotCPMSliceMod)
-        cpm_std = np.std (plotCPMSliceMod)
-        cpm_err = cpm_std / np.sqrt(plotCPMSliceMod.size)
-        avCPM   = [cpm_avg, cpm_avg]
-        avTime  = [gglobs.plotTimeSlice[0], gglobs.plotTimeSlice[-1]]
-        plt.plot(avTime, avCPM,                  color=color['avg'], linewidth=2, label= "Avg={:<3.2f}±{:<3.2f} (Err=±{:<3.2f})".format(cpm_avg, cpm_std, cpm_err))
-        if (cpm_avg - cpm_std * 1.96) > 0: # negative lower bound indicates invalid data; do not draw neither lower nor upper limit
-            plt.plot(avTime, avCPM - cpm_std * 1.96, color=color['avg'], linewidth=2, linestyle= '--')  # black dashed
-            plt.plot(avTime, avCPM + cpm_std * 1.96, color=color['avg'], linewidth=2, linestyle= '--')
-            plt.plot(avTime, avCPM - cpm_std * 1.96, color='white',      linewidth=2, linestyle= ':')   # white dotted
-            plt.plot(avTime, avCPM + cpm_std * 1.96, color='white',      linewidth=2, linestyle= ':')   # to get black and white contrast
+    plotAverage(x, logSlice, scaleFactor, varPlotStyle)
 
     #
-    # plot the Cumulative Average
+    # apply the Y-Limits
     #
-    if gglobs.cumChecked:
-        cpm_cumavg = np.empty_like(plotCPMSliceMod)
-        for i in range(0, len(plotCPMSliceMod)):
-            cpm_cumavg[i] = np.mean(plotCPMSliceMod[0:i + 1])
-        plt.plot(gglobs.plotTimeSlice, cpm_cumavg,                  color='magenta', linewidth=4, label= "Cumulative Average")
+    if   gglobs.Ymin  != None and gglobs.Ymax  != None:  ax1.set_ylim(ymin = gglobs.Ymin,  ymax = gglobs.Ymax)
+    elif gglobs.Ymin  != None:                           ax1.set_ylim(ymin = gglobs.Ymin)
+    elif                          gglobs.Ymax  != None:  ax1.set_ylim(                     ymax = gglobs.Ymax)
+
+    if   gglobs.Y2min != None and gglobs.Y2max != None:  ax2.set_ylim(ymin = gglobs.Y2min, ymax = gglobs.Y2max)
+    elif gglobs.Y2min != None:                           ax2.set_ylim(ymin = gglobs.Y2min)
+    elif                          gglobs.Y2max != None:  ax2.set_ylim(                     ymax = gglobs.Y2max)
+
+    # limits are needed for calculation of the mouse pointer w respect to counter Y-axis
+    # see: def updatecursorposition(self, event)
+    gglobs.y1_limit = ax1.get_ylim()
+    gglobs.y2_limit = ax2.get_ylim()
+    #print("gglobs.y1_limit:", gglobs.y1_limit, ", gglobs.y2_limit:", gglobs.y2_limit)
 
     #
-    # plot the legend; position set in ggeiger class
+    # plot the legend
     #
-    if avgCheckedMod or mavCheckedMod:
-        plt.legend(bbox_to_anchor=(1.01, .9), loc=2, borderaxespad=0.)
-        plotLegend()
+    pp = ()
+    pl = ()
+    for vname in gglobs.varnames:
+        p   = plt.Rectangle((0, 0), 1, 1, fc=gglobs.varcolor[vname], ec="black", lw=0.2)
+        pp += (p,)
+        pl += (gglobs.vardict[vname],)
 
-    # placing free text. positioning is difficult!
-    #x= -0.1
-    #y= -0.15
-    #s= gglobs.deviceDetected
-    #plt.text(x, y, s, fontsize=12,  transform=ax.transAxes, bbox=dict(facecolor='red', alpha=0.5))
+    plt.figlegend(pp, pl, shadow=False, mode="expand", handlelength=2, ncol=5, framealpha=0)
 
+    #
     # refresh the figure
+    #
     fig.canvas.draw_idle()
 
+    # finish
     stopdone   = time.time()
     stopwatch += "+ {:6.1f}ms graph draw".format((stopdone - stopprep) * 1000.)
     stopwatch += " = {:6.1f}ms Total".format((stopdone - start) * 1000.)
     vprint(gglobs.verbose, stopwatch)
 
 
-def plotLegend():
-    """Plots the legend to the position defined by the GUI;
-    used also in ggeiger class to move the legend"""
+def plotAverage(x, logSlice, scaleFactor, varPlotStyle):
+    """Plot the Average and +/- 95% as horizontal lines"""
 
-    fig = plt.figure(1)
-    plt.legend(loc=legendPlacement[gglobs.legendPos], fontsize=9, framealpha=0.99)
-    fig.canvas.draw_idle()
+    if not gglobs.avgChecked: return
+
+    vindex    = gglobs.ex.select.currentIndex()
+    vname     = gglobs.varnames[vindex]
+    #print("average: vname, gglobs.ex.vbox[vname].isChecked():", vname, gglobs.ex.vbox[vname].isChecked())
+    if gglobs.ex.vbox[vname].isChecked():
+        avg_Time                     = [x[0], x[-1]]
+        logSliceMod                  = logSlice[vname] * scaleFactor[vname]
+        #print("logSliceMod:", logSliceMod)
+
+        if vname == "T" and gglobs.ex.y2unit.currentText() == "°F":  # °C to °F
+            logSliceMod = logSliceMod / 5 * 9 + 32
+
+        avg_avg                      = np.nanmean(logSliceMod)
+        avg_std                      = np.nanstd (logSliceMod)
+
+        avg_CPMS                     = [avg_avg, avg_avg]
+        avg_CPMS_lo                  = avg_CPMS - avg_std * 1.96
+        avg_CPMS_hi                  = avg_CPMS + avg_std * 1.96
+        avg_plotHiLo                 = (avg_avg - avg_std * 1.96) > 0 # flag to plot 95%
+
+        if vname in ("T", "P", "H"): avg_plotHiLo = False # no limits drawn for T,P,H
+
+        avg_plotstyle                = varPlotStyle[vname].copy()
+        avg_plotstyle["linewidth"]   = 2
+        avg_plotstyle["markersize"]  = 0
+
+        avg_plotstyle2                = varPlotStyle[vname].copy()
+        avg_plotstyle2["linewidth"]   = 4
+        avg_plotstyle2["color"]       = "yellow"
+        avg_plotstyle2["markersize"]  = 0
+
+        plotLine(avg_Time, avg_CPMS, gglobs.Xunit, varname=vname, **avg_plotstyle2)
+        plotLine(avg_Time, avg_CPMS, gglobs.Xunit, varname=vname, **avg_plotstyle)
+
+        if avg_plotHiLo :
+            avg_plotstyle["linestyle"]  = "--"
+            plotLine(avg_Time, avg_CPMS_lo, gglobs.Xunit, varname=vname, **avg_plotstyle)
+            plotLine(avg_Time, avg_CPMS_hi, gglobs.Xunit, varname=vname, **avg_plotstyle)
+
+            avg_plotstyle["color"]      = "white"
+            avg_plotstyle["linestyle"]  = ":"
+            plotLine(avg_Time, avg_CPMS_lo, gglobs.Xunit, varname=vname, **avg_plotstyle)
+            plotLine(avg_Time, avg_CPMS_hi, gglobs.Xunit, varname=vname, **avg_plotstyle)
 
 
-def my_format_function(x, pos=None):
-    """from: http://matplotlib.org/api/dates_api.html """
-    # does not work. bug? https://github.com/matplotlib/matplotlib/issues/1343/
+def plotMovingAverage(x, logSlice, scaleFactor, varPlotStyle, fprintMAV):
+    """Plot the Moving Average"""
 
-    beep()
-    print("my_format_function")
+    if not gglobs.mavChecked: return
 
-    x = mpld.num2date(x)
-    if pos == 0:
-        #fmt = '%D %H:%M:%S.%f'
-        fmt = '%D %H:%M:%S'
+    # Plot the moving average over N datapoints with a thin line in the
+    # variable's color on a yellow thick line.
+    # Do the average over no more than N/2 data points.
+    # Determine N from time delta between first and last record and the number of records.
+    # Note: improper with long periods of no data, or changing cycle time!
+    # In plot skip the first and last N/2 data points, which are meaningless due to averaging.
+
+    vindex          = gglobs.ex.select.currentIndex()
+    vname           = gglobs.varnames[vindex]
+
+    lSM_mask        = np.isfinite(logSlice[vname])          # mask for nan values
+    logSliceNoNAN   = logSlice[vname][lSM_mask]             # all NANs removed
+
+    if logSliceNoNAN.size == 0: return                      # no data, return
+
+    logSliceMod     = logSliceNoNAN * scaleFactor[vname]
+
+    if vname == "T" and gglobs.ex.y2unit.currentText() == "°F":  # °C to °F
+        logSliceMod = logSliceMod / 5 * 9 + 32
+
+    x_mav           = x[lSM_mask]
+    x_mav_size      = x_mav.size
+    x_mav_max       = x_mav.max()
+    x_mav_min       = x_mav.min()
+
+    logCycle        = (gglobs.logTimeSlice.max() - gglobs.logTimeSlice.min()) / x_mav_size
+    logCycle       *= 86400.0                      # apparent cycle time in sec
+    Nmav            = round(gglobs.mav / logCycle) # e.g. 100 sec / 2 sec -> 50 datapoints; rounding to integer value
+
+    if fprintMAV:
+        fprint("\nINFO:")
+        fprint("Moving Average requested over: {:0.2f} seconds; with {:0.1f} seconds".format(gglobs.mav, logCycle))
+        fprint("average cycle time this equals {:0.0f} datapoints. Current maximum for".format(Nmav))
+        fprint("MovAvg is half of {} datapoints = {} datapoints or {:0.0f} seconds".format(x_mav_size, x_mav_size / 2, x_mav_size / 2 * logCycle))
+
+    if Nmav < 1.0:
+        Nmav   = 1
+        fprint("ALERT: Moving Average of less than 1 datapoint requested")
+        fprint("ALERT: Corrected to 1 - still not useful!")
+
+    N           = int(min(len(x_mav) / 2, Nmav)) # take the smaller of N and half of records
+    new_mav     = N * logCycle
+
+    lower       = int(N/2)
+    upper       = int(x_mav_size - N / 2 )
+  #  lower       = 0
+  #  upper       = int(x_mav_size - N  )
+  #  lower       = int(N)
+  #  upper       = int(x_mav_size)
+
+    #dprint(gglobs.debug, "lower, upper, delta:", lower, upper, upper - lower)
+
+    if upper - lower > 2: # needs more than a single record
+        if gglobs.ex.vbox[vname].isChecked():
+
+            mav_label                   = "MvAvg, N={:0.0f} ({:0.0f}sec)".format(N, new_mav)
+
+            mav_x = x_mav[lower:upper]
+            mav_y = np.convolve(logSliceMod,     np.ones((N,))/N, mode='same')[lower:upper]
+
+            mav_plotstyle               = varPlotStyle[vname].copy()
+            mav_plotstyle['color']      = 'yellow'
+            mav_plotstyle['linewidth']  = 4
+            mav_plotstyle['markersize'] = 0
+            plotLine(mav_x, mav_y, gglobs.Xunit, varname=vname, **mav_plotstyle)
+
+            mav_plotstyle['color']      = varPlotStyle[vname]['color']
+            mav_plotstyle['linewidth']  = 2
+            mav_plotstyle['label']       = mav_label
+            mav_line = plotLine(mav_x, mav_y, gglobs.Xunit, varname=vname, drawlegend=True, **mav_plotstyle)
+
     else:
-        #fmt = '%H:%M:%S.%f'
-        fmt = '%H:%M:%S'
-    label = x.strftime(fmt)
-    label = label.rstrip("0")
-    label = label.rstrip(".")
-    print("label:", label)
+        fprint("ALERT: Not enough data to plot Moving Average")
 
-    #return label
-    return "mist"
+
+def plotLine(x,y, xunit="Time", varname="CPM", drawlegend=False, **plotstyle):
+    """plots a single line of data"""
+
+    global xFormatStr
+
+    #print("plotLine: xunit:", xunit, ", plotstyle:", plotstyle)
+
+    if varname in ("CPM", "CPS", "CPM1st", "CPM2nd", "CPS1st", "CPS2nd", "R"): yaxis  = ax1
+    else:                                                                      yaxis  = ax2
+
+    p_1000 = np.mean([1000]) # creating a value, which can be subtracted from array
+    if varname == "P"  : y = y - p_1000     # scaling pressure to zero at 1000 hPa
+
+    #co2_100  = np.mean([100]) # creating a value, which can be applied to array
+    #if varname == "CO2": y = y / co2_100      # scaling CO2 to values up to ~100
+
+    if xunit == "Time":
+    #    yaxis.xaxis_date()    # needed ???
+        fig.autofmt_xdate(rotation = 15)
+    #    formatter   = mpld.AutoDateFormatter(mpld.AutoDateLocator()) # What for?
+        yaxis.xaxis.set_major_formatter(mpld.DateFormatter(xFormatStr))
+        ax1.xaxis.set_tick_params(labelsize=8)  # ax1 defines the size of the labels
+        #ax2.xaxis.set_tick_params(labelsize=8)  # appears to be not relevant
+
+        # X-Label positioning: (the label like: Time (First Record: ...)
+        # you can move the location of axis labels using set_label_coords.
+        # The coords you give it are x and y, and by default the transform
+        # is the axes coordinate system: so (0,0) is (left,bottom), (0.5, 0.5)
+        # is in the middle, etc.
+    #    yaxis.xaxis.set_label_coords(0.5, -0.25)
+
+        line,  = yaxis.plot_date (x, y, **plotstyle)
+    else:
+        line,  = yaxis.plot      (x, y, **plotstyle)
+
+    if drawlegend: yaxis.legend()
+
+    return line
 

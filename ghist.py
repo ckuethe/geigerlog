@@ -38,12 +38,12 @@ __license__         = "GPL3"
 # (GQ-RFC1201,GQ Geiger Counter Communication Protocol, Ver 1.40 Jan-2015)
 
 import sys
-import re           # regex
-from operator import itemgetter
+import re                               # regex
+from   operator import itemgetter       # used in sortHist
 
-import gglobs       # global settings
-import gcommands    # only getSPIR is used here
-from gutils import *
+import gglobs                           # global settings
+import gcommands                        # only getSPIR is used here
+from   gutils import *                  # all utilities
 
 
 def makeHIST(sourceHIST, binFilePath, lstFilePath, hisFilePath):
@@ -75,6 +75,7 @@ def makeHIST(sourceHIST, binFilePath, lstFilePath, hisFilePath):
 
     elif sourceHIST == "Device":         # from device
 
+        #data_origin = str_data_origin.format(shortstime(), gglobs.deviceDetected)
         data_origin = str_data_origin.format(stime(), gglobs.deviceDetected)
         fprint("Reading from connected device:", "{}".format(gglobs.deviceDetected))
 
@@ -88,6 +89,9 @@ def makeHIST(sourceHIST, binFilePath, lstFilePath, hisFilePath):
         #
         dprint(gglobs.debug, "makeHIST: Cleaning pipeline BEFORE reading history")
         extra = gcommands.getExtraByte()
+
+#### TESTING
+####        gglobs.memory = 2**13
 
         for address in range(0, gglobs.memory, page):       # prepare to read all memory
             time.sleep(0.1) # fails occasionally to read all data when
@@ -126,24 +130,25 @@ def makeHIST(sourceHIST, binFilePath, lstFilePath, hisFilePath):
         return (0, "")
 
 
-    histlen  = len(hist)          # Total length; should always be 64k or 1MB, now: could be any length!
-    histFF   = hist.count(b'\xFF') # total count of FF bytes
+    histlen     = len(hist)          # Total length; should always be 64k or 1MB, now: could be any length!
+    histFF      = hist.count(b'\xFF') # total count of FF bytes
 
-    fprint("Length as read:"                   , "{} Bytes".format(histlen))
-    fprint("Count of FF bytes - Total:"        , "{} Bytes".format(histFF))
+    histRC      = hist.rstrip(b'\xFF')       # after right-clip FF (removal of all trailing 0xff)
+    histRClen   = len(histRC)                # total byte count
+    histRCFF    = histRC.count(b'\xFF')      # total count of FF in right-clipped data
 
-    histRC    = hist.rstrip(b'\xFF')       # after right-clip FF (removal of all trailing 0xff)
-    histRClen = len(histRC)                # total byte count
-    histRCFF  = histRC.count(b'\xFF')      # total count of FF in right-clipped data
-
-    fprint("Count of FF bytes - Trailing:"     , "{} Bytes".format(histlen - histRClen))
+    fprint("Count of bytes as read:"           , "{} Bytes".format(histlen))
     fprint("Count of data bytes:"              , "{} Bytes".format(histRClen))
-    fprint("Count of FF bytes within data:"    , "{} Bytes".format(histRCFF))
+
+    fprint("Count of FF bytes - Total:"        , "{} Bytes".format(histFF))
+    fprint("Count of FF bytes - Trailing:"     , "{} Bytes".format(histlen - histRClen))
+    fprint("Count of FF bytes - Within data:"  , "{} Bytes".format(histRCFF))
 
     # writing data from device as binary; add the device info to the beginning
     if sourceHIST == "Device":
         exthist = (b"DataOrigin:" + data_origin.encode() + b" " * 128 )[0:128] + hist
         vprint(gglobs.verbose, "hist: len:{}, exthist: len:{} exthist:{}".format(len(hist), len(exthist), exthist[:128]))
+        fprint("Writing binary data to:", binFilePath, debug=True)
         try:
             writeBinaryFile(binFilePath, exthist)
         except Exception as e:
@@ -190,48 +195,33 @@ def makeHIST(sourceHIST, binFilePath, lstFilePath, hisFilePath):
     writeFileW(lstFilePath, lstlines, linefeed = False)
 # end for *.lst file
 
-    # for testing only - highlicht the FF bytes
-    #testwrite(hist, lstFilePath)
+# for Devel  - highlight the FF bytes in hist
+    if gglobs.devel: FFbytes(hist, binFilePath)
 
 # Prepare the *.his file
     # parse HIST data; preserve a copy with parsing comments if on debug
-    fprint("Parsing binary file", "debug")
+    fprint("Parsing binary file", debug=True)
     histLogList, histLogListComment = parseHIST(hist, hisFilePath)
 
     hisClines  = "#HEADER, File created from History Download Binary Data\n"  # header
     hisClines += "#ORIGIN: {}\n".format(data_origin)
-    hisClines += "#FORMAT: '<#>ByteIndex,Date&Time, CPM' (Line beginning with '#' is comment)\n"
+    hisClines += "#FORMAT: '<#>ByteIndex, Date&Time, CPM, CPS' (Line beginning with '#' is comment)\n"
 
+# write the *.parse file when debug = True
     if gglobs.debug:
         path = hisFilePath + ".parse"
-        fprint("Writing commented parsed data to:", path, "debug")
+        #fprint("Writing commented parsed data to:", path, debug=True)
         with open(path, 'wt', encoding="utf_8", errors='replace', buffering = 1) as f:
-        #with open(path, 'wt', errors='replace', buffering = 1) as f:
             f.write(hisClines)
-            for a in histLogListComment:
+            for line in histLogListComment:
                 # ensure ASCII chars
-                asc     = ""
-                ordasc  = ""
-                ordflag = False
-                for i in range(0, len(a)):
-                    ai = ord(a[i])
-                    if ai < 128 and ai > 31:
-                        asc    += a[i]
-                        ordasc += a[i]
-                    else:
-                        ordflag = True
-                        asc    += "."
-                        ordasc += "[{}]".format(ai)
-                #print "a  :", a
-                #print "asc:", asc
-                #f.write(a + u"\n")
+                asc, ordasc, ordflag = getTrueASCII(line)
                 f.write(asc + "\n")
                 if ordflag :
                     f.write(ordasc + "\n")
-                    print("ordasc:", ordasc)
 
-    # sort parsed data by date&time
-    fprint("Sorting parsed data on time", "debug")
+# sort parsed data by date&time
+    fprint("Sorting parsed data on time", debug=True)
     histLogList = sortHistLog(histLogList)
 
     """ Not relevant when all FF are ignored in parser!
@@ -263,35 +253,39 @@ def makeHIST(sourceHIST, binFilePath, lstFilePath, hisFilePath):
         fprint("Trailing FF records removed:", "None found; nothing removed")
     """
 
-    fprint("Writing parsed & sorted data to:", hisFilePath, "debug")
+    fprint("Writing parsed & sorted data to:", hisFilePath, debug=True)
     with open(hisFilePath, 'wt', encoding="utf_8", errors='replace', buffering = 1) as f:
         f.write(hisClines)
-        for a in histLogList:
+        for line in histLogList:
             # ensure ASCII chars
-            asc     = ""
-            ordasc  = ""
-            ordflag = False
-            for i in range(0, len(a)):
-                ai = ord(a[i])
-                if ai < 128 and ai > 31:
-                    asc    += a[i]
-                    ordasc += a[i]
-                else:
-                    ordflag = True
-                    asc    += "."
-                    ordasc += "[{}]".format(ai)
-            #print "a  :", a
-            #print "asc:", asc
-            #f.write(a + u"\n")
+            asc, ordasc, ordflag = getTrueASCII(line)
             f.write(asc + "\n")
             if ordflag :
                 f.write(ordasc + "\n")
-                print("ordasc:", ordasc)
-
+                fprint("ERROR in History: Found non-ASCII characters: ", ordasc, error=True, debug=True)
 
 # end for *.his file
 
     return (0, "")
+
+
+def getTrueASCII(line):
+    """gets line and returns true ASCII string plus info on ASCII failures"""
+
+    asc     = ""
+    ordasc  = "#"
+    ordflag = False
+    for i in range(0, len(line)):
+        ai = ord(line[i])
+        if ai < 128 and ai > 31:
+            asc    += line[i]
+            ordasc += line[i]
+        else:
+            ordflag = True
+            asc    += "."
+            ordasc += "[{}]".format(ai)
+
+    return asc, ordasc, ordflag
 
 
 def parseHIST(hist, hisFilePath):
@@ -299,16 +293,16 @@ def parseHIST(hist, hisFilePath):
     return data in logfile format
     """
 
+    global histCPSCum
+
     i               = 0     # counter for starting point byte number
     first           = 0     # byte index of first occurence of datetimetag
     cpms            = 0     # counter for CPMs read, so time can be adjusted
-    cpmfactor       = 1     # for CPM data = 1, for CPS data = 60 (all is recorded as CPM!)
+    cpxValid        = 1     # for CPM data = 1, for CPS data = 60 (all is recorded as CPM!)
 
     # search for first occurence of a Date&Time tag
     # must include re.DOTALL, otherwise a \x0a as in time 10h20:30 will
     # be considered as newline characters and ignored!
-    # is the b a full replacemnt to r?
-    #DateTimeTag      = re.compile(r"\x55\xaa\x00......\x55\xaa[\x00\x01\x02\x03]", re.DOTALL) #py2
     DateTimeTag      = re.compile(b"\x55\xaa\x00......\x55\xaa[\x00\x01\x02\x03]", re.DOTALL)
 
     DateTimeTagList  = DateTimeTag.finditer(hist)
@@ -316,23 +310,41 @@ def parseHIST(hist, hisFilePath):
         first = dtt.start()
         break
 
-    i = first               # the new start point for the parse
+    i = first                       # the new start point for the parse
     dprint(gglobs.debug, "parseHIST: byte index first Date&Time tag: {}".format(first))
 
     hist = hist + hist[:i]          # concat with the part missed due to overflow
+
     hist = hist.rstrip(b'\xff')     # right-clip FF (removal of all trailing 0xff)
-    rec  = list(hist)           # convert string to list of int
+    rec  = list(hist)               # convert string to list of int
     lh   = len(rec)
 
     histLogList         = []
     histLogListComment  = []
+    histCPSCum          = [0] * 60  # cumulative values of CPS; initial set = all zero
 
-    #while i < lh - 2:
-    while i < lh - 3:  # if tag is ASCII bytes there will be a call of the 3rd byte
+    CPSmode             = True      # history saving mode is CPS by default
+
+    CPSmodeFormat = " {:5d}, {:19s},       , {:6d}"  # CPS: empty value for CPM
+    CPMmodeFormat = " {:5d}, {:19s}, {:6d},       "  # CPM: empty value for CPS
+
+    # NOTE: ###################################################################
+    # After reading the DateTime tag the next real count is assumed to come at
+    # the time of the DateTime tag. That is why the cpms   += 1 command comes
+    # as last command for each condition
+    # may not be true; CPM save every minute seems to be off by ~30sec!
+
+#    while i < lh - 3:  # if tag is ASCII bytes there will be a call of the 3rd byte
+#                       # ???? what about 3 and 4 byte records???
+    while i < lh:       #  range is: 0, 1, 2, ..., lh - 1
 
         r = rec[i]
         if r == 0x55:
             if rec[i+1] == 0xaa:
+
+#TESTING (for the mess of GQ's redefinitions of the coding 55 AA sequences
+                #if i > 150 and i < 300: rec[i+2] = 2
+
                 if rec[i+2] == 0:   # timestamp coming
                     YY = rec[i+3]
                     MM = rec[i+4]
@@ -342,158 +354,291 @@ def parseHIST(hist, hisFilePath):
                     ss = rec[i+8]
                     # rec[i+ 9] = 0x55 end marker bytes; always fixed
                     # rec[i+10] = 0xAA (actually unnecessary since length is fixed too)
-                    rectime = "20{:02d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format( YY,MM,DD,hh,mm,ss)
+                    rectime = "20{:02d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format( YY, MM, DD, hh, mm, ss)
                     rectimestamp = datestr2num(rectime)
 
                     dd = rec[i+11]   # saving tag
-                    if dd == 0:
-                        savetxt = "history saving off"
+                    if   dd == 0:
+                        savetext      = "history saving off"
                         saveinterval = 0
-                    elif dd == 1:
-                        savetxt = "CPS, save every second"
-                        saveinterval = 1
-                        cpmfactor    = 60
-                    elif dd == 2:
-                        savetxt = "CPM, save every minute"
-                        saveinterval = 60
-                        cpmfactor    = 1
-                    elif dd == 3:
-                        savetxt = "CPM, save every hour as hourly average"
-                        saveinterval = 3600
-                        cpmfactor    = 1
-                    else:
-                        savetxt = "ERROR: FALSE READING OF HISTORY SAVE-INTERVALL = {:3d} (allowed is: 0,1,2,3)".format(dd)
-                        saveinterval = 0    # do NOT advance the time
-                        cpmfactor    = -1   # make all counts negative to mark illegitimate data
-                        dprint(True, savetxt)
+                        cpxValid     = 1
+                        CPSmode      = True         # though there won't be any data
+                        cpms         = 0
 
-                    rs = "#{:5d},{:19s}, Date&Time Stamp; Type:'{:}', Interval:{:} sec".format(i, rectime, savetxt, saveinterval)
+                    elif dd == 1:
+                        savetext      = "CPS, save every second"
+                        saveinterval = 1
+                        cpxValid     = 1
+                        CPSmode      = True
+                        cpms         = 1
+
+                    elif dd == 2:
+                        # it looks like there is a ~30sec delay before the new
+                        # timing loop sets in. NOT taken into account!
+                        savetext      = "CPM, save every minute"
+                        saveinterval = 60
+                        cpxValid     = 1
+                        CPSmode      = False
+                        cpms         = 0
+
+                    elif dd == 3:
+                        # after changing to hourly saving the next value is saved an hour later
+                        # so cpms must be set to plus 1!
+                        savetext      = "CPM, save every hour as hourly average"
+                        saveinterval = 3600
+                        cpxValid     = 1
+                        CPSmode      = False
+                        cpms         = 1
+
+
+                    elif dd == 4:
+                        # save only if exceeding threshold
+                        savetext      = "CPS, save every second if exceeding threshold"
+                        saveinterval = 1
+                        cpxValid     = 1
+                        CPSmode      = True
+                        cpms         = 1
+
+                    elif dd == 5:
+                        # save only if exceeding threshold
+                        savetext      = "CPM, save every minute if exceeding threshold"
+                        saveinterval = 60
+                        cpxValid     = 1
+                        CPSmode      = False
+                        cpms         = 0
+
+                    else:
+                        # ooops. you were not supposed to be here
+                        savetext      = "ERROR: FALSE READING OF HISTORY SAVE-INTERVALL = {:3d} (allowed is: 0,1,2,3,4,5)".format(dd)
+                        dprint(True, savetext)
+                        saveinterval = 0        # do NOT advance the time
+                        cpxValid     = -1       # make all counts negative to mark illegitimate data
+                        CPSmode      = True     # just to define the mode
+                        cpms         = 0
+
+                    rs = "#{:5d}, {:19s}, Date&Time Stamp; Type:'{:}', Interval:{:} sec".format(i, rectime, savetext, saveinterval)
                     histLogList.       append(rs)
                     histLogListComment.append(rs)
 
-                    cpms = 0
-                    i   += 11
+                    i   += 12
 
                 elif rec[i+2] == 1: #double data byte coming
-                    cpms   += 1
                     msb     = rec[i+3]
                     lsb     = rec[i+4]
-                    cpm     = msb * 256 + lsb
-                    if cpmfactor == 60: #measurement is CPS, count rate limit applies!
-                        cpm = cpm & 0x3fff
-                    cpm     = cpm * cpmfactor
+                    cpx     = msb * 256 + lsb
+                    if CPSmode: cpx = cpx & 0x3fff # count rate limit CPS = 14bit!
+                    cpx     = cpx * cpxValid
 
-                    cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
-                    rs      = " {:5d},{:19s}, {:6d}".format(i,cpmtime, cpm)
-                    histLogList.       append(rs)
-                    histLogListComment.append(rs + ", ---double data bytes---" + savetxt)
-                    i      += 4
+                    parsecomment = ", ---double data bytes---"
+                    parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
 
-                elif rec[i+2] == 2: #ascii bytes coming
-                    cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
-                    count   = rec[i+3]
-                    print("i:", i, "count:", count)
 
-                    if (i + 3 + count) <= lh:
-                        asc     = ""
-                        for c in range(0, count):
-                            asc += chr(rec[i + 4 + c])
-                        rs      = "#{:5d},{:19s}, Note/Location: '{}' ({:d} Bytes) ".format(i, cpmtime, asc, count)
-                    else:
-                        rs      = "#{:5d},{:19s}, Note/Location: '{}' (expected {:d} Bytes, got only {}) ".format(i, cpmtime, "ERROR: not enough data in History", count, lh - i - 3)
-                    histLogList.       append(rs)
-                    histLogListComment.append(rs)
-                    i      += count + 3
+                    i      += 5
+                    cpms   += 1
+
+                # the following is the consequence of the highly unprofessionall
+                # mess created by GQ by redefining the definition of the meaning
+                # of the coding:  in some firmware (likely 1.18 and 1.21 for
+                # 500+ counters) different association.
+                # Claimed to be changed "soon", yet leaves are permanent problem
+                #
+                # http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=5331   Reply #50, 21.8.2016
+                # Quote:
+                #   Sorry, the fix is not out yet. The current official firmware still has
+                #   55 AA 00: timestamp
+                #   55 AA 01: double data byte
+                #   55 AA 02: triple data byte
+                #   55 AA 03: quadruple data byte
+                #   55 AA 04: Note/Location text
+                #   55 AA xx: anything else not used
+                #   for 500 and 600+
+                # End Quote
+
+                elif rec[i+2] >= 5: # should NEVER be found as it is not used (currently)!
+                                    # this is also not strictly correct, as for
+                                    # counters other that 500+ the limit should not
+                                    # be 5 but 3!
+
+                    cpxValid = -1
+                    cpx      = rec[i+3] * cpxValid
+
+                    parsecomment = ", ---invalid qualifier for 0x55 0xAA sequence: '0x{:02X}' ---".format(rec[i+2])
+                    parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+
+                    i      += 1
+                    cpms   += 1
+
+                else:
+                    # workaround for the mess created by GQ
+                    if gglobs.deviceDetected in ("GMC-500+Re 1.18", "GMC-500+Re 1.21"):
+                        histMess = {"ASCII" : 4,
+                                    "Triple": 2,
+                                    "Quad"  : 3,
+                                   }
+                    else: # 300series and else
+                        histMess = {"ASCII" : 2,
+                                    "Triple": 3,
+                                    "Quad"  : 4,
+                                   }
+
+                    if  rec[i+2] == histMess["ASCII"]: #ascii bytes coming
+                        cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
+                        count   = rec[i+3]
+                        #print("i:", i, "count:", count)
+
+                        if (i + 3 + count) <= lh:
+                            asc     = ""
+                            for c in range(0, count):
+                                asc += chr(rec[i + 4 + c])
+                            rs      = "#{:5d}, {:19s}, Note/Location: '{}' ({:d} Bytes) ".format(i, cpmtime, asc, count)
+                        else:
+                            rs      = "#{:5d} ,{:19s}, Note/Location: '{}' (expected {:d} Bytes, got only {}) ".format(i, cpmtime, "ERROR: not enough data in History", count, lh - i - 3)
+                        histLogList.       append(rs)
+                        histLogListComment.append(rs)
+
+                        i      += count + 4
+
+                    elif rec[i+2] == histMess["Triple"]: #triple data byte coming
+                        msb     = rec[i+3]
+                        isb     = rec[i+4]
+                        lsb     = rec[i+5]
+                        cpx     = (msb * 256 + isb) * 256 + lsb
+                        cpx     = cpx * cpxValid
+
+                        parsecomment = ", ---triple data bytes---"
+                        parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+
+                        i      += 6
+                        cpms   += 1
+
+                    elif rec[i+2] == histMess["Quad"]: #quadruple data byte coming
+                        msb     = rec[i+3]
+                        isb     = rec[i+4]
+                        isb0    = rec[i+5]
+                        lsb     = rec[i+6]
+                        cpx     = ((msb * 256 + isb) * 256 + isb0) * 256 + lsb
+                        cpx     = cpx * cpxValid
+
+                        parsecomment = ", ---quadruple data bytes---"
+                        parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+
+
+                        i      += 7
+                        cpms   += 1
 
             else: #0x55 is genuine cpm, no tag code
+                cpx     = r * cpxValid
+
+                parsecomment = ", ---0x55 is genuine, no tag code---"
+                parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+
+                i      += 1
                 cpms   += 1
-                cpm     = r * cpmfactor
-                cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
-                rs      = " {:5d},{:19s}, {:6d}".format(i,cpmtime, cpm)
-                histLogList.       append(rs)
-                histLogListComment.append(rs + ", ---0x55 is genuine, no tag code---" + savetxt)
 
         elif r == 0xff: # real count or 'empty' value?
             if gglobs.keepFF:
+                cpx     = r * cpxValid
+
+                parsecomment = ", ---real count or 'empty' value?---"
+                parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
                 cpms   += 1
-                cpm     = r * cpmfactor
-                cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
-                rs      = " {:5d},{:19s}, {:6d}".format(i,cpmtime, cpm)
-                histLogList.       append(rs)
-                histLogListComment.append(rs + ", ---real count or 'empty' value?---" + savetxt)
+            i += 1
 
         else:
-            cpms   += 1
-            cpm     = r * cpmfactor
-            cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
-            rs      = " {:5d},{:19s}, {:6d}".format(i,cpmtime, cpm)
-            histLogList.       append(rs)
-            histLogListComment.append(rs + ", ---single digit---" + savetxt)
+            cpx     = r * cpxValid
 
-        i += 1
+            parsecomment = ", ---single digit---"
+            parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+            i      += 1
+            cpms   += 1
 
     return histLogList, histLogListComment
 
 
+def parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment):
+    """Add the parse results to the *.his list and commented *.his.parse list"""
+
+    global histCPSCum
+
+    cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
+
+    CPMmodeFormat = " {:5d}, {:19s}, {:6d},       " # CPM: empty value for CPS
+    CPXmodeFormat = " {:5d}, {:19s}, {:6d}, {:6d}"  # CPX: values for both CPM and CPS
+    if CPSmode: # measurement is CPS
+        histCPSCum.append(cpx)          # add new data as 61st element (= #60)
+        histCPSCum  = histCPSCum[1:]    # ignore element #0, get only 1...60
+        cpm         = sum(histCPSCum)
+        rs          = CPXmodeFormat.format(i, cpmtime, int(cpm), cpx)
+
+    else: # CPM mode
+        histCPSCum  = [0] * 60
+        rs = CPMmodeFormat.format(i, cpmtime, cpx) # measurement is CPM
+
+    histLogList.       append(rs)
+    histLogListComment.append(rs + parsecomment + savetext)
+
+
 def sortHistLog(histLogList):
     """The ringbuffer technology for the Geiger counter history buffer makes it
-    possible that late data come first in the buffer. Sorting corrects this"""
+    possible that late data come first in the buffer. Time Sorting corrects this"""
 
 
     dprint(gglobs.debug, "sortHistLog:")
     debugIndent(1)
 
-    # Extract the Date&Time and put as new 1st col for sorting
+    # Extract the Date&Time col and put as new 1st col for sorting
     sortlines =[]
     for hline in histLogList:
         try:
-            x, t, c = hline.split(",", 2) #byteindex. time, count
+            x, t, c = hline.split(",", 2) #byteindex. time, count cpm, count cps
         except Exception as e:
             srcinfo = "ERROR on split histLogList" + str(hline)
             exceptPrint(e, sys.exc_info(), srcinfo)
-            #dprint(True, "ERROR on split histLogList", hline)
             return histLogList
+
         sortlines.append([t, hline])
-    #print( "sortlines: len():", len(sortlines))
-    #for i in range(5): print( sortlines[i])
+
+    #print( "sortlines: len, type:", len(sortlines), type(sortlines))
+    #for i in range(15): print( sortlines[i])
 
     # sort all records by the newly created Date-Time column
-    newsortlines = sorted(sortlines, key = itemgetter(0))
-    #print( "newsortlines: len:", len(newsortlines))
-    #for i in range(5): print( newsortlines[i])
+    newsortlines = sorted(sortlines, key=itemgetter(0))
+    #print( "sorted lines: len, type:", len(newsortlines), type(newsortlines))
+    #for i in range(15): print( newsortlines[i])
 
     # after sorting done on the first column, we need only the second column
     secondColumn = [row[1] for row in newsortlines]
-    #print("secondColumn:", len(secondColumn), type(secondColumn), secondColumn)
-
-    histLogListsorted = list(secondColumn)
-    #print( "histLogListsorted: len():", len(histLogListsorted))
-    #for i in range(5): print( histLogListsorted[i])
+    #print("secondColumn only: len, type:", len(secondColumn), type(secondColumn))
+    #for i in range(15): print(secondColumn[i])
 
     debugIndent(0)
 
-    return histLogListsorted
+    return secondColumn
 
 
-def testwrite(hist, lstFilePath):
-    """highlight the FF bytes in bin file"""
+def FFbytes(hist, FilePath):
+    """highlight the FF bytes of the bin history by creating a text file showing
+    the memory layout as an ASCII graph with '.' as non-FF, and 'ÿ' as FF"""
 
-    lstlines = ""
-    lh       = len(hist)
-    histInt  = list(map(ord, hist))    # convert string to list of int
+    linelen   = 128
+    lstlines  = "Mark FF values in hist file as 'ÿ', else with '.'; line length={}\n".format(linelen)
+    lstlines += "_________|" * 12 + "________\n"
+    lh        = len(hist)
+    #print("hist:", hist)
+    histInt   = list(hist)    # convert bytes to list of int
+    #print("histInt:", histInt)
 
-    for i in range(0, 2**16, 512):
+    for i in range(0, lh, linelen):
         lstline =""
-        for j in range(0, 512):
+        for j in range(0, linelen):
             l  = i + j
             if l >= lh: break
 
-            if histInt[l] == 255:
-                s = "@"
-            else:
-                s = "."
+            if histInt[l] == 255:   s = "\xff"
+            else:                   s = "."
             lstline += s
-        lstlines += lstline + "\n"
-    #print lstlines
 
-    writeFileW(lstFilePath + ".test", lstlines, linefeed = False)
+        lstlines += lstline + "\n"
+    #print("lstlines:", lstlines)  # takes too much space in printout to terminal
+
+    writeFileW(FilePath + ".FF", lstlines, linefeed = False)
