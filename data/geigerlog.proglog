@@ -1,5 +1,0 @@
-2018-09-12 15:57:12 PROGRAM: pid:32072 ########### GeigerLog 0.9.07 -- mi no mär pfupf underm füdli !  ##################################################
-2018-09-12 15:57:12 DEBUG  : Version status:GeigerLog: 0.9.07,  Python: 3.6.5 (default, Apr  1 2018, 05:46:30) [GCC 7.3.0],  matplotlib: 2.1.1,  numpy: 1.13.3,  Qt version: 4.8.7,  SIP version: 4.19.7,  PyQt version: 4.12.1,  pyserial: 3.4,  scipy: 0.19.1,  
-2018-09-12 15:57:26 DEBUG  :    Parsing binary file                
-2018-09-12 15:57:26 DEBUG  :    Sorting parsed data on time        
-2018-09-12 15:57:26 DEBUG  :    Writing parsed & sorted data to:   /home/ckuethe/radiation/geigerlog/data/flight.his
