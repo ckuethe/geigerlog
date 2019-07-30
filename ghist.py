@@ -3,10 +3,7 @@
 
 """
 ghist.py - GeigerLog commands to read and parse the history data from Geiger
-counter device or from file.
-
-Writes *.bin, *.lst and *.his file. *.his file can be used for graphing; it
-has identical format as the *.log file
+counter device or from file and create database.
 """
 
 ###############################################################################
@@ -27,7 +24,7 @@ has identical format as the *.log file
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019"
 __credits__         = ["Phil Gillaspy"]
 __license__         = "GPL3"
 
@@ -37,69 +34,77 @@ __license__         = "GPL3"
 # and document 'GQ-RFC1201.txt'
 # (GQ-RFC1201,GQ Geiger Counter Communication Protocol, Ver 1.40 Jan-2015)
 
-import sys
-import re                               # regex
-from   operator import itemgetter       # used in sortHist
+from   gutils       import *            # all utilities
 
-import gglobs                           # global settings
 import gcommands                        # only getSPIR is used here
-from   gutils import *                  # all utilities
+import gsql
 
 
-def makeHIST(sourceHIST, binFilePath, lstFilePath, hisFilePath):
+
+def makeHistory(sourceHist):
     """make the History by reading data either from file or from device,
     parse them, sort them by date&time, and write into files"""
 
     str_data_origin = u"Downloaded {} from device '{}'"
+
     #
     # get binary HIST data - either from file or from device
     #
-    if sourceHIST == "Binary File":     # from file
-        fprint("Reading data from binary file:", binFilePath)
-        hist    = readBinaryFile(binFilePath)
+    if   sourceHist == "Parsed File":
+        return (0, "")
+
+    elif sourceHist == "Database":
+        return (0, "")
+
+    elif sourceHist == "Binary File":
+        hist    = readBinaryFile(gglobs.binFilePath)
+
         if b"ERROR" in hist[:6]: # hist contains error message
             error = -1
             return (error, "ERROR: Cannot Make History: " + hist)
 
         if hist[0:11] == b"DataOrigin:":
             data_origin = hist[11:128].rstrip(b' ').decode('UTF-8')
-            vprint(gglobs.verbose, "DataOrigin: len:{}: {}".format(len(data_origin), data_origin))
+            data_originDB = (data_origin[11:30], data_origin[30+12:])
+            vprint("DataOrigin: len:{}: {}".format(len(data_origin), data_origin))
             hist = hist[128:]
 
         else:
             data_origin = str_data_origin.format("<Date Unknown>", "<Device Unknown>")
-            vprint(gglobs.verbose,  "no Data Origin label found, " + data_origin)
+            data_originDB = ("<Date Unknown>", "<Device Unknown>")
+            vprint("No Data-Origin label found")
+            fprint("No Data-Origin label found")
 
-        # only for TESTING: to cut a short piece of bin data
-        #writeBinaryFile(binFilePath + ".short", hist[0:100])
+            # Test auf die Bin File Länge. Wenn mit GQ's DV eingelesen
+            # dann sind 256 Bytes ((512 for > GMC500series) zuviel eingelesen!!
+            lenhistold = len(hist)
+            #print("len(hist):", lenhistold)
+            if len(hist) > 2**20:   hist = hist[0: 2**20]
+            else:                   hist = hist[0: 2**16]
 
-    elif sourceHIST == "Device":         # from device
+            dprint("Removed {} bytes from end of orginal *.bin file of {} bytes".format(lenhistold - len(hist), lenhistold))
+            fprint("Removed {} bytes from end of orginal *.bin file of {} bytes".format(lenhistold - len(hist), lenhistold))
 
-        #data_origin = str_data_origin.format(shortstime(), gglobs.deviceDetected)
-        data_origin = str_data_origin.format(stime(), gglobs.deviceDetected)
-        fprint("Reading from connected device:", "{}".format(gglobs.deviceDetected))
+    elif sourceHist == "Device":
+        data_origin   = str_data_origin.format(stime(), gglobs.deviceDetected)
+        data_originDB = (stime(), gglobs.deviceDetected)
+        fprint("Reading data from connected device: {}".format(gglobs.deviceDetected))
 
-        hist = b""
-
+        hist    = b""
         page    = gglobs.SPIRpage # 4096 or 2048, see: getDeviceProperties
         FFpages = 0               # number of successive pages having only FF
 
-        #
         # Cleaning pipeline BEFORE reading history
-        #
-        dprint(gglobs.debug, "makeHIST: Cleaning pipeline BEFORE reading history")
+        dprint("makeHistory: Cleaning pipeline BEFORE reading history")
         extra = gcommands.getExtraByte()
 
-#### TESTING
-####        gglobs.memory = 2**13
-
-        for address in range(0, gglobs.memory, page):       # prepare to read all memory
+        for address in range(0, gglobs.memory, page): # prepare to read all memory
             time.sleep(0.1) # fails occasionally to read all data when
                             # sleep is only 0.1; still not ok at 0.2 sec
                             # wieder auf 0.1, da GQ Dataviewer deutlich scneller ist
-            fprint("Reading page of size {} @address:".format(page)  , address)
-            rec, error, errmessage = gcommands.getSPIR(address , page)
-            if error == 0 or error == 1:
+            fprint("Reading page of size {} @address:".format(page), address)
+            rec, error, errmessage = gcommands.getSPIR(address, page)
+            if error in (0, 1):
                 hist += rec
                 if error == 1: fprint("Reading error:", "Recovery succeeded")
 
@@ -111,194 +116,90 @@ def makeHIST(sourceHIST, binFilePath, lstFilePath, hisFilePath):
 
                 if not gglobs.fullhist and FFpages * page >= 8192: # 8192 is 2 pages of 4096 byte each
                     txt = "Found {} successive {} B-pages (total {} B), as 'FF' only - ending reading".format(FFpages, page, FFpages * page)
-                    dprint(gglobs.debug, txt)
+                    dprint(txt)
                     fprint(txt)
                     break
+
             else: # error = -1
                 # non-recovered error occured
-                dprint(gglobs.debug, "ERROR: in makeHIST: ", errmessage, "; exiting from makeHist")
+                dprint("ERROR: in makeHistory: ", errmessage, "; exiting from makeHist")
                 return (error, "ERROR: Cannot Get History: " + errmessage)
 
-        #
         # Cleaning pipeline AFTER reading history
-        #
-        dprint(gglobs.debug, "makeHIST: Cleaning pipeline AFTER reading history")
+        dprint("makeHistory: Cleaning pipeline AFTER reading history")
         extra = gcommands.getExtraByte()
+    ### end if   sourceHist== #################################################
 
-    else:
-        # "Parsed File" - is already *.his; does not need makeHIST
-        return (0, "")
+    printHistDetails(hist)
+
+    # parse HIST data
+    gglobs.HistoryDataList      = []
+    gglobs.HistoryParseList     = []
+    gglobs.HistoryCommentList   = []
+
+    fprint("Parsing binary data", debug=gglobs.debug)
+    parseHIST(hist)
+
+    dbhisClines    = [None] * 2
+    #                  ctype    jday, jday modifier to use time unmodified
+    dbhisClines[0] = ["HEADER", None, "0 hours", "File created from History Download Binary Data"]
+    dbhisClines[1] = ["ORIGIN", None, "0 hours", "{}".format(data_origin)]
+
+# write to database
+    gsql.DB_insertBin           (gglobs.hisConn, hist)
+    gsql.DB_insertDevice        (gglobs.hisConn, *data_originDB)
+    gsql.DB_insertComments      (gglobs.hisConn, dbhisClines)
+    gsql.DB_insertComments      (gglobs.hisConn, gglobs.HistoryCommentList)
+    gsql.DB_insertData          (gglobs.hisConn, gglobs.HistoryDataList)
+    gsql.DB_insertParse         (gglobs.hisConn, gglobs.HistoryParseList)
+
+    fprint("Database is created", debug=gglobs.debug)
+
+    return (0, "")
 
 
-    histlen     = len(hist)          # Total length; should always be 64k or 1MB, now: could be any length!
-    histFF      = hist.count(b'\xFF') # total count of FF bytes
+def printHistDetails(hist=False):
+    """ """
+
+    #print("printHistDetails: hist:", hist)
+    if hist == False:
+        if gglobs.hisConn == None:
+            gglobs.ex.showStatusMessage("No data available")
+            return
+
+        fprint(header("Show History Binary Data Details"))
+        fprint("from: {}\n".format(gglobs.hisDBPath))
+
+        hist    = gsql.DB_readBinblob(gglobs.hisConn)
+        if hist == None:
+            fprint("No binary data found in this database", error=True)
+            return
+
+    histlen     = len(hist)                  # Total length; could be any length e.g. when read from file
+    histFF      = hist.count(b'\xFF')        # total count of FF bytes
 
     histRC      = hist.rstrip(b'\xFF')       # after right-clip FF (removal of all trailing 0xff)
     histRClen   = len(histRC)                # total byte count
     histRCFF    = histRC.count(b'\xFF')      # total count of FF in right-clipped data
 
-    fprint("Count of bytes as read:"           , "{} Bytes".format(histlen))
+    fprint("Binary data total byte count:"     , "{} Bytes".format(histlen))
     fprint("Count of data bytes:"              , "{} Bytes".format(histRClen))
-
     fprint("Count of FF bytes - Total:"        , "{} Bytes".format(histFF))
     fprint("Count of FF bytes - Trailing:"     , "{} Bytes".format(histlen - histRClen))
     fprint("Count of FF bytes - Within data:"  , "{} Bytes".format(histRCFF))
 
-    # writing data from device as binary; add the device info to the beginning
-    if sourceHIST == "Device":
-        exthist = (b"DataOrigin:" + data_origin.encode() + b" " * 128 )[0:128] + hist
-        vprint(gglobs.verbose, "hist: len:{}, exthist: len:{} exthist:{}".format(len(hist), len(exthist), exthist[:128]))
-        fprint("Writing binary data to:", binFilePath, debug=True)
-        try:
-            writeBinaryFile(binFilePath, exthist)
-        except Exception as e:
-            error       = -1
-            errmessage  = "ERROR writing *bin file"
-            exceptPrint(e, sys.exc_info(), errmessage)
-            return (error, "ERROR: Cannot Get History: " + errmessage)
-
-# Preparing the *.lst file
-    # prepare to write binary data to '*.lst' file (= lstFilePath) in human readable format
-    lstlines  = "#History Download - Binary Data in Human-Readable Form\n"  # write header
-    lstlines += "#{}\n".format(data_origin)
-    lstlines += "#Format: bytes:  index:value  as: 'hex=dec :hex=dec|'\n"
-    #print("histInt:", type(histRC), len(histRC), histRC)
-    histInt   = list(histRC)                                        # convert string to list of int
-    #print("histInt:", type(histInt), len(histInt), histInt)
-    ppagesize = 1024                                                    # for the breaks in printing
-
-    # This reads the full hist data, but clipped for FF, independent of the
-    # memory setting of the currently selected counter
-    for i in range(0, histRClen, ppagesize):
-        for j in range(0, ppagesize, 4):
-            lstline =""
-            for k in range(0, 4):
-                if j + k >= ppagesize:   break
-                l  = i + j + k
-                if l >= histRClen:         break
-                lstline += "{:04x}={:<5d}:{:02x}={:<3d}|".format(l, l, histInt[l], histInt[l])
-            lstlines += lstline[:-1] + "\n"
-            if l >= histRClen:         break
-
-        lstlines += "Reading Page {} of size {} bytes complete; next address: 0x{:04x}={:5d} {}\n".format(i/ppagesize, ppagesize, i+ppagesize, i+ppagesize, "-" * 6)
-        #print "(l +1)", (l+1), "(l +1) % 4096", (l+1) % 4096
-        if (l + 1) % 4096 == 0 :
-            lstlines += "Reading Page {} of size {} Bytes complete {}\n".format(i/4096, 4096, "-" * 35)
-        if l >= histRClen:         break
-
-    if histRClen < histlen:
-        lstlines += "Remaining {} Bytes to the end of history (size:{}) are all ff\n".format(histlen -histRClen, histlen)
-    else:
-        lstlines += "End of history reached\n"
-
-    fprint("Writing data as list to:", lstFilePath)
-    writeFileW(lstFilePath, lstlines, linefeed = False)
-# end for *.lst file
-
-# for Devel  - highlight the FF bytes in hist
-    if gglobs.devel: FFbytes(hist, binFilePath)
-
-# Prepare the *.his file
-    # parse HIST data; preserve a copy with parsing comments if on debug
-    fprint("Parsing binary file", debug=True)
-    histLogList, histLogListComment = parseHIST(hist, hisFilePath)
-
-    hisClines  = "#HEADER, File created from History Download Binary Data\n"  # header
-    hisClines += "#ORIGIN: {}\n".format(data_origin)
-    hisClines += "#FORMAT: '<#>ByteIndex, Date&Time, CPM, CPS' (Line beginning with '#' is comment)\n"
-
-# write the *.parse file when debug = True
-    if gglobs.debug:
-        path = hisFilePath + ".parse"
-        #fprint("Writing commented parsed data to:", path, debug=True)
-        with open(path, 'wt', encoding="utf_8", errors='replace', buffering = 1) as f:
-            f.write(hisClines)
-            for line in histLogListComment:
-                # ensure ASCII chars
-                asc, ordasc, ordflag = getTrueASCII(line)
-                f.write(asc + "\n")
-                if ordflag :
-                    f.write(ordasc + "\n")
-
-# sort parsed data by date&time
-    fprint("Sorting parsed data on time", debug=True)
-    histLogList = sortHistLog(histLogList)
-
-    """ Not relevant when all FF are ignored in parser!
-    # remove trailing records if they have a count resulting from FF
-    # i.e. 255 in CPM or 255*50 = 15300 in CPS mode
-    trailFF = 0
-    byteindex_first = None
-    byteindex_last  = None
-    while True:
-        x, t, c = histLogList[-1].split(",", 2) #byteindex. time, count
-        #print x,t,c, type(c), len(histLogList)
-        try:
-            intc = int(c)
-        except:
-            break
-        if intc == 255 or intc == 15300:
-            if trailFF == 0:
-                byteindex_last  = x
-            else:
-                byteindex_first = x
-
-            trailFF += 1
-            histLogList.pop()
-        else:
-            break
-    if trailFF > 0:
-        fprint("Trailing FF records removed:", "{} records (ByteIndex{} to{})".format(trailFF, byteindex_first, byteindex_last))
-    else:
-        fprint("Trailing FF records removed:", "None found; nothing removed")
-    """
-
-    fprint("Writing parsed & sorted data to:", hisFilePath, debug=True)
-    with open(hisFilePath, 'wt', encoding="utf_8", errors='replace', buffering = 1) as f:
-        f.write(hisClines)
-        for line in histLogList:
-            # ensure ASCII chars
-            asc, ordasc, ordflag = getTrueASCII(line)
-            f.write(asc + "\n")
-            if ordflag :
-                f.write(ordasc + "\n")
-                fprint("ERROR in History: Found non-ASCII characters: ", ordasc, error=True, debug=True)
-
-# end for *.his file
-
-    return (0, "")
 
 
-def getTrueASCII(line):
-    """gets line and returns true ASCII string plus info on ASCII failures"""
+def parseHIST(hist):
+    """Parse history hist"""
 
-    asc     = ""
-    ordasc  = "#"
-    ordflag = False
-    for i in range(0, len(line)):
-        ai = ord(line[i])
-        if ai < 128 and ai > 31:
-            asc    += line[i]
-            ordasc += line[i]
-        else:
-            ordflag = True
-            asc    += "."
-            ordasc += "[{}]".format(ai)
-
-    return asc, ordasc, ordflag
-
-
-def parseHIST(hist, hisFilePath):
-    """Parse history
-    return data in logfile format
-    """
-
-    global histCPSCum
+    global histCPSCum, tubeSelected
 
     i               = 0     # counter for starting point byte number
     first           = 0     # byte index of first occurence of datetimetag
     cpms            = 0     # counter for CPMs read, so time can be adjusted
     cpxValid        = 1     # for CPM data = 1, for CPS data = 60 (all is recorded as CPM!)
+    tubeSelected    = 0     # the tube(s) selected for measurements: 00 = both, 1 = tube1, and 2 is tube2.
 
     # search for first occurence of a Date&Time tag
     # must include re.DOTALL, otherwise a \x0a as in time 10h20:30 will
@@ -311,7 +212,7 @@ def parseHIST(hist, hisFilePath):
         break
 
     i = first                       # the new start point for the parse
-    dprint(gglobs.debug, "parseHIST: byte index first Date&Time tag: {}".format(first))
+    dprint("parseHIST: byte index first Date&Time tag: {}".format(first))
 
     hist = hist + hist[:i]          # concat with the part missed due to overflow
 
@@ -319,14 +220,9 @@ def parseHIST(hist, hisFilePath):
     rec  = list(hist)               # convert string to list of int
     lh   = len(rec)
 
-    histLogList         = []
-    histLogListComment  = []
     histCPSCum          = [0] * 60  # cumulative values of CPS; initial set = all zero
 
     CPSmode             = True      # history saving mode is CPS by default
-
-    CPSmodeFormat = " {:5d}, {:19s},       , {:6d}"  # CPS: empty value for CPM
-    CPMmodeFormat = " {:5d}, {:19s}, {:6d},       "  # CPM: empty value for CPS
 
     # NOTE: ###################################################################
     # After reading the DateTime tag the next real count is assumed to come at
@@ -367,7 +263,11 @@ def parseHIST(hist, hisFilePath):
 
                     elif dd == 1:
                         savetext      = "CPS, save every second"
-                        saveinterval = 1
+                        #saveinterval = 1
+                        saveinterval = 0.99 # to compensate for the clock running too slow
+                                            # timetag is normally sooner than expected from
+                                            # advancing by 1 sec increments. Gives problems
+                                            # in sorting order
                         cpxValid     = 1
                         CPSmode      = True
                         cpms         = 1
@@ -410,15 +310,15 @@ def parseHIST(hist, hisFilePath):
                     else:
                         # ooops. you were not supposed to be here
                         savetext      = "ERROR: FALSE READING OF HISTORY SAVE-INTERVALL = {:3d} (allowed is: 0,1,2,3,4,5)".format(dd)
-                        dprint(True, savetext)
+                        dprint(savetext, debug=True)
                         saveinterval = 0        # do NOT advance the time
                         cpxValid     = -1       # make all counts negative to mark illegitimate data
                         CPSmode      = True     # just to define the mode
                         cpms         = 0
 
-                    rs = "#{:5d}, {:19s}, Date&Time Stamp; Type:'{:}', Interval:{:} sec".format(i, rectime, savetext, saveinterval)
-                    histLogList.       append(rs)
-                    histLogListComment.append(rs)
+                    rs     = "#{:5d}, {:19s}, Date&Time Stamp; Type:'{:}', Interval:{:} sec".format(i, rectime, savetext, saveinterval)
+                    dbtype = "Date&Time Stamp; Type:'{:}', Interval:{:} sec".format(savetext, saveinterval)
+                    parseCommentAdder(i, rectime, dbtype)
 
                     i   += 12
 
@@ -429,18 +329,30 @@ def parseHIST(hist, hisFilePath):
                     if CPSmode: cpx = cpx & 0x3fff # count rate limit CPS = 14bit!
                     cpx     = cpx * cpxValid
 
-                    parsecomment = ", ---double data bytes---"
-                    parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
-
+                    parsecomment = "---double data bytes---"
+                    parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext)
 
                     i      += 5
                     cpms   += 1
+
+                elif rec[i+2] == 5: # tube selection: 55 AA 05 followed with tube ID, and 00 = both, 1 = tube1, and 2 is tube2
+                    tubeSelected = rec[i+3]
+
+                    rs     = "#{:5d}, {:19s}, Tube Selected is:{:}  [0=both, 1=tube1, 2=tube2]".format(i, rectime, tubeSelected)
+                    dbtype = "Tube Selected is:{:}  [0=both, 1=tube1, 2=tube2]".format(tubeSelected)
+                    parseCommentAdder(i, rectime, dbtype)
+
+                    i      += 4
+                    cpms   = 0
+
+                    #print("rs:", rs)
+
 
                 # the following is the consequence of the highly unprofessionall
                 # mess created by GQ by redefining the definition of the meaning
                 # of the coding:  in some firmware (likely 1.18 and 1.21 for
                 # 500+ counters) different association.
-                # Claimed to be changed "soon", yet leaves are permanent problem
+                # Claimed to be changed "soon", yet leaves a permanent problem
                 #
                 # http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=5331   Reply #50, 21.8.2016
                 # Quote:
@@ -454,23 +366,20 @@ def parseHIST(hist, hisFilePath):
                 #   for 500 and 600+
                 # End Quote
 
-                elif rec[i+2] >= 5: # should NEVER be found as it is not used (currently)!
-                                    # this is also not strictly correct, as for
-                                    # counters other that 500+ the limit should not
-                                    # be 5 but 3!
-
+                elif rec[i+2] >= 6: # should NEVER be found as it is not used (currently)!
                     cpxValid = -1
                     cpx      = rec[i+3] * cpxValid
 
-                    parsecomment = ", ---invalid qualifier for 0x55 0xAA sequence: '0x{:02X}' ---".format(rec[i+2])
-                    parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+                    parsecomment = "---invalid qualifier for 0x55 0xAA sequence: '0x{:02X}' ---".format(rec[i+2])
+                    parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext)
 
                     i      += 1
                     cpms   += 1
 
                 else:
                     # workaround for the mess created by GQ
-                    if gglobs.deviceDetected in ("GMC-500+Re 1.18", "GMC-500+Re 1.21"):
+                    #if gglobs.deviceDetected in ("GMC-500+Re 1.18", "GMC-500+Re 1.21"):
+                    if gglobs.deviceDetected in gglobs.locationBug: # default: "GMC-500+Re 1.18", "GMC-500+Re 1.21"
                         histMess = {"ASCII" : 4,
                                     "Triple": 2,
                                     "Quad"  : 3,
@@ -491,10 +400,11 @@ def parseHIST(hist, hisFilePath):
                             for c in range(0, count):
                                 asc += chr(rec[i + 4 + c])
                             rs      = "#{:5d}, {:19s}, Note/Location: '{}' ({:d} Bytes) ".format(i, cpmtime, asc, count)
+                            dbtype  = "Note/Location: '{}' ({:d} Bytes) ".format(asc, count)
                         else:
                             rs      = "#{:5d} ,{:19s}, Note/Location: '{}' (expected {:d} Bytes, got only {}) ".format(i, cpmtime, "ERROR: not enough data in History", count, lh - i - 3)
-                        histLogList.       append(rs)
-                        histLogListComment.append(rs)
+                            dbtype  = "Note/Location: '{}' (expected {:d} Bytes, got only {}) ".format("ERROR: not enough data in History", count, lh - i - 3)
+                        parseCommentAdder(i, cpmtime, dbtype)
 
                         i      += count + 4
 
@@ -505,8 +415,8 @@ def parseHIST(hist, hisFilePath):
                         cpx     = (msb * 256 + isb) * 256 + lsb
                         cpx     = cpx * cpxValid
 
-                        parsecomment = ", ---triple data bytes---"
-                        parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+                        parsecomment = "---triple data bytes---"
+                        parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext)
 
                         i      += 6
                         cpms   += 1
@@ -519,9 +429,8 @@ def parseHIST(hist, hisFilePath):
                         cpx     = ((msb * 256 + isb) * 256 + isb0) * 256 + lsb
                         cpx     = cpx * cpxValid
 
-                        parsecomment = ", ---quadruple data bytes---"
-                        parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
-
+                        parsecomment = "---quadruple data bytes---"
+                        parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext)
 
                         i      += 7
                         cpms   += 1
@@ -529,8 +438,8 @@ def parseHIST(hist, hisFilePath):
             else: #0x55 is genuine cpm, no tag code
                 cpx     = r * cpxValid
 
-                parsecomment = ", ---0x55 is genuine, no tag code---"
-                parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+                parsecomment = "---0x55 is genuine, no tag code---"
+                parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext)
 
                 i      += 1
                 cpms   += 1
@@ -539,106 +448,91 @@ def parseHIST(hist, hisFilePath):
             if gglobs.keepFF:
                 cpx     = r * cpxValid
 
-                parsecomment = ", ---real count or 'empty' value?---"
-                parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+                parsecomment = "---real count or 'empty' value?---"
+                parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext)
                 cpms   += 1
             i += 1
 
         else:
             cpx     = r * cpxValid
 
-            parsecomment = ", ---single digit---"
-            parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment)
+            parsecomment = "---single digit---"
+            parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext)
             i      += 1
             cpms   += 1
 
-    return histLogList, histLogListComment
 
-
-def parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext, histLogList, histLogListComment):
+def parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext):
     """Add the parse results to the *.his list and commented *.his.parse list"""
 
-    global histCPSCum
+    global histCPSCum, tubeSelected
 
-    cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
+    cpxValid = 1
+    cpmtime  = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
 
-    CPMmodeFormat = " {:5d}, {:19s}, {:6d},       " # CPM: empty value for CPS
-    CPXmodeFormat = " {:5d}, {:19s}, {:6d}, {:6d}"  # CPX: values for both CPM and CPS
     if CPSmode: # measurement is CPS
         histCPSCum.append(cpx)          # add new data as 61st element (= #60)
         histCPSCum  = histCPSCum[1:]    # ignore element #0, get only 1...60
         cpm         = sum(histCPSCum)
-        rs          = CPXmodeFormat.format(i, cpmtime, int(cpm), cpx)
 
     else: # CPM mode
         histCPSCum  = [0] * 60
-        rs = CPMmodeFormat.format(i, cpmtime, cpx) # measurement is CPM
 
-    histLogList.       append(rs)
-    histLogListComment.append(rs + parsecomment + savetext)
+    # create the data for the database
+    # Index, DateTime, CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  Temp, Press, Humid, RMCPM
+    datalist     = [None] * (gglobs.datacolsDefault + 2) # 13 x None
+    datalist[0]  = i
+    datalist[1]  = cpmtime
+    datalist[2]  = "0 hours"
 
+    if   tubeSelected == 0: pointer = 3
+    elif tubeSelected == 1: pointer = 5
+    elif tubeSelected == 2: pointer = 7
+    else:
+        fprint("ERROR: detected tubeSelected={}, but only 0,1,2 is permitted".format(tubeSelected), error=true, debug=True, errsound=True)
+        pointer  = 3#2
+        cpxValid = -1
 
-def sortHistLog(histLogList):
-    """The ringbuffer technology for the Geiger counter history buffer makes it
-    possible that late data come first in the buffer. Time Sorting corrects this"""
+    if CPSmode: # CPS mode
+        datalist[pointer]       = int(cpm) * cpxValid
+        datalist[pointer + 1]   = cpx * cpxValid
 
+    else:        # CPM mode
+        datalist[pointer]       = cpx * cpxValid
 
-    dprint(gglobs.debug, "sortHistLog:")
-    debugIndent(1)
-
-    # Extract the Date&Time col and put as new 1st col for sorting
-    sortlines =[]
-    for hline in histLogList:
-        try:
-            x, t, c = hline.split(",", 2) #byteindex. time, count cpm, count cps
-        except Exception as e:
-            srcinfo = "ERROR on split histLogList" + str(hline)
-            exceptPrint(e, sys.exc_info(), srcinfo)
-            return histLogList
-
-        sortlines.append([t, hline])
-
-    #print( "sortlines: len, type:", len(sortlines), type(sortlines))
-    #for i in range(15): print( sortlines[i])
-
-    # sort all records by the newly created Date-Time column
-    newsortlines = sorted(sortlines, key=itemgetter(0))
-    #print( "sorted lines: len, type:", len(newsortlines), type(newsortlines))
-    #for i in range(15): print( newsortlines[i])
-
-    # after sorting done on the first column, we need only the second column
-    secondColumn = [row[1] for row in newsortlines]
-    #print("secondColumn only: len, type:", len(secondColumn), type(secondColumn))
-    #for i in range(15): print(secondColumn[i])
-
-    debugIndent(0)
-
-    return secondColumn
+    gglobs.HistoryDataList.append (datalist)
+    gglobs.HistoryParseList.append([i, parsecomment + savetext])
 
 
-def FFbytes(hist, FilePath):
-    """highlight the FF bytes of the bin history by creating a text file showing
-    the memory layout as an ASCII graph with '.' as non-FF, and 'ÿ' as FF"""
+def parseCommentAdder(i, rectime, dbtype):
 
-    linelen   = 128
-    lstlines  = "Mark FF values in hist file as 'ÿ', else with '.'; line length={}\n".format(linelen)
-    lstlines += "_________|" * 12 + "________\n"
-    lh        = len(hist)
-    #print("hist:", hist)
-    histInt   = list(hist)    # convert bytes to list of int
-    #print("histInt:", histInt)
+    datalist     = [None] * 4  # 4 x None
+    datalist[0]  = i            # byte index
+    datalist[1]  = rectime      # Date&Time
+    datalist[2]  = "0 hours"    # the modifier for julianday; here: no modification
+    datalist[3]  = dbtype       # Date&Time Stamp Info
+    #print("#{:5d}, {:19s}, {:}".format(i, rectime, dbtype))
 
-    for i in range(0, lh, linelen):
-        lstline =""
-        for j in range(0, linelen):
-            l  = i + j
-            if l >= lh: break
+    gglobs.HistoryCommentList.append(datalist)
 
-            if histInt[l] == 255:   s = "\xff"
-            else:                   s = "."
-            lstline += s
 
-        lstlines += lstline + "\n"
-    #print("lstlines:", lstlines)  # takes too much space in printout to terminal
+def saveHistBinaryData():
+    """get the binary data from the database and save to *.bin file"""
 
-    writeFileW(FilePath + ".FF", lstlines, linefeed = False)
+    if gglobs.hisConn == None:
+        gglobs.ex.showStatusMessage("No data available")
+        return
+
+    fprint(header("Save History Binary Data to File"))
+    fprint("from: {}\n".format(gglobs.hisDBPath))
+
+    hist    = gsql.DB_readBinblob(gglobs.hisConn)
+    if hist == None:
+        fprint("No binary data found in this database", error=True)
+        return
+
+    newpath = gglobs.hisDBPath + ".bin"
+    writeBinaryFile(newpath, hist)
+
+    fprint("saved as file: " + newpath)
+

@@ -2,10 +2,10 @@
 # -*- coding: UTF-8 -*-
 
 """
-gutils.py - GeigerLog utilities
+gutils.py - GeigerLog utilities with imports
 
 include in programs with:
-    from utils include *
+    from gutils include *
 """
 
 ###############################################################################
@@ -26,26 +26,83 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019"
 __credits__         = [""]
 __license__         = "GPL3"
 
-
-import sys
-import os
-import io
-import inspect
-import time                         # time formatting and more
-import datetime                     # date and time conversions
-import matplotlib.dates as mpld     # used for datetime conversions
+import sys, os, io, time, datetime
+import platform                     # info on OS, machine, architecture, ...
+import traceback                    # for traceback on error; used in: exceptPrint
+import inspect                      # findinf origin of f'on calls
+import copy                         # make shallow and deep copies
+import threading
+import queue                        # queue for threading
+import re                           # regex
 import configparser                 # parse configuration file geigerlog.cfg
+import pyaudio                      # used here for sound messages
+import wave                         # handling wav files
+import serial                       # serial port
+import serial.tools.list_ports      # allows listing of serial ports
 
-from PyQt4 import QtGui             # for processEvents and beep
+import numpy               as np
+import matplotlib
 
 import gglobs                       # all global vars
 
 
-# tricks
+# Platform also via sys.platform
+# print("sys.platform:", sys.platform):
+# Linux:    Py3:'linux', Py2:'linux2'
+# Windows: 'win32' apparently all versions of Windows
+#
+if   'LINUX'   in platform.platform().upper():  # e.g. 'Linux-4.15.0-43-generic-x86_64-with-Ubuntu-16.04-xenial'
+    gglobs.my_active_qt_version   = 4
+
+elif 'WINDOWS' in platform.platform().upper():  # e.g. 'Windows-10-10.0.17134-SP0'
+    gglobs.my_active_qt_version   = 5
+
+else:
+    gglobs.my_active_qt_version   = 5   # any other platform also getting Qt5
+
+
+#print("sys.argv:", sys.argv)
+for arg in sys.argv:
+    # when more than one are given then last one wins
+    if   "pyqt4" in arg.lower():   # enforce Qt4 version
+        gglobs.my_active_qt_version   = 4
+
+    elif "pyqt5" in arg.lower():   # enforce Qt5 version
+        gglobs.my_active_qt_version   = 5
+
+
+if gglobs.my_active_qt_version == 5:                         # Qt5 version
+    # Installing PyQt5
+    # http://pyqt.sourceforge.net/Docs/PyQt5/installation.html easy with Pip:
+    # pip3 install pyqt5
+    from PyQt5.QtWidgets    import *
+    from PyQt5.QtGui        import *
+    from PyQt5.QtCore       import *
+
+    matplotlib.use('Qt5Agg', warn=True, force=False) # use Qt5Agg, not the default TkAgg
+    import matplotlib.backends.backend_qt5agg        # MUST be done BEFORE importing pyplot!
+    from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg    as FigureCanvas
+    from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
+
+else:                                                        # Qt4 version
+    # no QtWidgets in PyQt4; they are within QtGui
+    from PyQt4.QtGui        import *
+    from PyQt4.QtCore       import *
+
+    matplotlib.use('Qt4Agg', warn=True, force=False) # use Qt4Agg, not the default TkAgg
+    import matplotlib.backends.backend_qt4agg        # MUST be done BEFORE importing pyplot!
+    from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg    as FigureCanvas
+    from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT as NavigationToolbar
+
+import matplotlib.pyplot as plt # MUST import AFTER 'matplotlib.use()' / matplotlib-backend!!!
+import matplotlib.dates  as mpld
+
+
+# tricks for Linux:
 # For generic non full screen applications, you can turn off line wrapping by
 # sending an appropriate escape sequence to the terminal:
 #   tput rmam
@@ -70,6 +127,7 @@ BOLDRED             = '\033[31;1m'          # bold, red - but is same as TRED
 NORMALCOLOR         = TDEFAULT              # normal printout
 HILITECOLOR         = TGREEN                # hilite message
 ERRORCOLOR          = TYELLOW               # error message
+
 
 
 def getProgName():
@@ -120,6 +178,7 @@ def getConfigPath():
 
 def stime():
     """Return current time as YYYY-MM-DD HH:MM:SS"""
+    # sollte auch damit gehen:     return time.strftime("%Y-%m-%d %H:%M:%S")
 
     return longstime()[:-4]
 
@@ -138,33 +197,28 @@ def datestr2num(string_date):
     try:
         dt=time.mktime(datetime.datetime.strptime(string_date, "%Y-%m-%d %H:%M:%S").timetuple())
     except:
-        dprint(True, "ERROR in datestr2num: Date as String: '{}'".format(string_date))
+        dprint("ERROR in datestr2num: Date as String: '{}'".format(string_date), debug=True)
         newstrdate = '2099-09-09 09:09:09'
-        dprint(True, "                      replacing with: '{}'".format(newstrdate))
+        dprint("                      replacing with: '{}'".format(newstrdate), debug=True)
         dt=time.mktime(datetime.datetime.strptime(newstrdate, "%Y-%m-%d %H:%M:%S").timetuple())
 
     return dt
 
 
-def MPLDdatestr2num(datetime):      # Date to Number
-    """convert a Date&Time string in the form YYYY-MM-DD HH:MM:SS into a number
-    being a timestamp in days"""
-    # "2018-05-16 13:45:58" --> 736830.573587963
+def clamp(n, minn, maxn):
+    """limit return value to be within minn and maxn"""
 
-    dn = mpld.datestr2num(datetime)
-
-    return dn
+    return min(max(n, minn), maxn)
 
 
-def MPLDnum2datestr(num):           # Number to Date
-    """convert a number, i.e. a timestamp in days, into a Date&Time string
-    in the form YYYY-MM-DD HH:MM:SS"""
-    # 736830.573587963 --> '2018-05-16 13:45:58+00:00'
-    # 736830.573587963 --> '2018-05-16 13:45:58'      # first 19 bytes
+def IntToChar(intval):
 
-    nd = str(mpld.num2date(num))[:19]
+    if intval < 128 and intval > 31:
+        char = chr(intval)
+    else:
+        char = " "
 
-    return nd
+    return char
 
 
 def BytesAsASCII(bytestring):
@@ -236,32 +290,63 @@ def header(txt):
     """position txt within '====' string"""
 
     #return "\n==== {} {}".format(txt, "=" * max(0, (60 - len(txt))))
-    return "<br>==== {} {}".format(txt, "=" * max(0, (60 - len(txt))))
+    #return "<br>==== {} {}".format(txt, "=" * max(0, (60 - len(txt))))
+    return "<br>==== {} {}".format(txt, "=" * max(0, (75 - len(txt))))
+
+
+def logPrint(*args):
+    """print all args in logPad area"""
+
+    line = "{:35s}".format(args[0])
+    for s in range(1, len(args)):
+        line += "{}".format(args[s])
+
+    gglobs.logPad.append(line)
+    #QApplication.processEvents() # if this is present then execution stops when
+                                  # the DisplayLastLogValues is called. Strange!
+
+
+def efprint(*args, error=False, debug=False, errsound=True):
+    """error fprint"""
+
+    fprint(*args, error=True, debug=debug, errsound=errsound)
+
+
+def qefprint(*args, error=False, debug=False, errsound=False):
+    """quiet error fprint"""
+
+    fprint(*args, error=True, debug=debug, errsound=errsound)
 
 
 def fprint(*args, error=False, debug=False, errsound=True):
-    """print all args in the GUI"""
+    """print all args in the notePad area"""
 
-    ps = "{:35s}".format(str(args[0]))     # 1st arg
+    ps = "{:30s}".format(str(args[0]))     # 1st arg
     for s in range(1, len(args)):          # skip 1st arg
         ps += str(args[s])
 
+    # jump to the end of text --> new text will always become visible
+    #gglobs.notePad.ensureCursorVisible() # does work, but moves text to left, so than
+                                          # cursor on most-right position is visible
+                                          # requires moving text to left; not helpful
+    gglobs.notePad.verticalScrollBar().setValue(gglobs.notePad.verticalScrollBar().maximum())
+
     if error :
-        if errsound:             playMedia(error=True)
+        if errsound:             playWav("error")
         gglobs.notePad.append("<span style='color:red;'>" + ps + "</span><span style='color:;'></span>")
-        if errsound:             time.sleep(0.3) # wait for the end of sound
+        #if errsound:             time.sleep(0.3) # wait for the end of sound
     else:
         gglobs.notePad.append(ps)
 
-    QtGui.QApplication.processEvents()
+    #QApplication.processEvents()
 
-    dprint(debug, ps)
+    dprint(ps, debug=debug)
 
 
 def commonPrint(ptype, *args):
     """Printing function to vprint and dprint"""
 
-    tag = "{:23s} {:7s}: ".format(longstime(), ptype) + gglobs.debugindent
+    tag = "{:23s} {:7s}: ".format(longstime(), ptype) + gglobs.debugIndent
     for arg in args: tag += str(arg)
     writeFileA(gglobs.proglogPath, tag)
 
@@ -277,7 +362,19 @@ def arrprint(text, array):
         print("{:10s}: ".format(a), array[a])
 
 
-def vprint(verbose, *args):
+def wprint(*args, werbose=None):
+    """werbose print:
+    if werbose is true then:
+    - Write timestamp and args as a single line to progname.proglog file
+    - Print args as single line
+    else
+    - do nothing
+    """
+    if werbose == None: werbose = gglobs.werbose
+    if werbose:   commonPrint("werbose", *args)
+
+
+def vprint(*args, verbose=None):
     """verbose print:
     if verbose is true then:
     - Write timestamp and args as a single line to progname.proglog file
@@ -285,11 +382,11 @@ def vprint(verbose, *args):
     else
     - do nothing
     """
-
+    if verbose == None: verbose = gglobs.verbose
     if verbose:   commonPrint("VERBOSE", *args)
 
 
-def dprint(debug, *args):
+def dprint(*args, debug=None ):
     """debug print:
     if debug is true then:
     - Write timestamp and args as a single line to progname.proglog file
@@ -297,25 +394,29 @@ def dprint(debug, *args):
     else
     - do nothing
     """
-
+    if debug == None: debug = gglobs.debug
     if debug:    commonPrint("DEBUG", *args)
 
 
 def exceptPrint(e, excinfo, srcinfo):
     """Print exception details (errmessage, file, line no)"""
 
-    # use: excinfo = sys.exc_info()
-    exc_type, exc_obj, exc_tb = excinfo
-    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1]
-    dprint(True, srcinfo)
-    dprint(True, "ERROR: '{}' in file: '{}' in line {}".format(e, fname, exc_tb.tb_lineno))
+    exc_type, exc_obj, exc_tb = excinfo         # use: excinfo = sys.exc_info()
+    fname = os.path.split(exc_tb.tb_frame.f_code.co_filename)[1] # which file?
+    print(ERRORCOLOR, end='')
+    dprint("{}".format(srcinfo), debug=True)
+    dprint("EXCEPTION: '{}' in file: '{}' in line {}".format(e, fname, exc_tb.tb_lineno))
+    if gglobs.devel:
+        dprint(traceback.format_exc(), debug=True) # more extensive info
+    #print(NORMALCOLOR, end="")
+    print(NORMALCOLOR)
 
 
 def debugIndent(arg):
     """increases or decreased the indent of debug/verbose print"""
 
-    if arg > 0:        gglobs.debugindent += "   "
-    else:              gglobs.debugindent = gglobs.debugindent[:-3]
+    if arg > 0:        gglobs.debugIndent += "   "
+    else:              gglobs.debugIndent = gglobs.debugIndent[:-3]
 
 
 def clearProgramLogFile():
@@ -331,8 +432,8 @@ def clearProgramLogFile():
         sys.stdout = open(gglobs.stdlogPath, 'a', buffering=1)
         sys.stderr = open(gglobs.stdlogPath, 'a', buffering=1)
 
-    print(TYELLOW + line + TDEFAULT)         # goes to terminal  (and *.stdlog)
-    writeFileW(gglobs.proglogPath, line )    # goes to *.proglog (and *.stdlog)
+    print(TGREEN + line + TDEFAULT)         # goes to terminal  (and *.stdlog)
+    writeFileW(gglobs.proglogPath, line )   # goes to *.proglog (and *.stdlog)
 
 
 def readBinaryFile(path):
@@ -348,7 +449,7 @@ def readBinaryFile(path):
         exceptPrint(e, sys.exc_info(), srcinfo)
         data = b"ERROR: Could not read file: " + str.encode(path)
 
-    vprint(gglobs.verbose, "readBinaryFile: type:{}, len:{}, data=[:100]:".format(type(data), len(data)), data[0:100])
+    vprint("readBinaryFile: type:{}, len:{}, data=[:100]:".format(type(data), len(data)), data[0:100])
 
     return data
 
@@ -358,43 +459,6 @@ def writeBinaryFile(path, data):
 
     with open(path, 'wb') as f:
         f.write(data)
-
-
-def readFileLines(path):
-    """Read all of the file into lines, ending with linefeed.
-    return data as list of lines"""
-
-    enc = None
-
-    # is that really needed???
-    #enc = detectFileType(path)
-    #print "encoding determined:", enc
-
-    if enc == None: enc = "utf_8"
-    #print "encoding selected=", enc
-
-    try:
-        with open(path, 'rt', encoding= enc, errors='replace') as f:
-            data = f.readlines()                    # data is list of lines
-        #vprint(gglobs.verbose,  "readFileLines: type(data):", type(data), ", data=[:5]:\n", data[:5])
-    except Exception as e:
-        srcinfo = "ERROR: readFileLines: Could not read file: {} with encoding: {}".format(path, enc)
-        exceptPrint(e, sys.exc_info(), srcinfo)
-        try:
-            # Using encoding="latin-1" should NEVER give an exception:
-            # http://python-notes.curiousefficiency.org/en/latest/python3/text_file_processing.html
-            enc = "latin-1"
-            dprint(True, "Retrying with encoding:", enc)
-            with open(gglobs.currentFilePath, "rt", encoding=enc) as f:
-                data = f.readlines()                # data is list of lines
-            #vprint(gglobs.verbose,  "readFileLines: type(data):", type(data), ", data=[:5]:\n", data[:5])
-        except Exception as e:
-            srcinfo = "ERROR: readFileLines: Could not read file: {} with Fallback encoding: {}".format(path, enc)
-            exceptPrint(e, sys.exc_info(), srcinfo)
-            data = [srcinfo]
-
-    return data
-
 
 
 # BOM for UTF-8 ???
@@ -419,6 +483,29 @@ def writeFileA(path, writestring):
         f.write((writestring + "\n"))
 
 
+def isFileReadable(filepath):
+    """is filepath readable"""
+
+    if not os.access(filepath, os.R_OK) :
+        fprint("File exists but cannot be read - check permission of file: {}".format(filepath), error=True)
+        return False
+    else:
+        return True
+
+
+def isFileWriteable(filepath):
+    """As the dir can be written to, this makes only sense for existing files"""
+
+    if os.path.isfile(filepath) and not os.access(filepath, os.W_OK) :
+        #fprint(lheader)
+        fprint("File {}".format(filepath), error=True)
+        fprint("exists but cannot be written to - check permission of file", error=True)
+        return False
+    else:
+        return True
+
+
+
 def strFontInfo(origin, fi):
     """formats font information, returns string"""
 
@@ -428,37 +515,37 @@ def strFontInfo(origin, fi):
     return fontinfo
 
 
-def printVarsStatus(debug, origin = ""):
-    """Print the current value of selected variables"""
+def printVarsStatus(origin = ""):
+    """Print the current value of variables"""
 
     # not up-to-date!
     myVars  = ['gglobs.debug','gglobs.verbose', 'gglobs.dataPath', 'gglobs.mav' , 'gglobs.logcycle']
-    myVars += ['gglobs.Xleft', 'gglobs.Xright', 'gglobs.Xunit', 'gglobs.Ymin', 'gglobs.Ymax', 'gglobs.Yunit', 'gglobs.cpmflag']
+    myVars += ['gglobs.Xleft', 'gglobs.Xright', 'gglobs.Xunit', 'gglobs.Ymin', 'gglobs.Ymax', 'gglobs.Yunit']
 
-    dprint(gglobs.debug,"printVarsStatus: origin=", origin)
+    print("printVarsStatus: origin=", origin)
     for name in myVars:
-        dprint(gglobs.debug,"     {:35s} =    {}".format(name, eval(name)))
+        print("     {:35s} =    {}".format(name, eval(name)))
 
 
-    print( "Globals " + "-" * 100)
-    item = ""
+    print( "\n============================================ Globals " + "-" * 100)
     g = globals()
-    for item in g:
-        print (item)
     for name in g:
-        dprint(gglobs.debug,"  {:35s} =    {}".format(name, eval(name)))
+        if name[0] != "Q": # exclude Qt stuff
+            print("name:     {:35s} =    {}".format(name, eval(name)))
 
 
-    print( "Locals " + "-" * 100)
+    print( "\n============================================= Locals " + "-" * 100)
     g = locals()
-    for item in g:
-        print (item)
     for name in g:
-        dprint(gglobs.debug,"  {:35s} =    {}".format(name, eval(name)))
+        if name[0] != "Q":
+            print("name:     {:35s} =    {}".format(name, eval(name)))
 
 
 def html_escape(text):
     """Produce entities within text."""
+
+    # when printing in error mode the < and > chars in the GMC commands may be
+    # interpreted as HTML such than an b'<GETCPML>>' becomes an b'>' !
 
     html_escape_table = {
         "&": "&amp;",
@@ -468,670 +555,664 @@ def html_escape(text):
         "<": "&lt;",
         }
 
-    return text
     return "".join(html_escape_table.get(c,c) for c in text)
 
 
-def resetVars():
-    """reset all gglobs variables with var data to None"""
+def getOrderedVars(varlist):
+    """Prints a dict in the right order"""
 
-    # from the gglobs.py file
-    gglobs.logTime             = None                # array: Time data from total file
-    gglobs.logTimeDiff         = None                # array: Time data as time diff to first record in days
-    gglobs.logTimeFirst        = None                # value: Time of first record of total file
-    gglobs.logTimeSlice        = None                # array: selected slice out of logTime
-    gglobs.logTimeDiffSlice    = None                # array: selected slice out of logTimeDiff
+    ret = ""
+    for vname in gglobs.varnames:
+        ret += "{:>8s}:{:5s}".format(vname, str(varlist[vname]))
 
-    gglobs.logCPM              = None                # array: CPM Data from total file
-    gglobs.logCPMSlice         = None                # array: selected slice out of logCPM
-    gglobs.logSliceMod         = None
-
-    gglobs.sizePlotSlice       = None                # value: size of plotTimeSlice
-
-    gglobs.currentFileData     = None                # 2dim numpy array with the currently plotted data
+    return ret
 
 
-def resetVarSettings():
+def getNameSelectedVar():
+    """Get the name of the variable currently selected in the drop-down box in
+    the graph options"""
 
-    # prevent updating while selections are made
-    gglobs.allowGraphUpdate    = False
+    vindex      = gglobs.ex.select.currentIndex()
+    vnameselect = gglobs.varnames[vindex]
+    #print("vindex, vnameselect:", vindex, vnameselect)
 
-    #for i, key in enumerate(gglobs.varnames):
-    #    gglobs.varchecked       [key]           = False
-    #    gglobs.ex.vbox          [key]           .setChecked(False)
-    #    gglobs.ex.vbox          [key]           .setEnabled(False)
-    #    gglobs.ex.select.model().item(i)        .setEnabled(False)
-
-    for i, key in enumerate(gglobs.varnames):
-        if gglobs.varlog[key]:
-            gglobs.varchecked       [key]      = True
-            gglobs.ex.vbox          [key]      .setChecked(True)
-            gglobs.ex.vbox          [key]      .setEnabled(True)
-            gglobs.ex.select.model().item(i)   .setEnabled(True)
-        else:
-            gglobs.varchecked       [key]      = False
-            gglobs.ex.vbox          [key]      .setChecked(False)
-            gglobs.ex.vbox          [key]      .setEnabled(False)
-            gglobs.ex.select.model().item(i)   .setEnabled(False)
-
-    gglobs.allowGraphUpdate    = True
+    return vnameselect
 
 
-# Configuration file reading
-def readGeigerConfig():
+def getConfigEntry(section, parameter, ptype):
+
+    try:
+        t = config.get(section, parameter).strip()
+        if   ptype == "float":                  t = float(t)
+        elif ptype == "int":                    t = int(float(t))
+        elif ptype == "str":                    t = t
+        elif ptype == "upper":                  t = t.upper()
+
+        return t
+
+    except:
+        errmesg = "ALERT: Config {} {} not available".format(section, parameter)
+        dprint(errmesg, debug=True)
+        return "WARNING"
+
+
+#
+# Configuration file evaluation
+#
+def readGeigerLogConfig():
     """reading the configuration file, return if not available.
     Not-available or illegal options are being ignored with only a debug message"""
 
-    dprint(gglobs.debug, "readGeigerConfig: using config file: ", gglobs.configPath)
+    global config # make config available to getConfigEntry()
+
+    dprint("readGeigerLogConfig: using config file: ", gglobs.configPath)
     debugIndent(1)
 
-    infostr = "INFO: {:30s}: {}"
+    infostrHeader = "INFO: {:35s} {}"
+    infostr       = "INFO:     {:35s}: {}"
     while True:
-        if not os.path.isfile(gglobs.configPath): # does the config file exist?
-            dprint(True, "WARNING: Configuration file '{}' does not exist. Continuing with default values.".format(gglobs.configPath))
+
+    # does the config file exist?
+        if not os.path.isfile(gglobs.configPath):
+            dprint("ERROR: Configuration file '{}' does not exist".format(gglobs.configPath), debug=True)
+            gglobs.startup_failure = "Configuration file '{}' does not exist, please correct. \n\nCannot continue, will exit".format(gglobs.configPath)
             break
 
-        try:                                      # and can it be read?
+    # and can it be read?
+        try:
             config = configparser.ConfigParser()
             config.readfp(open(gglobs.configPath))
         except Exception as e:
-            srcinfo = TYELLOW + "ERROR reading the configuration file '{}'.".format(gglobs.configPath) + TDEFAULT
+            srcinfo = "ERROR reading the configuration file '{}'".format(gglobs.configPath)
             exceptPrint(e, sys.exc_info(), srcinfo)
-            dprint(True, "Please, review and correct")
-            sys.exit(2)
+            srcinfo += "\n\nDuplicate entries are not allowed. Please, review and correct"
+            srcinfo += "\n\nERROR Message:\n" + str(sys.exc_info()[1])
+            srcinfo += "\n\nCannot continue, will exit"
+            gglobs.startup_failure = srcinfo
+            break
 
-    # Audio
-        try:
-            t = config.get("Audio", "phonon")
-            if t.lower() == "active":  gglobs.phonon = "active"
-            else:                      gglobs.phonon = "inactive"
-            dprint(gglobs.debug, infostr.format("Audio phonon", gglobs.phonon))
-        except:
-            dprint(True, "WARNING: Config Audio phonon is not available")
+    # the config file exists and can be read:
+        vprint(infostrHeader.format("GeigerLog startup values", ""))
 
 
-    # Defaults
-        # calibration 1st tube is 0.0065
-        try:
-            t = config.get("Defaults", "DEFcalibration")
-            if float(t) > 0:    gglobs.DEFcalibration = float(t)
-            else:               gglobs.DEFcalibration = 0.0065
-            dprint(gglobs.debug, infostr.format("DEFcalibration", gglobs.DEFcalibration))
-        except:
-            dprint(True, "WARNING: Config DEFcalibration not available")
-
-        # calibration 2nd tube is 0.194
-        try:
-            t = config.get("Defaults", "DEFcalibration2nd")
-            if float(t) > 0:     gglobs.DEFcalibration2nd = float(t)
-            else:                gglobs.DEFcalibration2nd = 0.194
-            dprint(gglobs.debug, infostr.format("DEFcalibration 2nd tube", gglobs.DEFcalibration2nd))
-        except:
-            dprint(True, "WARNING: Config DEFcalibration2nd for 2nd tube not available")
-
-        # calibration RadMon tube is 0.0065
-        try:
-            t = config.get("Defaults", "DEFRMcalibration")
-            if float(t) > 0:    gglobs.DEFRMcalibration = float(t)
-            else:               gglobs.DEFRMcalibration = 0.0065
-            dprint(gglobs.debug, infostr.format("DEFRMcalibration", gglobs.DEFRMcalibration))
-        except:
-            dprint(True, "WARNING: Config DEFRMcalibration not available")
-
-
-    # Serial Port
-        try:
-            gglobs.usbport = config.get("Serial Port", "port")
-            dprint(gglobs.debug, infostr.format("Using port", gglobs.usbport))
-        except:
-            dprint(True, "WARNING: Config Serial Port not available")
-
-        try:
-            b = config.getint("Serial Port", "baudrate")
-            if b in gglobs.baudrates:
-                gglobs.baudrate = b
-            dprint(gglobs.debug, infostr.format("Using baudrate", gglobs.baudrate))
-        except:
-            dprint(True, "WARNING: Config baudrate not available")
-
-        try:
-            t = config.getfloat("Serial Port", "timeout")
-            if t > 0:
-                gglobs.timeout = t
-            else:
-                gglobs.timeout = 3  # if zero or negative value given, set to 3
-
-            dprint(gglobs.debug, infostr.format("Using timeout (sec)",gglobs.timeout))
-        except:
-            dprint(True, "WARNING: Config timeout not available")
-
-        try:
-            t = config.getfloat("Serial Port", "timeout_write")
-            if t > 0:
-                gglobs.timeout_write = t
-            else:
-                gglobs.timeout_write = 1  # if zero or negative value given, set to 1
-
-            dprint(gglobs.debug, infostr.format("Using timeout_write (sec)",gglobs.timeout_write))
-        except:
-            dprint(True, "WARNING: Config timeout_write not available")
-
-
-        try:
-            t = config.get("Serial Port", "ttyS")
-            if t.upper() == 'INCLUDE':
-                gglobs.ttyS = 'include'
-            else:
-                gglobs.ttys = 'ignore'
-            dprint(gglobs.debug, infostr.format("Ports of ttyS type", gglobs.ttys))
-        except:
-            dprint(True, "WARNING: Config ttyS not available")
-
-    # Device
-        # Device customdevice
-        # not needed anymore
-        """
-        try:
-            gglobs.customdevice = config.get("Device", "customdevice")
-            dprint(gglobs.debug, "INFO: Custom Device is: ", gglobs.customdevice)
-        except:
-            gglobs.customdevice = None
-            dprint(True, "WARNING: Custom device not available")
-        """
-
-        # Device memory
-        try:
-            t = config.get("Device", "memory")
-            if t.upper() == '1MB':
-                gglobs.memory     = 2**20
-
-            elif t.upper() == '64KB':
-                gglobs.memory     = 2**16
-
-            else:                               # auto
-                gglobs.memory   = 'auto'
-
-            dprint(gglobs.debug, infostr.format("Memory", gglobs.memory))
-        except:
-            dprint(True, "WARNING: Config memory not available")
-
-
-        # Device SPIRpage
-        try:
-            t = config.get("Device", "SPIRpage")
-            if t.upper() == '2K':
-                gglobs.SPIRpage     = 2048
-                #gglobs.memoryMode = 'fixed'
-
-            elif t.upper() == '4K':
-                gglobs.SPIRpage     = 4096
-                #gglobs.memoryMode = 'fixed'
-
-            else:                               # auto
-                gglobs.SPIRpage = 'auto'
-
-            dprint(gglobs.debug, infostr.format("SPIRpage", gglobs.SPIRpage))
-        except:
-            dprint(True, "WARNING: Config SPIRpage not available")
-
-        # Device SPIRbugfix
-        try:
-            t = config.get("Device", "SPIRbugfix")
-            if t.upper() == 'YES':
-                gglobs.SPIRbugfix     = True
-                #gglobs.memoryMode = 'fixed'
-
-            elif t.upper() == 'NO':
-                gglobs.SPIRbugfix     = False
-                #gglobs.memoryMode = 'fixed'
-
-            else:                               # auto
-                gglobs.SPIRbugfix = 'auto'
-
-            dprint(gglobs.debug, infostr.format("SPIRbugfix", gglobs.SPIRbugfix))
-        except:
-            dprint(True, "WARNING: Config SPIRbugfix not available")
-
-        # Device configsize
-        try:
-            t = config.get("Device", "configsize")
-            if t.upper() == '256':
-                gglobs.configsize     = 256
-
-            elif t.upper() == '512':
-                gglobs.configsize     = 512
-
-            else:                               # auto
-                gglobs.configsize = 'auto'
-
-            dprint(gglobs.debug, infostr.format("configsize", gglobs.configsize))
-        except:
-            dprint(True, "WARNING: Config configsize not available")
-
-        # Device calibration 1st tube
-        # default in gglobs is 0.0065
-        try:
-            t = config.get("Device", "calibration")
-            if t.upper() == 'AUTO': gglobs.calibration = "auto"
-            else:
-                if float(t) > 0:    gglobs.calibration = float(t)
-                else:               gglobs.calibration = "auto"
-
-            dprint(gglobs.debug, infostr.format("Calibration", gglobs.calibration))
-        except:
-            dprint(True, "WARNING: Config calibration not available")
-
-        # Device calibration 2nd tube
-        # default in gglobs is 0.194
-        try:
-            t = config.get("Device", "calibration2nd")
-            if t.upper() == 'AUTO':  gglobs.calibration2nd = "auto"
-            else:
-                if float(t) > 0:     gglobs.calibration2nd = float(t)
-                else:                gglobs.calibration2nd = "auto"
-
-            dprint(gglobs.debug, infostr.format("Calibration 2nd tube", gglobs.calibration2nd))
-        except:
-            dprint(True, "WARNING: Config calibration for 2nd tube not available")
-
-        # Device voltagebytes
-        try:
-            t = config.get("Device", "voltagebytes")
-            if   t.upper() == '1':      gglobs.voltagebytes = 1
-            elif t.upper() == '5':      gglobs.voltagebytes = 5
-            else:                       gglobs.voltagebytes = 'auto'
-
-            dprint(gglobs.debug, infostr.format("voltagebytes", gglobs.voltagebytes))
-        except:
-            dprint(True, "WARNING: Config voltagebytes not available")
-
-        # Device endianness
-        try:
-            t = config.get("Device", "endianness")
-            if   t.upper() == 'LITTLE': gglobs.endianness = 'little'
-            elif t.upper() == 'BIG':    gglobs.endianness = 'big'
-            else:                       gglobs.endianness = 'auto'
-
-            dprint(gglobs.debug, infostr.format("endianness", gglobs.endianness))
-        except:
-            dprint(True, "WARNING: Config endianness not available")
-
-        # Device variables
-        try:
-            t = config.get("Device", "variables")
-            if t.upper() == "AUTO":     gglobs.GMCvariables = "auto"
-            else:                       gglobs.GMCvariables = t.strip()
-
-            dprint(gglobs.debug, infostr.format("variables", gglobs.GMCvariables))
-        except:
-            dprint(True, "WARNING: Config variables not available")
-
-        # Device nbytes
-        try:
-            t = config.get("Device", "nbytes")
-            if t.upper() == "AUTO":     gglobs.nbytes = "auto"
-            else:
-                nt = int(t.strip())
-                if nt in (2, 4):
-                    gglobs.nbytes = nt
-                else:
-                    gglobs.nbytes = 2
-
-            dprint(gglobs.debug, infostr.format("nbytes", gglobs.nbytes))
-        except:
-            dprint(True, "WARNING: Config nbytes not available")
+    # Logging
+        t = getConfigEntry("Logging", "logcycle", "float" )
+        if t is not "WARNING":
+            if t >= 0.1:                            gglobs.logcycle = t
+            vprint(infostr.format("Logcycle (sec)", gglobs.logcycle))
 
 
     # Folder data
-        errmsg = "glaub ich nicht"
-        try:
-            t = config.get("Folder", "data")
-            #print "gglobs.dataPath:", gglobs.dataPath
-            if t == "":
-                pass    # no change to default
-            else:
-                if os.path.isabs(t):  # is absolute path?
-                    testpath = t
+        t = getConfigEntry("Folder", "data", "str" )
+        if t is not "WARNING":
+            errmsg = "WARNING: "
+            t = t.strip()
+            try:
+                if t == "":
+                    pass                        # no change to default
                 else:
-                    testpath = gglobs.dataPath + "/" + t
+                    if os.path.isabs(t):        # is it absolute path?
+                        testpath = t            # yes
+                        #print("absolute path:", testpath)
 
-                #
-                # Make sure that data directory exists; create it if needed
-                # ignore if it cannot be made or is not writable
-                #
-                if os.access(testpath , os.F_OK):
-                    # dir exists, ok
-                    if not os.access(testpath , os.W_OK):
-                        # dir exists, but is not writable
-                        errmsg = "Configured data directory '{}' exists, but is not writable".format(testpath)
-                        raise NameError
+                    else:                       # it is relative path
+                        testpath = gglobs.dataPath + "/" + t
+                        #print("relative path:", testpath)
+
+                    # Make sure the data directory exists; create it if needed
+                    # ignore if it cannot be made or is not writable
+                    #
+                    if os.access(testpath , os.F_OK):
+                        # dir exists, ok
+                        if not os.access(testpath , os.W_OK):
+                            # dir exists, but is not writable
+                            errmsg += "Configured data directory '{}' exists, but is not writable".format(testpath)
+                            raise NameError
+                        else:
+                            # dir exists and is writable
+                            gglobs.dataPath = testpath
                     else:
-                        # dir exists and is writable
-                        gglobs.dataPath = testpath
-                else:
-                    # dir does not exist; make it
-                    try:
-                        os.mkdir(testpath)
-                        gglobs.dataPath = testpath
-                    except:
-                        # dir cannot be made
-                        errmsg = "Could not make configured data directory '{}'".format(testpath)
-                        raise NameError
+                        # dir does not exist; make it
+                        try:
+                            os.mkdir(testpath)
+                            gglobs.dataPath = testpath
+                        except:
+                            # dir cannot be made
+                            errmsg += "Could not make configured data directory '{}'".format(testpath)
+                            raise NameError
 
-            dprint(gglobs.debug, infostr.format("Data directory", gglobs.dataPath))
-        except:
-            dprint(True, "WARNING: " + errmsg)
+                vprint(infostr.format("Data directory", gglobs.dataPath))
+            except Exception as e:
+                dprint(errmsg, "; Exception:", e, debug=True)
 
-    # Logging
-        try:
-            t = config.getfloat("Logging", "logcycle")
-            if t >= 0.1:
-                gglobs.logcycle = t
-            dprint(gglobs.debug, infostr.format("Logcycle (sec)", gglobs.logcycle))
-        except:
-            dprint(True, "WARNING: Config logcycle not available")
 
-    # Graphic
-        try:
-            t = int(config.getfloat("Graphic", "mav_initial"))
-            if t >= 1:
-                gglobs.mav_initial = t
-            dprint(gglobs.debug, infostr.format("Moving Average (sec)", int(gglobs.mav_initial)))
-        except:
-            dprint(True, "WARNING: Config mav_initial not available")
 
-    # Plotstyle
-        try:
-            g1 = config.get("Plotstyle", "linestyle")
-            g2 = config.get("Plotstyle", "linecolor")
-            g3 = config.get("Plotstyle", "linewidth")
-            g4 = config.get("Plotstyle", "markerstyle")
-            g5 = config.get("Plotstyle", "markersize")
-            gglobs.linestyle           = g1
-            gglobs.linecolor           = g2
-            gglobs.linewidth           = g3
-            gglobs.markerstyle         = g4
-            gglobs.markersize          = g5
-
-        except:
-            dprint(True, "WARNING: Could not recognize all plot style settings")
-
-    # Window
-        try:
-            w = config.getint("Window", "width")
-            h = config.getint("Window", "height")
+    # Window dimensions
+        w = getConfigEntry("Window", "width", "int" )
+        h = getConfigEntry("Window", "height", "int" )
+        if w is not "WARNING" and h is not "WARNING":
             if w > 500 and w < 5000 and h > 100 and h < 5000:
                 gglobs.window_width  = w
                 gglobs.window_height = h
-                dprint(gglobs.debug, infostr.format("Window dimensions", "{} x {} pixel".format(gglobs.window_width, gglobs.window_height)))
+                vprint(infostr.format("Window dimensions", "{} x {} pixel".format(gglobs.window_width, gglobs.window_height)))
             else:
-                dprint(True, "WARNING: Config Window dimension out-of-bound; ignored: {} x {} pixel".format(gglobs.window_width, gglobs.window_height))
-        except:
-            dprint(True, "WARNING: Config Window dimension not available")
+                vprint("WARNING: Config Window dimension out-of-bound; ignored: {} x {} pixel".format(gglobs.window_width, gglobs.window_height), debug=True)
 
     # Window size
-        try:
-            t = config.get("Window", "size")
-            if t.upper() == 'MAXIMIZED':
-                gglobs.window_size = 'maximized'
-            else:
-                gglobs.window_size = None
-            dprint(gglobs.debug, infostr.format("Window Size", t))
-        except:
-            dprint(True, "WARNING: Window size not available")
+        t = getConfigEntry("Window", "size", "upper" )
+        if t is not "WARNING":
+            if    t == 'MAXIMIZED':    gglobs.window_size = 'maximized'
+            else:                      gglobs.window_size = None
+            vprint(infostr.format("Window Size ", gglobs.window_size))
+
 
     # Manual
-        try:
-            t = config.get("Manual", "manual_name")
+        t = getConfigEntry("Manual", "manual_name", "str" )
+        if t is not "WARNING":
             if t.upper() == 'AUTO' or t == "":
                 gglobs.manual_filename = 'auto'
-                dprint(gglobs.debug, infostr.format("Manual file", gglobs.manual_filename))
+                vprint(infostr.format("Manual file", gglobs.manual_filename))
             else:
                 manual_file = getProgPath() + "/" + t
-                #print "readGeigerConfig manual_file:", manual_file
-                if os.path.isfile(manual_file): # does the config file exist?
+                #print "readGeigerLogConfig manual_file:", manual_file
+                if os.path.isfile(manual_file): # does the file exist?
                     # it exists
                     gglobs.manual_filename = t
-                    dprint(gglobs.debug, infostr.format("Manual file",t))
+                    vprint(infostr.format("Manual file", gglobs.manual_filename))
                 else:
                     # it does not exist
                     gglobs.manual_filename = 'auto'
-                    dprint(gglobs.debug, "WARNING: Manual file '{}' does not exist".format(t))
-        except:
-            dprint(True, "WARNING: Config for manual file not available")
+                    vprint("WARNING: Manual file '{}' does not exist".format(t))
 
 
-    # Radiation World Maps
-        try:
-            t = config.get("Worldmaps", "GMCmapWebsite")
-            gglobs.GMCmap["Website"] = t
-            dprint(gglobs.debug, infostr.format("Worldmaps GMCmapWebsite", t ))
-        except:
-            gglobs.GMCmap["Website"] = ""
-            dprint(True, "WARNING: Config for Worldmaps GMCmapWebsite not available")
+    # Graphic mav_initial
+        t = getConfigEntry("Graphic", "mav_initial", "float" )
+        if t is not "WARNING":
+            if t >= 1:  gglobs.mav_initial = t
+            vprint(infostr.format("Moving Average (sec)", int(gglobs.mav_initial)))
 
-        try:
-            t = config.get("Worldmaps", "GMCmapURL")
-            gglobs.GMCmap["URL"]  = t
-            dprint(gglobs.debug, infostr.format("Worldmaps GMCmapURL", t ))
-        except:
-            gglobs.GMCmap["URL"] = ""
-            dprint(True, "WARNING: Config for Worldmaps GMCmapURL not available")
 
-        try:
-            t = config.get("Worldmaps", "GMCmapSSID")
-            gglobs.GMCmap["SSID"]  = t
-            dprint(gglobs.debug, infostr.format("Worldmaps GMCmapSSID", t ))
-        except:
-            gglobs.GMCmap["SSID"] = ""
-            dprint(True, "WARNING: Config for Worldmaps GMCmapSSID not available")
+    # Plotstyle
+        vprint(infostrHeader.format("Plotstyle", ""))
+        t = getConfigEntry("Plotstyle", "linewidth", "str" )
+        if t is not "WARNING":
+            gglobs.linewidth           = t
+            vprint(infostr.format("linewidth", gglobs.linewidth))
 
-        try:
-            t = config.get("Worldmaps", "GMCmapPassword")
-            gglobs.GMCmap["Password"] = t
-            dprint(gglobs.debug, infostr.format("Worldmaps GMCmapPassword", t ))
-        except:
-            gglobs.GMCmap["Password"] = ""
-            dprint(True, "WARNING: Config for Worldmaps GMCmapPassword not available")
+        t = getConfigEntry("Plotstyle", "markerstyle", "str" )
+        if t is not "WARNING":
+            gglobs.markerstyle         = t
+            vprint(infostr.format("markerstyle", gglobs.markerstyle))
 
-        try:
-            t = config.get("Worldmaps", "GMCmapUserID")
-            gglobs.GMCmap["UserID"] = t
-            dprint(gglobs.debug, infostr.format("Worldmaps GMCmapUserID", t ))
-        except:
-            gglobs.GMCmap["UserID"] = ""
-            dprint(True, "WARNING: Config for Worldmaps GMCmapUserID not available")
+        t = getConfigEntry("Plotstyle", "markersize", "str" )
+        if t is not "WARNING":
+            gglobs.markersize          = t
+            vprint(infostr.format("markersize", gglobs.markersize))
 
-        try:
-            t = config.get("Worldmaps", "GMCmapCounterID")
-            gglobs.GMCmap["CounterID"] = t
-            dprint(gglobs.debug, infostr.format("Worldmaps GMCmapCounterID", t ))
-        except:
-            gglobs.GMCmap["CounterID"] = ""
-            dprint(True, "WARNING: Config for Worldmaps GMCmapCounterID not available")
 
-        try:
-            t = config.get("Worldmaps", "GMCmapPeriod")
-            gglobs.GMCmap["Period"] = t
-            dprint(gglobs.debug, infostr.format("Worldmaps GMCmapPeriod", t ))
-        except:
-            gglobs.GMCmap["Period"] = ""
-            dprint(True, "WARNING: Config for Worldmaps GMCmapPeriod not available")
+    # Defaults
+        vprint(infostrHeader.format("Defaults", ""))
+
+        # calibration 1st tube is 0.0065
+        t = getConfigEntry("Defaults", "DefaultCalibration1st", "float" )
+        if t is not "WARNING":
+            if t > 0:    gglobs.DefaultCalibration1st = t
+            else:        gglobs.DefaultCalibration1st = 0.0065
+            vprint(infostr.format("DefaultCalibration1st", gglobs.DefaultCalibration1st))
+
+        # calibration 2nd tube is 0.48
+        t = getConfigEntry("Defaults", "DefaultCalibration2nd", "float" )
+        if t is not "WARNING":
+            if t > 0:     gglobs.DefaultCalibration2nd = t
+            else:         gglobs.DefaultCalibration2nd = 0.48
+            vprint(infostr.format("DefaultCalibration2nd", gglobs.DefaultCalibration2nd))
+
+        # calibration 3rd tube is 0.0065
+        t = getConfigEntry("Defaults", "DefaultCalibration3rd", "float" )
+        if t is not "WARNING":
+            if t > 0:    gglobs.DefaultCalibration3rd = t
+            else:        gglobs.DefaultCalibration3rd = 0.0065
+            vprint(infostr.format("DefaultCalibration3rd", gglobs.DefaultCalibration3rd))
+
+
+    #
+    # Scaling - it DOES modify the variable value!
+    #
+    # infostr = "INFO: {:35s}: {}"
+        vprint(infostrHeader.format("ValueScaling", ""))
+        for vname in gglobs.varnames:
+            t = getConfigEntry("ValueScaling", vname, "upper" )
+            if t is not "WARNING":
+                t = t.strip()
+                if t == "":     pass                    # use value from gglobs
+                else:           gglobs.ValueScale[vname] = t
+                vprint(infostr.format("ValueScale['{}']".format(vname), gglobs.ValueScale[vname]))
+
+
+    #
+    # GraphScaling - it does NOT modify the variable value, only the plot value
+    #
+    # infostr = "INFO: {:35s}: {}"
+        vprint(infostrHeader.format("GraphScaling", ""))
+        for vname in gglobs.varnames:
+            t = getConfigEntry("GraphScaling", vname, "upper" )
+            if t is not "WARNING":
+                t = t.strip()
+                if t == "":     pass                    # use value from gglobs
+                else:           gglobs.GraphScale[vname] = t
+                vprint(infostr.format("GraphScale['{}']".format(vname), gglobs.GraphScale[vname]))
+
+
+    # GMCSerialPort
+        vprint(infostrHeader.format("GMCSerialPort", ""))
+
+        t = getConfigEntry("GMCSerialPort", "usbport", "str" )
+        if t is not "WARNING":
+            gglobs.usbport = t.strip()
+            vprint(infostr.format("Using usbport", gglobs.usbport))
+
+        t = getConfigEntry("GMCSerialPort", "baudrate", "int" )
+        if t is not "WARNING":
+            if t in gglobs.baudrates:               gglobs.baudrate = t
+            vprint(infostr.format("Using baudrate", gglobs.baudrate))
+
+        t = getConfigEntry("GMCSerialPort", "timeout", "float" )
+        if t is not "WARNING":
+            if t > 0:   gglobs.timeout = t
+            else:       gglobs.timeout = 3  # if zero or negative value given, set to 3
+            vprint(infostr.format("Using timeout (sec)", gglobs.timeout))
+
+        t = getConfigEntry("GMCSerialPort", "timeout_write", "float" )
+        if t is not "WARNING":
+            if t > 0:   gglobs.timeout_write = t
+            else:       gglobs.timeout_write = 1  # if zero or negative value given, set to 1
+            vprint(infostr.format("Using timeout_write (sec)", gglobs.timeout_write))
+
+        t = getConfigEntry("GMCSerialPort", "ttyS", "upper" )
+        if t is not "WARNING":
+            if   t == 'INCLUDE':  gglobs.ttyS = 'include'
+            else:                 gglobs.ttys = 'ignore'
+            vprint(infostr.format("Ports of ttyS type", gglobs.ttys))
+
+
+    # I2CSerialPort
+        vprint(infostrHeader.format("I2CSerialPort", ""))
+
+        t = getConfigEntry("I2CSerialPort", "I2Cusbport", "str" )
+        if t is not "WARNING":
+            gglobs.I2Cusbport = t.strip()
+            vprint(infostr.format("Using I2Cusbport", gglobs.I2Cusbport))
+
+        t = getConfigEntry("I2CSerialPort", "I2Cbaudrate", "int" )
+        if t is not "WARNING":
+            if t in gglobs.baudrates:                  gglobs.I2Cbaudrate = t
+            vprint(infostr.format("Using I2Cbaudrate", gglobs.I2Cbaudrate))
+
+        t = getConfigEntry("I2CSerialPort", "I2Ctimeout", "float" )
+        if t is not "WARNING":
+            if t > 0:   gglobs.I2Ctimeout = t
+            else:       gglobs.I2Ctimeout = 3  # if zero or negative value given, set to 3
+            vprint(infostr.format("Using I2Ctimeout (sec)",gglobs.I2Ctimeout))
+
+        t = getConfigEntry("I2CSerialPort", "I2Ctimeout_write", "float" )
+        if t is not "WARNING":
+            if t > 0:   gglobs.I2Ctimeout_write = t
+            else:       gglobs.I2Ctimeout_write = 1  # if zero or negative value given, set to 1
+            vprint(infostr.format("Using I2Ctimeout_write (sec)",gglobs.I2Ctimeout_write))
+
+        t = getConfigEntry("I2CSerialPort", "I2CttyS", "upper" )
+        if t is not "WARNING":
+            if    t == 'INCLUDE':  gglobs.I2CttyS = 'include'
+            else:                  gglobs.I2Cttys = 'ignore'
+            vprint(infostr.format("Ports of ttyS type", gglobs.I2Cttys))
+
+
+    # GMCDevice
+        vprint(infostrHeader.format("GMCDevice", ""))
+
+        # GMCDevice Configuration
+        t = getConfigEntry("GMCDevice", "GMCActivation", "upper" )
+        if t is not "WARNING":
+            if t.strip() == "YES":          gglobs.GMCActivation = True
+            else:                           gglobs.GMCActivation = False
+            vprint(infostr.format("GMCActivation", gglobs.GMCActivation))
+
+        # GMCDevice Firmware Bugs
+        t = getConfigEntry("GMCDevice", "locationBug", "str" )
+        if t is not "WARNING":
+            ts = t.split(",")
+            for i in range(0, len(ts)):   ts[i] = ts[i].strip()
+            #print("ts:", ts)
+            gglobs.locationBug     = ts
+            vprint(infostr.format("Location Bug", gglobs.locationBug))
+
+        # GMCDevice memory
+        t = getConfigEntry("GMCDevice", "memory", "upper" )
+        if t is not "WARNING":
+            if   t ==  '1MB':       gglobs.memory = 2**20   # 1 048 576
+            elif t == '64KB':       gglobs.memory = 2**16   #    65 536
+            else:                   gglobs.memory = 'auto'
+            vprint(infostr.format("Memory", gglobs.memory))
+
+        # GMCDevice SPIRpage
+        t = getConfigEntry("GMCDevice", "SPIRpage", "upper" )
+        if t is not "WARNING":
+            if   t == '2K':     gglobs.SPIRpage = 2048
+            elif t == '4K':     gglobs.SPIRpage = 4096
+            else:               gglobs.SPIRpage = 'auto'
+            vprint(infostr.format("SPIRpage", gglobs.SPIRpage))
+
+        # GMCDevice SPIRbugfix
+        t = getConfigEntry("GMCDevice", "SPIRbugfix", "upper" )
+        if t is not "WARNING":
+            if   t == 'YES':  gglobs.SPIRbugfix = True
+            elif t == 'NO':   gglobs.SPIRbugfix = False
+            else:             gglobs.SPIRbugfix = 'auto'
+            vprint(infostr.format("SPIRbugfix", gglobs.SPIRbugfix))
+
+        # GMCDevice configsize
+        t = getConfigEntry("GMCDevice", "configsize", "upper" )
+        if t is not "WARNING":
+            t = config.get("GMCDevice", "configsize")
+            if   t == '256':  gglobs.configsize = 256
+            elif t == '512':  gglobs.configsize = 512
+            else:             gglobs.configsize = 'auto'
+            vprint(infostr.format("configsize", gglobs.configsize))
+
+        # GMCDevice calibration 1st tube
+        # default in gglobs is 0.0065
+        t = getConfigEntry("GMCDevice", "calibration", "upper" )
+        if t is not "WARNING":
+            if t.strip() == 'AUTO': gglobs.calibration = "auto"
+            else:
+                if float(t) > 0:    gglobs.calibration = float(t)
+                else:               gglobs.calibration = "auto"
+            vprint(infostr.format("Calibration", gglobs.calibration))
+
+        # GMCDevice calibration 2nd tube
+        # default in gglobs is 0.194
+        t = getConfigEntry("GMCDevice", "calibration2nd", "upper" )
+        if t is not "WARNING":
+            if t.strip() == 'AUTO':  gglobs.calibration2nd = "auto"
+            else:
+                if float(t) > 0:     gglobs.calibration2nd = float(t)
+                else:                gglobs.calibration2nd = "auto"
+            vprint(infostr.format("Calibration 2nd tube", gglobs.calibration2nd))
+
+        # GMCDevice voltagebytes
+        t = getConfigEntry("GMCDevice", "voltagebytes", "upper" )
+        if t is not "WARNING":
+            if   t.strip() == '1':      gglobs.voltagebytes = 1
+            elif t.strip() == '5':      gglobs.voltagebytes = 5
+            else:                       gglobs.voltagebytes = 'auto'
+            vprint(infostr.format("voltagebytes", gglobs.voltagebytes))
+
+        # GMCDevice endianness
+        t = getConfigEntry("GMCDevice", "endianness", "upper" )
+        if t is not "WARNING":
+            if   t.strip() == 'LITTLE': gglobs.endianness = 'little'
+            elif t.strip() == 'BIG':    gglobs.endianness = 'big'
+            else:                       gglobs.endianness = 'auto'
+            vprint(infostr.format("endianness", gglobs.endianness))
+
+        # GMCDevice variables
+        t = getConfigEntry("GMCDevice", "variables", "str" )
+        if t is not "WARNING":
+            if t.strip().upper() == "AUTO":     gglobs.GMCvariables = "auto"
+            else:                               gglobs.GMCvariables = t.strip()
+            vprint(infostr.format("variables", gglobs.GMCvariables))
+
+        # GMCDevice nbytes
+        t = getConfigEntry("GMCDevice", "nbytes", "upper" )
+        if t is not "WARNING":
+            if t.strip() == "AUTO":     gglobs.nbytes = "auto"
+            else:
+                nt = int(t.strip())
+                if nt in (2, 4):        gglobs.nbytes = nt
+                else:                   gglobs.nbytes = 2
+            vprint(infostr.format("nbytes", gglobs.nbytes))
+
+
+    # AudioCounter
+        vprint(infostrHeader.format("AudioCounter", ""))
+        # AudioCounter Activation
+        t = getConfigEntry("AudioCounter", "AudioActivation", "upper" )
+        if t is not "WARNING":
+            if t.strip() == "YES":      gglobs.AudioActivation = True
+            else:                       gglobs.AudioActivation = False
+            vprint(infostr.format("AudioActivation", gglobs.AudioActivation))
+
+        # AudioCounter PULSE Dir
+        t = getConfigEntry("AudioCounter", "AudioPulseDir", "upper" )
+        if t is not "WARNING":
+            if   t == "AUTO":           gglobs.AudioPulseDir = "auto"
+            elif t == "NEGATIVE":       gglobs.AudioPulseDir = False
+            elif t == "POSITIVE":       gglobs.AudioPulseDir = True
+            else:                       pass # unchanged from default False
+            vprint(infostr.format("AudioPulseDir", gglobs.AudioPulseDir))
+
+        # AudioCounter PULSE Max
+        t = getConfigEntry("AudioCounter", "AudioPulseMax", "upper" )
+        if t is not "WARNING":
+            if t == "AUTO":             gglobs.AudioPulseMax = "auto"
+            else:
+                t = float(t)
+                if t > 0 :              gglobs.AudioPulseMax = t
+                else:                   gglobs.AudioPulseMax = 32768
+            vprint(infostr.format("AudioPulseMax", gglobs.AudioPulseMax))
+
+
+        # AudioCounter LIMIT
+        t = getConfigEntry("AudioCounter", "AudioThreshold", "upper" )
+        if t is not "WARNING":
+            if t == "AUTO":             gglobs.AudioThreshold = "auto"
+            else:
+                t = float(t)
+                if t > 0 and t < 100:   gglobs.AudioThreshold = t
+                else:                   gglobs.AudioThreshold = 60
+            vprint(infostr.format("AudioThreshold", gglobs.AudioThreshold))
+
+        # AudioCounter variables
+        t = getConfigEntry("AudioCounter", "AudioVariables", "str" )
+        if t is not "WARNING":
+            if t.upper() == "AUTO":     gglobs.AudioVariables = "auto"
+            else:                       gglobs.AudioVariables = t
+            vprint(infostr.format("AudioVariables", gglobs.AudioVariables))
+
+
+    # I2C ELV with BME280
+        vprint(infostrHeader.format("I2CSensors", ""))
+        # I2C Activation
+        t = getConfigEntry("I2CSensors", "I2CActivation", "upper" )
+        if t is not "WARNING":
+            if t.strip() == "YES":      gglobs.I2CActivation = True
+            else:                       gglobs.I2CActivation = False
+            vprint(infostr.format("I2CActivation", gglobs.I2CActivation ))
+
+        # I2C variables
+        t = getConfigEntry("I2CSensors", "I2CVariables", "str" )
+        if t is not "WARNING":
+            if t.upper() == "AUTO":     gglobs.I2CVariables = "auto"
+            else:                       gglobs.I2CVariables = t.strip()
+            vprint(infostr.format("I2CVariables", gglobs.I2CVariables))
 
 
     # RadMonPlus
-        # RadMon Server IP
-        try:
-            t = config.get("RadMonPlus", "RMserverIP")
-            if t.strip().upper() == "NONE": gglobs.RMserverIP = None
-            else:                           gglobs.RMserverIP = t.strip()
-            dprint(gglobs.debug, infostr.format("RadMonPlus RMserverIP:", gglobs.RMserverIP ))
-        except:
-            gglobs.RMserverIP = None
-            dprint(True, "WARNING: Config for RadMonPlus RMserverIP not available")
+        vprint(infostrHeader.format("RadMonPlusDevice", ""))
 
-        # RadMon Server Port
-        try:
-            t = config.get("RadMonPlus", "RMserverPort")
-            gglobs.RMserverPort = abs(int(t))
-            dprint(gglobs.debug, infostr.format("RadMonPlus RMserverPort:", gglobs.RMserverPort ))
-        except:
-            gglobs.RMserverPort = 1883
-            dprint(True, "WARNING: Config for RadMonPlus RMserverPort not available")
+        # RadMon Activation
+        t = getConfigEntry("RadMonPlusDevice", "RMActivation", "upper" )
+        if t is not "WARNING":
+            if t == "YES":                  gglobs.RMActivation = True
+            else:                           gglobs.RMActivation = False
+            vprint(infostr.format("RMActivation", gglobs.RMActivation ))
 
-        # Radmon timeout
-        try:
-            t = config.getfloat("RadMonPlus", "RMtimeout")
-            if t > 0: gglobs.RMtimeout = t
-            else:     gglobs.RMtimeout = 3  # if zero or negative value given, the set to 3
-            dprint(gglobs.debug, infostr.format("RadMonPlus timeout (sec)",gglobs.timeout))
-        except:
-            dprint(True, "WARNING: Config RMtimeout not available")
+        if gglobs.RMActivation: # show the other stuff only if activated
+            # RadMon Server IP
+            t = getConfigEntry("RadMonPlusDevice", "RMServerIP", "str" )
+            if t is not "WARNING":
+                if t.upper() == 'AUTO':         gglobs.RMServerIP = "auto"
+                else:                           gglobs.RMServerIP = t.strip()
+                vprint(infostr.format("RMServerIP", gglobs.RMServerIP ))
 
-        # RadMon Server Folder
-        try:
-            t = config.get("RadMonPlus", "RMserverFolder")
-            t = t.strip()
-            if " " in t or t.upper() == "AUTO": # blank in folder name not allowed
-                gglobs.RMserverFolder = "/"
-            else:
-                gglobs.RMserverFolder = t
+            # RadMon Server Port
+            t = getConfigEntry("RadMonPlusDevice", "RMServerPort", "str" )
+            if t is not "WARNING":
+                if t.upper() == 'AUTO':         gglobs.RMServerPort = "auto"
+                else:                           gglobs.RMServerPort = abs(int(t))
+                vprint(infostr.format("RMServerPort", gglobs.RMServerPort))
 
-            if gglobs.RMserverFolder[-1] != "/": gglobs.RMserverFolder += "/"
+            # Radmon timeout
+            t = getConfigEntry("RadMonPlusDevice", "RMTimeout", "upper" )
+            if t is not "WARNING":
+                if t == 'AUTO':                    gglobs.RMTimeout = "auto"
+                else:
+                    if float(t) > 0:               gglobs.RMTimeout = float(t)
+                    else:                          gglobs.RMTimeout = 3  # if zero or negative value given, then set to 3
+                vprint(infostr.format("RMTimeout", gglobs.RMTimeout))
 
-            dprint(gglobs.debug, infostr.format("RadMonPlus RMserverFolder:", gglobs.RMserverFolder ))
-        except:
-            gglobs.RMserverFolder = "/"
-            dprint(True, "WARNING: Config for RadMonPlus RMserverFolder not available")
+            # RadMon Server Folder
+            t = getConfigEntry("RadMonPlusDevice", "RMServerFolder", "str" )
+            if t is not "WARNING":
+                t = t.strip()
+                # blank in folder name not allowed
+                if " " in t or t.upper() == "AUTO":         gglobs.RMServerFolder = "auto"
+                else:
+                    gglobs.RMServerFolder = t
+                    if gglobs.RMServerFolder[-1] != "/":    gglobs.RMServerFolder += "/"
+                vprint(infostr.format("RMServerFolder", gglobs.RMServerFolder ))
 
-        # RadMon calibration tube
-        # default in gglobs is 0.0065 µSv/h/CPM
-        try:
-            t = config.get("RadMonPlus", "RMcalibration")
-            if t.upper() == 'AUTO': gglobs.RMcalibration = "auto"
-            else:
-                if float(t) > 0: gglobs.RMcalibration = float(t)
-                else:            gglobs.RMcalibration = "auto"
+            # RadMon calibration tube
+            # default in gglobs is 0.0065 µSv/h/CPM
+            t = getConfigEntry("RadMonPlusDevice", "Calibration3rd", "upper" )
+            if t is not "WARNING":
+                if t.strip() == 'AUTO':         gglobs.Calibration3rd = "auto"
+                else:
+                    if float(t) > 0:            gglobs.Calibration3rd = float(t)
+                    else:                       gglobs.Calibration3rd = "auto"
+                vprint(infostr.format("Calibration3rd", gglobs.Calibration3rd))
 
-            dprint(gglobs.debug, infostr.format("RadMonPlus Calibration", gglobs.RMcalibration))
-        except:
-            dprint(True, "WARNING: Config RadMonPlus calibration not available")
-
-        # Radmon variables
-        try:
-            t = config.get("RadMonPlus", "RMvariables")
-            if t.upper() == "AUTO":     gglobs.RMvariables = "auto"
-            else:                       gglobs.RMvariables = t.strip()
-
-            dprint(gglobs.debug, infostr.format("RadMonPlus variables", gglobs.RMvariables))
-        except:
-            dprint(True, "WARNING: Config RadMonPlus variables not available")
+            # Radmon variables
+            t = getConfigEntry("RadMonPlusDevice", "RMVariables", "str" )
+            if t is not "WARNING":
+                if t.strip().upper() == "AUTO": gglobs.RMVariables = "auto"
+                else:                           gglobs.RMVariables = t.strip()
+                vprint(infostr.format("RMVariables", gglobs.RMVariables))
 
 
-    # Scaling
-    # GMC Variables
-        try:
-            t = config.get("Scaling", "ScaleCPM")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleCPM = t
+    # AmbioMon
+        vprint(infostrHeader.format("AmbioMonDevice", ""))
 
-            dprint(gglobs.debug, infostr.format("Scaling ScaleCPM", gglobs.ScaleCPM))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleCPM not available")
+        # AmbioMon Activation
+        t = getConfigEntry("AmbioMonDevice", "AmbioActivation", "upper" )
+        if t is not "WARNING":
+            if t == "YES":                      gglobs.AmbioActivation = True
+            else:                               gglobs.AmbioActivation = False
+            vprint(infostr.format("AmbioActivation", gglobs.AmbioActivation ))
 
-        try:
-            t = config.get("Scaling", "ScaleCPM1st")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleCPM1st = t
+        if gglobs.AmbioActivation: # show the other stuff only if activated
+            # AmbioMon Server IP
+            t = getConfigEntry("AmbioMonDevice", "AmbioServerIP", "str" )
+            if t is not "WARNING":
+                if t.upper() == 'AUTO':         gglobs.AmbioServerIP = "auto"
+                else:                           gglobs.AmbioServerIP = t.strip()
+                vprint(infostr.format("AmbioServerIP", gglobs.AmbioServerIP ))
 
-            dprint(gglobs.debug, infostr.format("Scaling ScaleCPM1st", gglobs.ScaleCPM1st))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleCPM1st not available")
+            # AmbioMon Server Port
+            t = getConfigEntry("AmbioMonDevice", "AmbioServerPort", "upper" )
+            if t is not "WARNING":
+                if t == 'AUTO':                 gglobs.AmbioServerPort = "auto"
+                else:                           gglobs.AmbioServerPort = abs(int(t))
+                vprint(infostr.format("AmbioServerPort", gglobs.AmbioServerPort ))
 
-        try:
-            t = config.get("Scaling", "ScaleCPM2nd")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleCPM2nd = t
+            # AmbioMon timeout
+            t = getConfigEntry("AmbioMonDevice", "AmbioTimeout", "upper" )
+            if t is not "WARNING":
+                if t == 'AUTO':                     gglobs.AmbioTimeout = "auto"
+                else:
+                    if float(t) > 0:                gglobs.AmbioTimeout = float(t)
+                    else:                           gglobs.AmbioTimeout = 3  # if zero or negative value given, then set to 3
+                vprint(infostr.format("AmbioTimeout",gglobs.AmbioTimeout))
 
-            dprint(gglobs.debug, infostr.format("Scaling ScaleCPM2nd", gglobs.ScaleCPM2nd))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleCPM2nd not available")
+            # AmbioMon Server Folder
+            t = getConfigEntry("AmbioMonDevice", "AmbioServerFolder", "str" )
+            if t is not "WARNING":
+                t = t.strip()
+                # blank in folder name not allowed
+                if " " in t or t.upper() == "AUTO": gglobs.AmbioServerFolder = "auto"
+                else:
+                    gglobs.AmbioServerFolder = t
+                    if gglobs.AmbioServerFolder[-1] != "/": gglobs.AmbioServerFolder += "/"
+                vprint(infostr.format("AmbioServerFolder", gglobs.AmbioServerFolder ))
 
-        try:
-            t = config.get("Scaling", "ScaleCPS")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleCPS = t
+            # AmbioMon calibration
+            # default in gglobs is 0.0065 µSv/h/CPM
+            t = getConfigEntry("AmbioMonDevice", "AmbioCalibration", "upper" )
+            if t is not "WARNING":
+                if t == 'AUTO':         gglobs.AmbioCalibration = "auto"
+                else:
+                    if float(t) > 0:    gglobs.AmbioCalibration = float(t)
+                    else:               gglobs.AmbioCalibration = "auto"
+                vprint(infostr.format("AmbioCalibration", gglobs.AmbioCalibration))
 
-            dprint(gglobs.debug, infostr.format("Scaling ScaleCPS", gglobs.ScaleCPS))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleCPS not available")
-
-        try:
-            t = config.get("Scaling", "ScaleCPS1st")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleCPS1st = t
-
-            dprint(gglobs.debug, infostr.format("Scaling ScaleCPS1st", gglobs.ScaleCPS1st))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleCPS1st not available")
-
-        try:
-            t = config.get("Scaling", "ScaleCPS2nd")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleCPS2nd = t
-
-            dprint(gglobs.debug, infostr.format("Scaling ScaleCPS2nd", gglobs.ScaleCPS2nd))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleCPS2nd not available")
+            # AmbioMon variables
+            t = getConfigEntry("AmbioMonDevice", "AmbioVariables", "str" )
+            if t is not "WARNING":
+                if t.upper() == "AUTO":     gglobs.AmbioVariables = "auto"
+                else:                       gglobs.AmbioVariables = t
+                vprint(infostr.format("AmbioVariables", gglobs.AmbioVariables))
 
 
-    # RadMon+ Variables
-        try:
-            t = config.get("Scaling", "ScaleT")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleT = t
+    # LabJack U3 with probe EI1050
+        vprint(infostrHeader.format("LabJackDevice", ""))
+        # LabJack Activation
+        t = getConfigEntry("LabJackDevice", "LJActivation", "upper" )
+        if t is not "WARNING":
+            if t.strip() == "YES":      gglobs.LJActivation = True
+            else:                       gglobs.LJActivation = False
+            vprint(infostr.format("LJActivation", gglobs.LJActivation ))
 
-            dprint(gglobs.debug, infostr.format("Scaling ScaleT", gglobs.ScaleT))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleT not available")
+        if gglobs.LJActivation: # show the other stuff only if activated
+            # LabJack variables
+            t = getConfigEntry("LabJackDevice", "LJvariables", "str" )
+            if t is not "WARNING":
+                if t.upper() == "AUTO":     gglobs.LJvariables = "auto"
+                else:                       gglobs.LJvariables = t
+                vprint(infostr.format("LJvariables", gglobs.LJvariables))
 
-        try:
-            t = config.get("Scaling", "ScaleP")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleP = t
 
-            dprint(gglobs.debug, infostr.format("Scaling ScaleP", gglobs.ScaleP))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleP not available")
+    # Radiation World Maps
+        vprint(infostrHeader.format("Worldmaps", ""))
+        t = getConfigEntry("Worldmaps", "GMCmapWebsite", "str" )
+        if t is not "WARNING":
+            gglobs.GMCmap["Website"] = t.strip()
 
-        try:
-            t = config.get("Scaling", "ScaleH")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleH = t
+        t = getConfigEntry("Worldmaps", "GMCmapURL", "str" )
+        if t is not "WARNING":
+            gglobs.GMCmap["URL"]  = t.strip()
 
-            dprint(gglobs.debug, infostr.format("Scaling ScaleH", gglobs.ScaleH))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleH not available")
+        t = getConfigEntry("Worldmaps", "GMCmapSSID", "str" )
+        if t is not "WARNING":
+            gglobs.GMCmap["SSID"]  = t.strip()
 
-        try:
-            t = config.get("Scaling", "ScaleR")
-            t = t.strip().upper()
-            if t == "":     pass                # use value from gglobs
-            else:           gglobs.ScaleR = t
+        t = getConfigEntry("Worldmaps", "GMCmapPassword", "str" )
+        if t is not "WARNING":
+            gglobs.GMCmap["Password"] = t.strip()
 
-            dprint(gglobs.debug, infostr.format("Scaling ScaleR", gglobs.ScaleR))
-        except:
-            dprint(True, "WARNING: Config Scaling ScaleR not available")
+        t = getConfigEntry("Worldmaps", "GMCmapUserID", "str" )
+        if t is not "WARNING":
+            gglobs.GMCmap["UserID"] = t.strip()
 
+        t = getConfigEntry("Worldmaps", "GMCmapCounterID", "str" )
+        if t is not "WARNING":
+            gglobs.GMCmap["CounterID"] = t.strip()
+
+        t = getConfigEntry("Worldmaps", "GMCmapPeriod", "str" )
+        if t is not "WARNING":
+            gglobs.GMCmap["Period"] = t.strip()
+
+        for a in gglobs.cfgMapKeys:
+            vprint(infostr.format(a, gglobs.GMCmap[a]))
 
 
     # Style
@@ -1143,7 +1224,7 @@ def readGeigerConfig():
         #    else:
         #        gglobs.style = None
         #except:
-        #    dprint(True, "Config style not available")
+        #    dprint("Config style not available", debug=True)
 
 
         break # don't forget to break!
@@ -1152,32 +1233,58 @@ def readGeigerConfig():
 
 
 
-def version_status():
+def getVersionStatus():
     """returns versions as list of various components"""
+
+    """
+    # Getting the version numbers of Qt, SIP and PyQt:
+    # https://wiki.python.org/moin/PyQt/Getting%20the%20version%20numbers%20of%20Qt%2C%20SIP%20and%20PyQt
+
+    sqlite3.version:                The version number of this module, as a string. This is not the version of the SQLite library.
+    sqlite3.version_info:           The version number of this module, as a tuple of integers. This is not the version of the SQLite library.
+    sqlite3.sqlite_version:         The version number of the run-time SQLite library, as a string.
+    sqlite3.sqlite_version_info:    The version number of the run-time SQLite library, as a tuple of integers.
+
+    pyaudio: **PortAudio version**
+    pyaudio:   :py:func:`get_portaudio_version`, :py:func:`get_portaudio_version_text`
+    """
 
     python_version = sys.version.replace('\n', "")
 
-    #https://wiki.python.org/moin/PyQt/Getting%20the%20version%20numbers%20of%20Qt%2C%20SIP%20and%20PyQt
-    from PyQt4.QtCore   import QT_VERSION_STR       as qt_version
-    from PyQt4.Qt       import PYQT_VERSION_STR     as pyqt_version
     from sip            import SIP_VERSION_STR      as sip_version
     from matplotlib     import __version__          as mpl_version
-    from numpy          import version              as np_version
+    from numpy          import __version__          as np_version
     from scipy          import __version__          as scipy_version
     from serial         import __version__          as serial_version
     from paho.mqtt      import __version__          as paho_version
+    from pyaudio        import __version__          as pyaudio_version
+    from sqlite3        import version              as sql3version
+    from sqlite3        import sqlite_version       as sql3libversion
 
     version_status = []
     version_status.append(["GeigerLog",    "{}".format(gglobs.__version__)])
+
     version_status.append(["Python",       "{}".format(python_version)])
+    version_status.append(["Qt",           "{}".format(QT_VERSION_STR)])
+    version_status.append(["PyQt",         "{}".format(PYQT_VERSION_STR)])
+    version_status.append(["SIP",          "{}".format(sip_version)])
+
     version_status.append(["pyserial",     "{}".format(serial_version)])
     version_status.append(["matplotlib",   "{}".format(mpl_version)])
-    version_status.append(["numpy",        "{}".format(np_version.version)])
+    version_status.append(["numpy",        "{}".format(np_version)])
     version_status.append(["scipy",        "{}".format(scipy_version)])
-    version_status.append(["Qt",           "{}".format(qt_version)])
-    version_status.append(["PyQt",         "{}".format(pyqt_version)])
-    version_status.append(["SIP",          "{}".format(sip_version)])
     version_status.append(["paho.mqtt",    "{}".format(paho_version)])
+    version_status.append(["pyaudio",      "{}".format(pyaudio_version)])
+    version_status.append(["PortAudio",    "{} - {}".format(pyaudio.get_portaudio_version(), pyaudio.get_portaudio_version_text())])
+
+    # sqlite3 stuff
+    version_status.append(["sqlite3 module",  "{}".format(sql3version)])
+    version_status.append(["sqlite3 library", "{}".format(sql3libversion)])
+
+    # LabJack stuff
+    version_status.append(["LabJackPython","{}".format(gglobs.LJversionLJP)])
+    version_status.append(["U3",           "{}".format(gglobs.LJversionU3)])
+    version_status.append(["EI1050",       "{}".format(gglobs.LJversionEI1050)])
 
     return version_status
 
@@ -1185,21 +1292,53 @@ def version_status():
 def beep():
     """do a system beep"""
 
-    QtGui.QApplication.beep()
-    QtGui.QApplication.processEvents()
+    # https://askubuntu.com/questions/19906/beep-in-shell-script-not-working
+
+    #print("beep by print\7")
+    #print("QApplication.beep()")
+    QApplication.beep()
+    QApplication.processEvents()
 
 
-def playMedia(error=False):
-    """plays a sound, either normal sound or error sound, but only if the
-    phonon module is active.
-    If not active then the system beep will sound, but only on errors"""
+def initPlayWav():
 
-    if gglobs.phonon == "inactive":
-        if error:  beep()
-        else:      pass                         # beeps only on errors
-    else:
-        if error:  gglobs.mediaErr.play()
-        else:      gglobs.media.play()
+    # instantiate PyAudio
+    gglobs.playWavPointer = pyaudio.PyAudio()
+
+
+def terminatePlayWav():
+
+    # close PyAudio
+    gglobs.playWavPointer.terminate()
+
+
+def playWav(stype="ok"):
+    """Play a wav message, either 'ok' or 'err' """
+
+    # from: https://people.csail.mit.edu/hubert/pyaudio/docs/
+
+    if stype == "ok":         path = os.path.join(gglobs.gresPath, 'bip2.wav')
+    else:                     path = os.path.join(gglobs.gresPath, 'bop2.wav')
+
+    CHUNK = 1024
+    wf = wave.open(path, 'rb')
+
+    stream = gglobs.playWavPointer.open(\
+                format      = gglobs.playWavPointer.get_format_from_width(wf.getsampwidth()),
+                channels    = wf.getnchannels(),
+                rate        = wf.getframerate(),
+                output      = True)
+
+    data = wf.readframes(CHUNK)
+
+    while len(data) > 0:
+        stream.write(data)
+        data = wf.readframes(CHUNK)
+
+    # stop stream (4)
+    #stream.stop_stream()  # if any of these 2 is executed, it gives a popping sound
+    #stream.close()        #
+    del stream             # no popping sound. is that helpful???
 
 
 def signal_handler(signal, frame):
@@ -1213,16 +1352,16 @@ def signal_handler(signal, frame):
     # signal.signal(signal.SIGUSR2, signal_handler)   # to handle user signal2
 
     print()
-    dprint(gglobs.debug, "signal_handler: signal: {}, frame: {}".format(signal, frame))
+    dprint("signal_handler: signal: {}, frame: {}".format(signal, frame))
 
     if signal == 2:                 # SIGINT CTRL-C to shutdown
-        dprint(gglobs.debug, 'signal_handler: received SIGINT from CTRL-C Keyboard Interrupt - Exiting')
+        dprint('signal_handler: received SIGINT from CTRL-C Keyboard Interrupt - Exiting')
 
     elif signal == 20:              # SIGTSTP CTRL-Z to shutdown
-        dprint(gglobs.debug, 'signal_handler: received SIGTSTP from CTRL-Z - Exiting')
+        dprint('signal_handler: received SIGTSTP from CTRL-Z - Exiting')
 
     else:                           # unexpected signal
-        dprint(gglobs.debug, 'signal_handler: signal:', signal, ", Undefined signal action")
+        dprint('signal_handler: signal:', signal, ", Undefined signal action")
         return
 
     gradmon.terminateRadMon()
@@ -1230,7 +1369,7 @@ def signal_handler(signal, frame):
                                     # the GeigerLog closeEvent is NOT activated!
 
 
-def scaleValues(variable, value, scale):
+def scaleVarValues(variable, value, scale):
     """
     Apply the 'Scaling' declared in configuration file geigerlog.cfg
     Return: the scaled value (or original in case of error)
@@ -1258,11 +1397,151 @@ def scaleValues(variable, value, scale):
         scaledValue = eval(ls)
     except Exception as e:
         msg = "ERROR scaling variable:'{}' formula:'{}', errmsg: {}".format(variable, scale, e)
-        dprint(True, msg)
+        dprint(msg, debug=True)
         fprint(msg, error=True)
         fprint("Returning original value", error=True)
         scaledValue = value
 
-    vprint(gglobs.verbose, "scaleValues: variable:{}, original value:{}, orig scale:{}, mod scale:'{}', scaled value:{}".format(variable, value, scale, ls, scaledValue))
+    wprint("scaleVarValues: variable:{}, original value:{}, orig scale:{}, mod scale:'{}', scaled value:{}".format(variable, value, scale, ls, scaledValue))
 
     return round(scaledValue, 2)
+
+
+def scaleGraphValues(variable, value, scale):
+    """
+    Apply the 'Scaling' declared in configuration file geigerlog.cfg
+    Return: the scaled value (or original in case of error)
+    NOTE:   scale is in upper-case, but may be empty or NONE
+    """
+    # example:   cpm = scaleVarValues("CPM2nd", cpm, gglobs.ValueScale["CPM2nd"])
+    #            P   = scaleGraphValues("P",      press, gglobs.GraphScale['P'])
+
+    if scale == "VAL" or scale == "" or scale == "NONE": return value
+
+    # example: scale: LOG(VAL)+1000         # orig
+    # becomes: ls   : np.log(value)+1000    # mod
+    ls = scale
+    ls = ls.replace("VAL",    "value")        # the data of that column
+    ls = ls.replace("LOG",    "np.log")       # Log to base e; natural log
+    ls = ls.replace("LOG10",  "np.log10")     # Log to base 10
+    ls = ls.replace("LOG2",   "np.log2")      # Log to base 2
+    ls = ls.replace("SIN",    "np.sin")       # sine
+    ls = ls.replace("COS",    "np.cos")       # cosine
+    ls = ls.replace("TAN",    "np.tan")       # tangent
+    ls = ls.replace("SQRT",   "np.sqrt")      # square root
+    ls = ls.replace("CBRT",   "np.cbrt")      # cube root
+    ls = ls.replace("ABS",    "np.absolute")  # absolute value
+    ls = ls.replace("INT",    "int")          # integer value
+
+    try:
+        scaledValue = eval(ls)
+    except Exception as e:
+        msg = "ERROR scaling variable:'{}' formula:'{}', errmsg: {}".format(variable, scale, e)
+        dprint(msg, debug=True)
+        fprint(msg, error=True)
+        fprint("Returning original value", error=True)
+        scaledValue = value
+
+    wprint("scaleGraphValues: variable:{}, original value:{}, orig scale:{}, mod scale:'{}', scaled value:{}".format(variable, value, scale, ls, scaledValue))
+
+    #return round(scaledValue, 2)
+    return scaledValue
+
+
+def readSerialConsole():
+    """read the ESP32 terminal output"""
+
+    return # results in problems when GMC counter is connected
+
+    mypath = os.path.join(gglobs.dataPath, "esp32.termlog")
+    dv = "/dev/ttyUSB0" # device
+    br = 115200         # baudrate
+    to = 3              # timeout
+    wto = 1             # write timeout
+    byteswaiting = 0    # to avoid reference error
+
+    if gglobs.terminal == None:
+        gglobs.terminal = serial.Serial(dv, br, timeout=to, write_timeout=wto)
+        with open(mypath, 'wt', encoding="UTF-8", errors='replace', buffering = 1) as f:
+            f.write("Starting at: {}\n".format(longstime()))
+
+    else:
+        #while gglobs.terminal.in_waiting > 0:
+        while True:
+            try:
+                bytesWaiting = gglobs.terminal.in_waiting
+            except:
+                print("problem in byteswaiting, re-openeing terminal")
+                gglobs.terminal.close()
+                gglobs.terminal = serial.Serial(dv, br, timeout=to, write_timeout=wto)
+            if bytesWaiting == 0: break
+
+            #print("bytes waiting before readline: ", gglobs.terminal.in_waiting)
+            try:
+                rec    = gglobs.terminal.readline(500)
+            except:
+                rec = "exception readline"
+
+            #print("bytes waiting after  readline: ", gglobs.terminal.in_waiting)
+            try:
+                rec = rec.decode('UTF-8')
+            except:
+                print("can't decode.", end=" ")
+                rec = str(rec)
+                print("Re-opening terminal ... ", end="  ")
+                gglobs.terminal.close()
+                gglobs.terminal = serial.Serial(dv, br, timeout=to, write_timeout=wto)
+                print("Done")
+
+            if rec[-1] != "\n": rec += "\n" # add a linefeed if needed
+
+            # print
+            print("ESP32 b waiting: {:6d} : ".format(bytesWaiting), rec, end="")
+
+            # save
+            with open(mypath, 'at', encoding="UTF-8", errors='replace', buffering = 1) as f:
+                f.write(rec)
+
+        #print("Done")
+        print()
+
+
+def setTime():
+    # to be defined
+
+    print("------------------------getLogValues")
+    print("timetag:", timetag)
+    print("time.gmtime():", time.gmtime())
+    print("time.time() / 86400.0:", time.time() / 86400.0)
+    print("time.mktime(time.gmtime()) / 86400.0:", time.mktime(time.gmtime()) / 86400.0)
+    print("timeJULIAN:", timeJULIAN)
+
+
+    print("gglobs.JULIAN111:", gglobs.JULIAN111)
+
+    #print("datetime.tzinfo:", datetime.tzinfo)
+
+    #print("datetime.timezone:", datetime.timezone)
+    print("datetime.timezone.utc:", datetime.timezone.utc)  # datetime.timezone.utc: UTC+00:00
+
+
+    print("time.strftime('%z', .time.gmtime()):", time.strftime("%z", time.gmtime()))
+    #time.strftime('%z', .time.gmtime()): +0000 NOTE: %z (small cap) is deprecated
+
+    print("time.strftime('%z', .time.localtime()):", time.strftime("%z", time.localtime()))
+    # time.strftime('%z', .time.localtime()): +0100 NOTE: %z (small cap) is deprecated
+
+    print("time.strftime('%Z', .time.gmtime()):", time.strftime("%Z", time.gmtime()))
+    # time.strftime('%Z', .time.gmtime()): GMT
+
+    print("time.strftime('%Z', .time.localtime()):", time.strftime("%Z", time.localtime()))
+    # time.strftime('%Z', .time.localtime()): CET
+
+    print("time.tzname:", time.tzname)
+    # time.tzname: ('CET', 'CEST')
+
+    print("time.timezone:", time.timezone)
+    # time.timezone: -3600
+
+
+
