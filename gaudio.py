@@ -82,7 +82,7 @@ def initAudio():
         gglobs.Calibration3rd = gglobs.AudioCalibration
 
     else:                                               # CPM, CPS, CPM1st, CPS1st
-        gglobs.calibration = gglobs.AudioCalibration
+        gglobs.calibration1st = gglobs.AudioCalibration
 
     DevVars = gglobs.AudioVariables.split(",")
     for i in range(0, len(DevVars)):  DevVars[i] = DevVars[i].strip()

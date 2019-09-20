@@ -30,22 +30,19 @@ __author__          = "ullix"
 __copyright__       = "Copyright 2016, 2017, 2018, 2019"
 __credits__         = [""]
 __license__         = "GPL3"
-__version__         = "0.9.90"              # version of next GeigerLog
-#__version__         = "0.9.90pre14"
+__version__         = "0.9.92"              # version of next GeigerLog
+__version__         = "0.9.92pre14"
 
 
 # if the configuration file is missing or incorrect
 startup_failure     = ""                    # will hold error text to show
 
-# will be overwritten with 4 or 5 in gutil
-my_active_qt_version = None                 # only 4 or 5 allowed for Qt4 and Qt5
-
-# I2C stuff temp
-# Dongles
+# I2C stuff
+# I2C Dongles
 ELVdongle           = "ELVdongle"           # ELV USB-I2C Dongle
 elv                 = None                  # becomes instance of the ELV USB-I2C device
 
-# Sensors and Modules
+# I2C Sensors and Modules
 bme280              = {
                        "name": "BME280",
                        "feat": "Temperature, Pressure, Humidity",
@@ -71,13 +68,30 @@ JULIANUNIX          = 2440587.5416666665  # julianday('1970-01-01 00:00:00') (UN
 JULIAN111           = 1721425.5  - 1      # julianday('0001-01-01 00:00:00') (matplotlib time start)
                                           # Why this minus 1? strange but needed
 
-# must be defined even if no connection exists. Maybe redefined in config
+# counters
+xprintcounter       = 0                   # the count of dprint and vprint commands
+
+# Default Calibration
+# must be defined even if no connection exists. Maybe redefined in config.
+# The GMC factory default calibration factor is linear, i.e. the same
+# for all 3 calibration points defined in a GMC counter.
+# For a M4011 tube the calibration factor implemented in firmware is 0.0065 µSv/h/CPM
+# For the 2nd tube in a GMC500+ device, different factors were seen:
+# E.g.: from a calibration point #3 setting of 25CPM=4.85µSv/h the calibration
+# factor is 0.194 µSv/h/CPM. While a calibration point #3 setting of
+# 25CPM=9.75µSv/h results in 0.39 µSv/h/CPM!
+# However, calibration determined in my own experiment reported here:
+# http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=5369
+# see Reply #10, Quote: “With Thorium = 0.468, and K40 = 0.494,
+# I'd finally put the calibration factor for the 2nd tube, the SI3BG,
+# to 0.48 µSv/h/CPM. Which makes it 74 fold less sensitive than the M4011!”
+
 DefaultCalibration1st   = 0.0065          # in units of µSv/h/CPM
 DefaultCalibration2nd   = 0.48            # in units of µSv/h/CPM
 DefaultCalibration3rd   = 0.0065          # in units of µSv/h/CPM
 
 # pointers
-ex                  = None                # a pointer to ggeiger
+exgg                = None                # a pointer to ggeiger
 notePad             = None                # pointer to print into notePad area
 logPad              = None                # pointer to print into logPad area
 btn                 = None                # the cycle time OK button; for inactivation
@@ -95,11 +109,17 @@ debug               = False               # helpful for debugging, use via comma
 verbose             = False               # more detailed printing, use via command line
 werbose             = False               # more verbose than verbose
 devel               = False               # set some conditions for development CAREFUL !!!
-devel1              = False               # set some ADDITIONAL conditions for development CAREFUL !!!
-devel2              = False               # set some more ADDITIONAL conditions for development CAREFUL !!!
-debugIndent         = ""                  # to indent printing
+devel1              = False               # =devel  + ADDITIONAL condition: load default db: default.logdb
+devel2              = False               # =devel1 + ADDITIONAL condition: make connections
 redirect            = False               # on True redirects output from stdout and stderr to file stdlogPath
+debugIndent         = ""                  # to indent printing
+
+#special flags
 testing             = False               # if true then some testing constructs will be activated CAREFUL !!!
+test1               = False               # to run a specific test
+test2               = False               # to run a specific test
+test3               = False               # to run a specific test
+test4               = False               # to run a specific test
 
 # dir & file
 dataDirectory       = "data"              # the data subdirectory to the program directory
@@ -114,7 +134,8 @@ configPath          = None                # path to configuration file geigerlog
 logFilePath         = None                # file path of the log file
 logDBPath           = None                # file path of the log database file
 
-binFilePath         = None                # file path of the bin file
+binFilePath         = None                # file path of the bin file (GMC device)
+datFilePath         = None                # file path of the bin file (Gamma Scout device)
 hisFilePath         = None                # file path of the his file
 hisDBPath           = None                # file path of the his database file
 logDBPath           = None                # file path of the log database file
@@ -133,30 +154,62 @@ manual_filename     = "GeigerLog-Manual.pdf" # name of the included manual file
 window_width        = 1366                # the standard screen of 1366 x 768 (16:9),
 window_height       = 768                 #
 window_size         = 'maximized'         # 'auto' or 'maximized'
-style               = "Breeze"            # may also be defined in config file
+windowStyle         = "Breeze"            # may also be defined in config file
 displayLastValuesIsOn = False             # whether the displayLastValues windows is shown
 
 
-
 # Serial ports
-baudrates           = [1200, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600,        115200]
+    # pyserial Parity parameters
+    # import serial :
+    # serial.PARITY_NONE    = N
+    # serial.PARITY_EVEN    = E
+    # serial.PARITY_ODD     = O
+    # serial.PARITY_MARK    = M
+    # serial.PARITY_SPACE   = S
+    #
+    # finding pyserial supported parameters:
+    # myser = serial.Serial()
+    # myser : Serial<id=0x7f7a05b18d68, open=False>(port=None, baudrate=9600, bytesize=8, parity='N',
+    #               stopbits=1, timeout=None, xonxoff=False, rtscts=False, dsrdtr=False)
+    # myser.BAUDRATES = 50, 75, 110, 134, 150, 200, 300, 600, 1200, 1800, 2400, 4800, 9600,
+    #                   19200, 38400, 57600, 115200, 230400, 460800, 500000, 576000, 921600,
+    #                   1000000, 1152000, 1500000, 2000000, 2500000, 3000000, 3500000, 4000000
+    # myser.BYTESIZES = 5, 6, 7, 8
+    # myser.PARITIES  = 'N', 'E', 'O', 'M', 'S'
+    # myser.STOPBITS  = 1, 1.5, 2
+
+GMCbaudrates        = [1200, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600,        115200]
 I2Cbaudrates        = [            4800, 9600,        19200,        38400, 57600, 76800, 115200, 230400]
+GSBaudrates         = [      2400,       9600,                                                           460800]
+# for TESTING ONLY
+#GSBaudrates         = [      2400,       9600,                                           115200,          460800]
 
 # Serial port for GMC devices
-ser                 = None                # serial port pointer
-baudrate            = 115200              # will be overwritten by a setting in geigerlog.cfg file
-usbport             = '/dev/ttyUSB0'      # will be overwritten by a setting in geigerlog.cfg file
-timeout             = 3                   # will be overwritten by a setting in geigerlog.cfg file
-timeout_write       = 1                   # will be overwritten by a setting in geigerlog.cfg file
-ttyS                = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
+GMCser              = None                # serial port pointer
+GMCbaudrate         = 115200              # will be overwritten by a setting in geigerlog.cfg file
+GMCusbport          = '/dev/ttyUSB0'      # will be overwritten by a setting in geigerlog.cfg file
+GMCtimeout          = 3                   # will be overwritten by a setting in geigerlog.cfg file
+GMCtimeout_write    = 3                   # will be overwritten by a setting in geigerlog.cfg file
+GMCttyS             = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
 
 # Serial port for I2C devices
 I2Cser              = None                # serial port pointer
 I2Cbaudrate         = 115200              # will be overwritten by a setting in geigerlog.cfg file
 I2Cusbport          = '/dev/ttyUSB1'      # will be overwritten by a setting in geigerlog.cfg file
 I2Ctimeout          = 3                   # will be overwritten by a setting in geigerlog.cfg file
-I2Ctimeout_write    = 1                   # will be overwritten by a setting in geigerlog.cfg file
+I2Ctimeout_write    = 3                   # will be overwritten by a setting in geigerlog.cfg file
 I2CttyS             = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
+
+# Serial port for Gamma-Scout devices
+# NOTE: some responses of Gamma-Scout take almost 1 sec, timeout setting must be well above 1 sec limit!
+GSser               = None                # serial port pointer
+GSDeviceName        = "Gamma-Scout Series"# will be overwritten on init
+GSbaudrate          = 9600                # will be overwritten by a setting in geigerlog.cfg file
+GSusbport           = '/dev/ttyUSB2'      # will be overwritten by a setting in geigerlog.cfg file
+GStimeout           = 3                   # will be overwritten by a setting in geigerlog.cfg file
+GStimeout_write     = 3                   # will be overwritten by a setting in geigerlog.cfg file
+GSttyS              = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
+
 
 #ESP32
 terminal            = None                # for the ESP32
@@ -252,6 +305,18 @@ I2CConnection       = False               # Not connected if False
 I2CVariables        = "auto"
 I2CThread           = None                # Thread used for I2C
 
+# Gamma-Scout stuff
+GSActivation        = False               # Not available if False; to be set via config
+GSConnection        = False               # Not connected if False
+GSDeviceName        = None                # to be assigned in GS Init
+GSVariables         = "auto"
+GSFirmware          = None                # to be set in GS init
+GSSerialNumber      = None                # to be set in GS init
+GSDateTime          = None                # to be set when setting DateTime
+GSMemory            = None                # to be set when calling History
+GSCalibration       = "auto"              # auto will become 0.009 in initGammaScout
+GSinPCmode          = False               # determines whether terminateGammaScout will attempt to
+                                          # switch off PC mode
 
 # GMC Device Options                      # will be set after reading the version of the counter from the device
 GMCActivation       = False               # To use or not use a GMC Device counter
@@ -269,20 +334,10 @@ memory              = "auto"              # Can be configured for 64kB or 1 MB i
 SPIRpage            = "auto"              # size of page to read the history from device
 SPIRbugfix          = "auto"              # if True then reading SPIR gives one byte more than
                                           # requested  (True for GMC-300 series)
-calibration         = "auto"              # factory default calibration factor in device is linear
-                                          # i.e. the same for all 3 calibration points
+calibration1st      = "auto"              # calibration factor for the only tube in most
+                                          # GMC counters, or the 1st tube in a GMC-500+ counter
 calibration2nd      = "auto"              # calibration factor for the 2nd tube in a GMC-500+ counter
                                           # CPM * calibration => µSv/h
-                                          # this is from a calibration point #3 setting
-                                          # of 25CPM=4.85µSv/h
-#calibration2nd     = 0.390               # there was a calibration point #3 setting
-                                          # of 25CPM=9.75µSv/h =>0.39 µSv/h/CPM
-#calibration2nd     = 0.480               # calibration determined in own experiment
-                                          # http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=5369
-                                          # see Reply #10, Quote: “With Thorium = 0.468, and K40 = 0.494,
-                                          # I'd finally put the calibration factor for the 2nd tube, the
-                                          # SI3BG, to 0.48 µSv/h/CPM. Which makes it 74 fold less
-                                          # sensitive than the M4011!”
 
 endianness          = "auto"              # big- vs- little-endian for calibration value storage
 configsize          = "auto"              # 256 bytes in 300series, 512 bytes in 500/600 series
@@ -311,12 +366,6 @@ savedatatypes       = (
 savedatatype        = "Unknown - will become known when the device is connected"
 savedataindex       = None
 
-#special flags
-test1               = False               # to run a specific test; see gcommands
-test2               = False               # to run a specific test; see gcommands
-test3               = False               # to run a specific test; see gcommands
-test4               = False               # to run a specific test; see gcommands
-
 # Logging Options
 cpm_counter         = 0                   # counts readings since last start logging; prints as index in log
 logging             = False               # flag for logging
@@ -334,7 +383,7 @@ fullhist            = False               # If False breaks history recording wh
 
 # Graphic Options
 #ruler:     = "## Index,            DateTime,     CPM,     CPS,  CPM1st,  CPS1st,  CPM2nd,  CPS2nd,    Temp,   Press,   Humid,   RMCPM"
-varnames            = ("CPM", "CPS", "CPM1st", "CPS1st", "CPM2nd", "CPS2nd", "CPM3rd", "CPS3rd", "T", "P", "H", "X")
+varnames            = ("CPM", "CPS", "CPM1st", "CPS1st", "CPM2nd", "CPS2nd", "CPM3rd", "CPS3rd", "T", "P", "H", "X") # 12 vars
 datacolsDefault     = 1 + len(varnames)   # max number of data columns supported,
                                           # currently = 13:
                                           # as : (index excluded; is not data),
@@ -426,7 +475,7 @@ GraphScale["X"]      = "VAL"               # no scaling
 
 
 DevicesConnected     = 0                   # number of connected devices; determined upon connecting
-DevicesNames         = ("GMC", "Audio", "I2C", "RadMon", "AmbioMon", "LabJack") # all supported devices
+DevicesNames         = ("GMC", "Audio", "I2C", "RadMon", "AmbioMon", "LabJack", "Gamma-Scout") # all supported devices
 DevicesVars          = {                   # holder for varnames in all supported devices
                         "GMC"        : None,
                         "Audio"      : None,
@@ -434,6 +483,7 @@ DevicesVars          = {                   # holder for varnames in all supporte
                         "RadMon"     : None,
                         "AmbioMon"   : None,
                         "LabJack"    : None,
+                        "Gamma-Scout": None,
                        }
 
 varcheckedCurrent   = {}                    # is variable checked for inclusion in plot
@@ -587,7 +637,7 @@ cfgMap = {                               # as read out from the device
           "WiFi"        : "" ,
          }
 
-cfg512ndx = {                                      # GMC-500/600
+cfg512ndx = {                                    # GMC-500/600
           "SSID"        : (69,     69 + 32),
           "Password"    : (101,   101 + 32),
           "Website"     : (133,   133 + 32),
@@ -598,7 +648,7 @@ cfg512ndx = {                                      # GMC-500/600
           "WiFi"        : (262,   262 +  1),     # WiFi OnOff
          }
 
-cfg256ndx = {                                      # only GMC-320+V5
+cfg256ndx = {                                    # only GMC-320+V5
           "SSID"        : (69,     69 + 16),
           "Password"    : (85,     85 + 16),
           "Website"     : (101,   101 + 25),
@@ -609,6 +659,7 @@ cfg256ndx = {                                      # only GMC-320+V5
           "WiFi"        : (113,   113 +  1),     # 113 WiFi OnOff
          }
 
+
 helpOptions = """
 Usage:  geigerlog [Options] [Commands]
 
@@ -617,31 +668,76 @@ data directory "data", a subdirectory to the program
 directory
 
 Options:
-    -h, --help          Show this help and exit
-    -d, --debug         Run with printing debug info
+    -h, --help          Show this help and exit.
+    -d, --debug         Run with printing debug info.
                         Default is debug = False
-    -v, --verbose       Be more verbose
-                        Default is verbose = False
-    -V, --Version       Show version status and exit
-    -p, --port name     Sets the USB-Port to name
-                        Default is name = /dev/ttyUSB0
-    -b, --baudrate N    Sets the baudrate to N
-                        Default is N = 57600
+    -v, --verbose       Be more verbose.
+                        Default is verbose = False.
+    -w, --werbose       Be much more verbose.
+                        Default is werbose = False.
+    -V, --Version       Show version status and exit.
+    -P, --Portlist      Show available USB-to-Serial ports
+                        and exit.
     -R  --Redirect      Redirect stdout and stderr to
-                        file geigerlog.stdlog (for debugging)
-        -style name     Sets the style; see Commands:
-                        'showstyles'
+                        file geigerlog.stdlog (for debugging).
+    -s  --style name    Sets the style; see also manual and
+                        Command: 'showstyles'.
                         Default is set by your system
+
 
 Commands:
     showstyles          Show a list of styles avail-
                         able on your system and exit.
-                        For usage details see manual
+                        For usage details see manual.
     keepFF              Keeps all hexadecimal FF
                         (Decimal 255) values as a
                         real value and not an 'Empty'
                         one. See manual in chapter
-                        on parsing strategy
+                        on parsing strategy.
+    devel               Development settings; careful!
+                        see program code
+
+To watch debug and verbose output start the program from the
+command line in a terminal. The output will print to the terminal.
+
+With the Redirect option all output - including Python error
+messages - will go into the redirect file geigerlog.stdlog.
+"""
+
+
+xxxhelpOptions = """
+Usage:  geigerlog [Options] [Commands]
+
+By default, data files will be read-from/written-to the
+data directory "data", a subdirectory to the program
+directory
+
+Options:
+    -h, --help          Show this help and exit.
+    -d, --debug         Run with printing debug info.
+                        Default is debug = False
+    -v, --verbose       Be more verbose.
+                        Default is verbose = False.
+    -V, --Version       Show version status and exit.
+    -R  --Redirect      Redirect stdout and stderr to
+                        file geigerlog.stdlog (for debugging).
+    -s  --style name    Sets the style; see also
+                        Commands: 'showstyles' and manual.
+                        Default is set by your system
+    -p, --port name     Sets the USB-Port to name.
+                        Default is name = /dev/ttyUSB0.
+    -b, --baudrate N    Sets the baudrate to N.
+                        Default is N = 57600.
+
+Commands:
+    showstyles          Show a list of styles avail-
+                        able on your system and exit.
+                        For usage details see manual.
+    keepFF              Keeps all hexadecimal FF
+                        (Decimal 255) values as a
+                        real value and not an 'Empty'
+                        one. See manual in chapter
+                        on parsing strategy.
     devel               Development settings; careful!
                         see program code
 

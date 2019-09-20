@@ -45,7 +45,7 @@ def printSuSt():
 
 
     if gglobs.logTimeSlice is None:
-        gglobs.ex.showStatusMessage("No data available")
+        gglobs.exgg.showStatusMessage("No data available")
         return
 
     fprint(header("Summary Statistics of Variables selected in Plot"))
@@ -126,7 +126,7 @@ def printStats():
     logTime          = gglobs.logTimeSlice           # time data
 
     if gglobs.logTime is None:
-        gglobs.ex.showStatusMessage("No data available") # when called without a loaded file
+        gglobs.exgg.showStatusMessage("No data available") # when called without a loaded file
         return
 
     logSize          = logTime.size
@@ -170,14 +170,14 @@ def printStats():
     lstats.append("First and last few records:\n")
     sql, ruler = gsql.getShowCompactDataSql(gglobs.varcheckedCurrent)
     lstats.append(ruler)
-    lstats.append(gglobs.ex.getExcerptLines(sql, gglobs.currentConn, lmax=7))
+    lstats.append(gglobs.exgg.getExcerptLines(sql, gglobs.currentConn, lmax=7))
     lstats.append(ruler)
 
     lstats.moveCursor(QTextCursor.Start)
 
     d = QDialog()
-    d.setWindowIcon(gglobs.ex.iconGeigerLog)
-    d.setFont(gglobs.ex.fontstd)
+    d.setWindowIcon(gglobs.exgg.iconGeigerLog)
+    d.setFont(gglobs.exgg.fontstd)
     d.setWindowTitle("Statistics on Checked Variables")
     d.setWindowModality(Qt.WindowModal) #Qt.ApplicationModal, Qt.NonModal
     d.setMinimumWidth(1100)
@@ -231,9 +231,9 @@ def pushToWeb():
     if gglobs.activeDataSource == None or gglobs.activeDataSource == "His":
         # Dialog
         msg = QMessageBox()
-        msg.setWindowIcon(gglobs.ex.iconGeigerLog)
+        msg.setWindowIcon(gglobs.exgg.iconGeigerLog)
         msg.setIcon(QMessageBox.Warning)
-        msg.setFont(gglobs.ex.fontstd)
+        msg.setFont(gglobs.exgg.fontstd)
         msg.setWindowTitle("Updating Radiation World Maps")
         datatext = "Must show a Log Plot to update Radiation Maps"
         msg.setText(datatext)
@@ -275,9 +275,9 @@ def pushToWeb():
 
     # Dialog Confirm Sending
     msg = QMessageBox()
-    msg.setWindowIcon(gglobs.ex.iconGeigerLog)
+    msg.setWindowIcon(gglobs.exgg.iconGeigerLog)
     msg.setIcon(QMessageBox.Information)
-    msg.setFont(gglobs.ex.fontstd)
+    msg.setFont(gglobs.exgg.fontstd)
     msg.setWindowTitle("Updating Radiation World Maps")
     datatext = "Calling server: " + gglobs.GMCmap["Website"] + "/" + gglobs.GMCmap["URL"]
     datatext += "\nwith these data based on {} datapoints:                                          \n\n".format(lendata)
@@ -337,7 +337,7 @@ def selectPlotVars():
     """Selecting the vars for the scatter plot"""
 
     if gglobs.logTime is None:              # when called without a loaded file
-        gglobs.ex.showStatusMessage("No data available")
+        gglobs.exgg.showStatusMessage("No data available")
         return
 
     # X-axis vars
@@ -385,8 +385,8 @@ def selectPlotVars():
     layoutH.addWidget(ylist)
 
     d = QDialog()
-    d.setWindowIcon(gglobs.ex.iconGeigerLog)
-    d.setFont(gglobs.ex.fontstd)
+    d.setWindowIcon(gglobs.exgg.iconGeigerLog)
+    d.setFont(gglobs.exgg.fontstd)
     d.setWindowTitle("Select Variables for Scatter Plot")
     d.setWindowModality(Qt.ApplicationModal)
     #d.setWindowModality(Qt.NonModal)
@@ -474,8 +474,8 @@ def plotScatter(vx, vy, vline, zero):
     plt.title(subTitleLeft,  fontsize=10, fontweight='normal', loc = 'left')
     plt.title(subTitleRight, fontsize=10, fontweight='normal', loc = 'right')
 
-    plt.xlabel(gglobs.vardict[vx][0], fontsize=12)
-    plt.ylabel(gglobs.vardict[vy][0], fontsize=12)
+    plt.xlabel("x = " + gglobs.vardict[vx][0], fontsize=12)
+    plt.ylabel("y = " + gglobs.vardict[vy][0], fontsize=12)
 
     plt.grid(True)
     #plt.subplots_adjust(hspace=None, wspace=.2 , left=.17, top=0.85, bottom=0.15, right=.97)
@@ -490,20 +490,20 @@ def plotScatter(vx, vy, vline, zero):
     # it takes the `figure` instance as a parameter to __init__
     canvas2 = FigureCanvas(fig2)
     canvas2.setFixedSize(700, 600)
-    navtoolbar = NavigationToolbar(canvas2, gglobs.ex)
+    navtoolbar = NavigationToolbar(canvas2, gglobs.exgg)
 
     labout  = QTextBrowser() # label to hold the description
-    labout.setFont(gglobs.ex.fontstd)
+    labout.setFont(gglobs.exgg.fontstd)
     labout.setMinimumHeight(60)
     txtlines  = "Connecting lines are {}drawn".format("" if vline else "not ")
     txtorigin = "an origin of zero is enforced for {}".format(zero)
-    labout.setText("Scatter Plot of y:{} versus x:{}.".format(gglobs.vardict[vy][0], gglobs.vardict[vx][0]))
+    labout.setText("Scatter Plot of y = {} versus x = {}.".format(gglobs.vardict[vy][0], gglobs.vardict[vx][0]))
     labout.append("{}; {}.".format(txtlines, txtorigin))
-    labout.append("Blue line is: y=x")
+#    labout.append("Blue line is: y=x")
 
     d = QDialog()
     gglobs.plotScatterPointer = d
-    d.setWindowIcon(gglobs.ex.iconGeigerLog)
+    d.setWindowIcon(gglobs.exgg.iconGeigerLog)
     d.setWindowTitle("Scatter Plot")
     #d.setWindowModality(Qt.ApplicationModal)
     #d.setWindowModality(Qt.NonModal)
@@ -542,7 +542,9 @@ def plotScatter(vx, vy, vline, zero):
     ylim = ax1.get_ylim()
     xymax = max(xlim[1], ylim[1])
     xymin = min(0, xlim[0], ylim[0])
-    plt.plot([xymin, xymax], [xymin, xymax])
+
+# Do NOT draw the blue y=x line - could be confusing
+#    plt.plot([xymin, xymax], [xymin, xymax])
 
     # resets the limit to state before blue line was drawn
     ax1.set_ylim(ylim)
@@ -636,10 +638,10 @@ def plotAudio(dtype="Multi Pulse", duration=None):
     # it takes the `figure` instance as a parameter to __init__
     canvas2 = FigureCanvas(fig2)
     canvas2.setFixedSize(1000, 450)
-    navtoolbar = NavigationToolbar(canvas2, gglobs.ex)
+    navtoolbar = NavigationToolbar(canvas2, gglobs.exgg)
 
     labout = QTextBrowser()                    # label to hold the description
-    labout.setFont(gglobs.ex.fontstd)           # my std font for easy formatting
+    labout.setFont(gglobs.exgg.fontstd)           # my std font for easy formatting
     labout.setText("")
 
     mtext1  = ""
@@ -677,7 +679,7 @@ def plotAudio(dtype="Multi Pulse", duration=None):
 
     d = QDialog()
     gglobs.plotAudioPointer = d
-    d.setWindowIcon(gglobs.ex.iconGeigerLog)
+    d.setWindowIcon(gglobs.exgg.iconGeigerLog)
     d.setWindowTitle("AudioCounter Device")
     #d.setMinimumHeight(700)
     #d.setWindowModality(Qt.ApplicationModal)
@@ -757,18 +759,18 @@ def reloaddata(dtype):
         pass
 
     elif dtype == "Toggle":
-        gglobs.ex.setBusyCursor()
+        gglobs.exgg.setBusyCursor()
         gglobs.AudioPulseDir  = not gglobs.AudioPulseDir
         gglobs.AudioPlotTotal =     gglobs.AudioPlotTotal[-10:]
         time.sleep(1)
         dtype = "Multi Pulse"
-        gglobs.ex.setNormalCursor()
+        gglobs.exgg.setNormalCursor()
 
     else: # Recording
-        gglobs.ex.setBusyCursor()
+        gglobs.exgg.setBusyCursor()
         duration = 1 # seconds
         duration = gaudio.getLongChunk(duration) # may return 0 on failure
-        gglobs.ex.setNormalCursor()
+        gglobs.exgg.setNormalCursor()
 
     plotAudio(dtype, duration)
 
@@ -785,8 +787,8 @@ def displayLastValues(self):
     gglobs.displayLastValuesIsOn = True
 
     d = QDialog()
-    d.setWindowIcon(gglobs.ex.iconGeigerLog)
-    d.setFont(gglobs.ex.fontstd)
+    d.setWindowIcon(gglobs.exgg.iconGeigerLog)
+    d.setFont(gglobs.exgg.fontstd)
     d.setWindowTitle("Display Last Log Values")
     d.setWindowModality(Qt.WindowModal)       # can click anywhere, but also can have open many windows
     #d.setWindowModality(Qt.ApplicationModal) # only one window can be open, but can't click anywhere else
@@ -833,14 +835,14 @@ def displayLastValues(self):
                     val = "{:>8.2f}".format(gglobs.lastValues[vname])
                 else:
                     val = "{:>8s}".format("  --- ")
-            gglobs.ex.vlabels[i] = QLabel(val)
-            gglobs.ex.vlabels[i].setFont(QFont("Monospace", 22, weight=QFont.Black))
+            gglobs.exgg.vlabels[i] = QLabel(val)
+            gglobs.exgg.vlabels[i].setFont(QFont("Monospace", 22, weight=QFont.Black))
             if gglobs.logging and gglobs.varcheckedLog[vname]:
-                gglobs.ex.vlabels[i].setStyleSheet("QLabel {background-color : #F4D345; color : black; }")
+                gglobs.exgg.vlabels[i].setStyleSheet("QLabel {background-color : #F4D345; color : black; }")
             elif not gglobs.logging and gglobs.varcheckedLog[vname]:
-                gglobs.ex.vlabels[i].setStyleSheet("QLabel {color:darkgray; }")
+                gglobs.exgg.vlabels[i].setStyleSheet("QLabel {color:darkgray; }")
             else:
-                gglobs.ex.vlabels[i].setStyleSheet("QLabel {color:darkgray; font-size:14px;}")
+                gglobs.exgg.vlabels[i].setStyleSheet("QLabel {color:darkgray; font-size:14px;}")
 
             for dname in gglobs.DevicesNames:
                 #print("dname:", dname, ", vname:", vname)
@@ -852,7 +854,7 @@ def displayLastValues(self):
 
             gridlo.addWidget(klabels[i],            i + 1, 0)
             gridlo.addWidget(dlabels[i],            i + 1, 1)
-            gridlo.addWidget(gglobs.ex.vlabels[i],  i + 1, 2)
+            gridlo.addWidget(gglobs.exgg.vlabels[i],  i + 1, 2)
 
     layoutV.addLayout(gridlo)
 
@@ -869,21 +871,21 @@ def printPlotData():
     t0 = gglobs.logTimeSlice
 
     if t0 is None or len(t0) == 0:
-        gglobs.ex.showStatusMessage("No data available")
+        gglobs.exgg.showStatusMessage("No data available")
         return
 
-    gglobs.ex.setBusyCursor()
+    gglobs.exgg.setBusyCursor()
 
     header = "{:5s}, {:19s}".format("#No", "Datetime")
     for vname in gglobs.varnames:
-        if gglobs.ex.varDisplayCheckbox[vname].isChecked():
+        if gglobs.exgg.varDisplayCheckbox[vname].isChecked():
             header += ", {:>8s}".format(vname)
 
     fprint(header)
     for i in range(len(t0)):
         vcc = "{:>5d}, {:<19s}".format(i, str(mpld.num2date(t0[i]))[:19])
         for vname in gglobs.varnames:
-            if gglobs.ex.varDisplayCheckbox[vname].isChecked():
+            if gglobs.exgg.varDisplayCheckbox[vname].isChecked():
                 vi = gglobs.logSlice[vname][i]
                 if np.isnan(vi):
                     vcc += ", {:>8s}".format(" ")
@@ -892,4 +894,4 @@ def printPlotData():
         fprint(vcc)
     fprint(header)
 
-    gglobs.ex.setNormalCursor()
+    gglobs.exgg.setNormalCursor()

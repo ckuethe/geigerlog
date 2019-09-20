@@ -13,11 +13,11 @@ site includes steps to set up secure server!
 To install the software:
     sudo apt-get install mosquitto mosquitto-clients
 
-Testing MQTT, assuming mosqitto running on urkam.de:
+Testing MQTT, assuming mosqitto running on mysite.com:
 Subscribe in terminal 1:
-    mosquitto_sub -v -h urkam.de -t ambiomon/#
+    mosquitto_sub -v -h mysite.com -t ambiomon/#
 Publish in terminal 2:
-    mosquitto_pub -h urkam.de -t ambiomon/temp -m "hello world"
+    mosquitto_pub -h mysite.com -t ambiomon/temp -m "hello world"
 You should see in terminal 1:
     ambiomon/temp hello world
 """
@@ -45,8 +45,6 @@ __credits__         = [""]
 __license__         = "GPL3"
 
 from   gutils           import *
-
-import paho.mqtt.client as mqtt     # https://pypi.org/project/paho-mqtt/
 
 
 ###############################################################################
@@ -155,7 +153,7 @@ def configureAmbioMon():
     """Set settings for Ambiomon"""
 
     dprint("configureAmbioMon:")
-    debugIndent(1)
+    setDebugIndent(1)
 
     # AM Voltage
     lavolt     = QLabel("Anode voltage [V]\n(0 ... 999 V)")
@@ -310,7 +308,7 @@ def configureAmbioMon():
         fprint("Frequency HV gen:"      , "{} Hz"   .format(gglobs.AmbioFrequency))
         fprint("PWM fraction:"          , "{}"      .format(gglobs.AmbioPwm))
 
-    debugIndent(0)
+    setDebugIndent(0)
 
 
 def setAmbioMonSettings(voltage, cycletime, frequency, pwm):
@@ -331,7 +329,7 @@ def getAmbioMonValues(varlist):
     """Read all AmbioMon data; return only when complete"""
 
     #vprint("getAmbioMonValues({})".format(varname))
-    #debugIndent(1)
+    #setDebugIndent(1)
 
     alldata = {}
 
@@ -384,7 +382,7 @@ def getAmbioMonValues(varlist):
                 alldata.update({vname: cpm})
 
     vprint("{:20s}:  Variables:{}  Data:{}  Folder:'{}' ".format("getAmbioMonValues", varlist, alldata, gglobs.AmbioServerFolder))
-    #debugIndent(0)
+    #setDebugIndent(0)
 
     return alldata
 
@@ -426,7 +424,7 @@ def terminateAmbioMon():
     if not gglobs.AmbioConnection: return
 
     dprint("terminateAmbioMon: Terminating AmbioMon")
-    debugIndent(1)
+    setDebugIndent(1)
 
     gglobs.ambio_client.loop_stop()
     dprint("terminateAmbioMon: client.loop was stopped")
@@ -454,7 +452,7 @@ def terminateAmbioMon():
 
     gglobs.AmbioConnection = False  # inconsistent - is set even after timeout
 
-    debugIndent(0)
+    setDebugIndent(0)
 
 
 def initAmbioMon():
@@ -468,7 +466,7 @@ def initAmbioMon():
         return errmsg
 
     dprint(fncname + "Initialzing AmbioMon")
-    debugIndent(1)
+    setDebugIndent(1)
 
     gglobs.AmbioDeviceName = "AmbioMon++"
 
@@ -506,7 +504,7 @@ def initAmbioMon():
         errmsg += "<br>ERROR: '{}'".format(sys.exc_info()[1])
         errmsg += "<br>{} not connected. Is server offline? Verify server IP and server port".format(gglobs.AmbioDeviceName)
 
-        debugIndent(0)
+        setDebugIndent(0)
         return errmsg
 
     #
@@ -549,6 +547,6 @@ def initAmbioMon():
         gglobs.DevicesVars["AmbioMon"] = DevVars
         #print("DevicesVars:", gglobs.DevicesVars)
 
-    debugIndent(0)
+    setDebugIndent(0)
     return errmsg
 

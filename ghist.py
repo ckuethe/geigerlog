@@ -37,7 +37,7 @@ __license__         = "GPL3"
 from   gutils       import *            # all utilities
 
 import gcommands                        # only getSPIR is used here
-import gsql
+import gsql                             # database handling
 
 
 
@@ -103,6 +103,12 @@ def makeHistory(sourceHist):
                             # sleep is only 0.1; still not ok at 0.2 sec
                             # wieder auf 0.1, da GQ Dataviewer deutlich scneller ist
             fprint("Reading page of size {} @address:".format(page), address)
+
+#newnewnew
+#REMEMBER: AFTER Factoryreset rewrite the saving mode (showed cpm, although it was CPS!)
+
+            QApplication.processEvents()
+            QApplication.processEvents()
             rec, error, errmessage = gcommands.getSPIR(address, page)
             if error in (0, 1):
                 hist += rec
@@ -164,7 +170,7 @@ def printHistDetails(hist=False):
     #print("printHistDetails: hist:", hist)
     if hist == False:
         if gglobs.hisConn == None:
-            gglobs.ex.showStatusMessage("No data available")
+            gglobs.exgg.showStatusMessage("No data available")
             return
 
         fprint(header("Show History Binary Data Details"))
@@ -520,7 +526,7 @@ def saveHistBinaryData():
     """get the binary data from the database and save to *.bin file"""
 
     if gglobs.hisConn == None:
-        gglobs.ex.showStatusMessage("No data available")
+        gglobs.exgg.showStatusMessage("No data available")
         return
 
     fprint(header("Save History Binary Data to File"))

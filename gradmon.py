@@ -31,9 +31,6 @@ __license__         = "GPL3"
 
 from   gutils       import *
 
-import paho.mqtt.client as mqtt             # https://pypi.org/project/paho-mqtt/
-
-
 
 ###############################################################################
 # BEGIN MQTT Callbacks
@@ -139,7 +136,7 @@ def getRadMonValues(varlist):
     """Read all RadMon data; return only when complete"""
 
     #vprint("getRadMonValues({})".format(varname))
-    #debugIndent(1)
+    #setDebugIndent(1)
 
     alldata = {}
 
@@ -192,7 +189,7 @@ def getRadMonValues(varlist):
                 alldata.update({vname: cpm})
 
     vprint("{:20s}:  Variables:{}  Data:{}  Folder:'{}' ".format("getRadMonValues", varlist, alldata, gglobs.RMServerFolder))
-    #debugIndent(0)
+    #setDebugIndent(0)
 
     return alldata
 
@@ -233,7 +230,7 @@ def terminateRadMon():
     if gglobs.rm_client == None: return
 
     dprint("terminateRadMon: Terminating RadMon")
-    debugIndent(1)
+    setDebugIndent(1)
 
     gglobs.rm_client.loop_stop()
     dprint("terminateRadMon: client.loop was stopped")
@@ -259,12 +256,12 @@ def terminateRadMon():
     if timeout:
         dprint("RadMon dis-connection timed out ({} sec)".format(gglobs.RMTimeout), debug=True)
         fprint("<br>ERROR: Dis-Connection from RadMon+ server failed; RadMon+ inactivated", error=True)
-        debugIndent(0)
+        setDebugIndent(0)
         retval = ""
     else:
         retval = "RadMon+"
 
-    debugIndent(0)
+    setDebugIndent(0)
 
 
 def initRadMon():
@@ -278,7 +275,7 @@ def initRadMon():
         return errmsg
 
     dprint(fncname + "Initialzing RadMon")
-    debugIndent(1)
+    setDebugIndent(1)
 
     gglobs.RMDeviceName = "RadMon+"
 
@@ -316,7 +313,7 @@ def initRadMon():
         errmsg += "<br>ERROR: '{}'".format(sys.exc_info()[1])
         errmsg += "<br>{} not connected. Is server offline? Verify server IP and server port".format(gglobs.RMDeviceName)
 
-        debugIndent(0)
+        setDebugIndent(0)
         return errmsg
 
     #
@@ -359,5 +356,5 @@ def initRadMon():
         gglobs.DevicesVars["RadMon"] = DevVars
         #print("DevicesVars:", gglobs.DevicesVars)
 
-    debugIndent(0)
+    setDebugIndent(0)
     return errmsg

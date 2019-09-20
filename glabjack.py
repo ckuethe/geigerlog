@@ -214,7 +214,7 @@ def initLabJack():
         return "LabJack device not activated"
 
     dprint(fncname + "Initialzing LabJack")
-    debugIndent(1)
+    setDebugIndent(1)
     #print("--- initLabJack LabJackPython.listAll(3):", LabJackPython.listAll(3))
 
     gglobs.LJDeviceName = "LabJack"
@@ -274,6 +274,6 @@ def initLabJack():
     gglobs.DevicesVars["LabJack"] = DevVars
     #print("DevicesVars:", gglobs.DevicesVars)
 
-    debugIndent(0)
+    setDebugIndent(0)
 
     return ""

@@ -183,8 +183,8 @@ def getXLabelsSince(Xunit):
 
         strxl = "{:1.8f}".format(float(gglobs.Xleft) ) if gglobs.Xleft  != None else ""
         strxr = "{:1.8f}".format(float(gglobs.Xright)) if gglobs.Xright != None else ""
-        gglobs.ex.xmin.setText(strxl)
-        gglobs.ex.xmax.setText(strxr)
+        gglobs.exgg.xmin.setText(strxl)
+        gglobs.exgg.xmax.setText(strxr)
 
     return 'time {} since first record: {}'.format(xlabel, strFirstRecord)
 
@@ -236,7 +236,7 @@ def makePlot():
 
     #clear the checkboxes' default ToolTip
     for vname in gglobs.varnames:
-        gglobs.ex.varDisplayCheckbox[vname].setToolTip(gglobs.vardict[vname][0])
+        gglobs.exgg.varDisplayCheckbox[vname].setToolTip(gglobs.vardict[vname][0])
 
     gglobs.logTime          = gglobs.currentDBData[:,0]             # time data of total file
     gglobs.logTimeFirst     = gglobs.logTime[0]                     # time of first record in total file
@@ -319,7 +319,7 @@ def makePlot():
     ax1 = plt.gca()                              # left Y-axis
     ax2 = ax1.twinx()                            # right Y-Axis
 
-    vnameselect   = gglobs.varnames[gglobs.ex.select.currentIndex()]
+    vnameselect   = gglobs.varnames[gglobs.exgg.select.currentIndex()]
     if vnameselect in ("CPM", "CPS", "CPM1st", "CPS1st", "CPM2nd", "CPS2nd", "R"):
         ax1.grid(b=True, axis="both")         # left Y-axis grid + X-grid
     else:
@@ -363,8 +363,8 @@ def makePlot():
     #
     # set the scaling factor
     #
-    if gglobs.calibration    == "auto":  scale1st = gglobs.DefaultCalibration1st
-    else:                                scale1st = gglobs.calibration
+    if gglobs.calibration1st    == "auto":  scale1st = gglobs.DefaultCalibration1st
+    else:                                scale1st = gglobs.calibration1st
 
     if gglobs.calibration2nd == "auto":  scale2nd = gglobs.DefaultCalibration2nd
     else:                                scale2nd = gglobs.calibration2nd
@@ -430,7 +430,7 @@ def makePlot():
     # other lines will be dimmed in color via alpha setting
     # plot the selected variable last, i.e. on top of all others, by ordering varnames
     vname_ordered = ()
-    vnameselect   = gglobs.varnames[gglobs.ex.select.currentIndex()]
+    vnameselect   = gglobs.varnames[gglobs.exgg.select.currentIndex()]
     for i, vname in enumerate(gglobs.varnames):
         if vname == vnameselect:
             varPlotStyle[vname]['alpha']     = plotalpha
@@ -459,7 +459,7 @@ def makePlot():
     #arrprint(fncname + "scaleFactor:", scaleFactor)
     for vname in vname_ordered:
 #        print("plot the data: vname:", vname)
-        if gglobs.ex.varDisplayCheckbox[vname].isChecked():
+        if gglobs.exgg.varDisplayCheckbox[vname].isChecked():
             #print("logSlice[vname]:", type(logSlice[vname]), logSlice[vname] )
             #print("scaleFactor[vname]:", type(scaleFactor[vname]), scaleFactor[vname] )
             y                           = logSlice[vname] * scaleFactor[vname]
@@ -491,8 +491,8 @@ def makePlot():
 
             varlabels[vname]            = fmtLineLabel   .format(vname, "[" + var_unit + "]", var_avg, var_std, var_var, var_min, var_max, var_lastval)
             Tip                         = fmtLineLabelTip.format(gglobs.vardict[vname][0], var_unit, var_avg, var_std, var_var, var_min, var_max, var_lastval)
-            gglobs.ex.varDisplayCheckbox[vname].setToolTip  (Tip)
-            gglobs.ex.varDisplayCheckbox[vname].setStatusTip(Tip)
+            gglobs.exgg.varDisplayCheckbox[vname].setToolTip  (Tip)
+            gglobs.exgg.varDisplayCheckbox[vname].setStatusTip(Tip)
 
             varPlotStyle[vname]['markersize'] = float(plotstyle['markersize']) / np.sqrt(var_size)
             varlines[vname] = plotLine(var_x, var_y, gglobs.Xunit, vname, **varPlotStyle[vname])
@@ -558,9 +558,9 @@ def plotAverage(x, logSlice, scaleFactor, varPlotStyle):
 
     if not gglobs.avgChecked: return
 
-    vname     = gglobs.varnames[gglobs.ex.select.currentIndex()]
-    #print("average: vname, gglobs.ex.varDisplayCheckbox[vname].isChecked():", vname, gglobs.ex.varDisplayCheckbox[vname].isChecked())
-    if gglobs.ex.varDisplayCheckbox[vname].isChecked():
+    vname     = gglobs.varnames[gglobs.exgg.select.currentIndex()]
+    #print("average: vname, gglobs.exgg.varDisplayCheckbox[vname].isChecked():", vname, gglobs.exgg.varDisplayCheckbox[vname].isChecked())
+    if gglobs.exgg.varDisplayCheckbox[vname].isChecked():
         avg_Time                     = [x[0], x[-1]]
         logSliceMod                  = logSlice[vname] * scaleFactor[vname]
         #print("logSliceMod:", logSliceMod)
@@ -613,7 +613,7 @@ def plotMovingAverage(x, logSlice, scaleFactor, varPlotStyle):
     # Note: improper with long periods of no data, or changing cycle time!
     # In plot skip the first and last N/2 data points, which are meaningless due to averaging.
 
-    vname           = gglobs.varnames[gglobs.ex.select.currentIndex()]
+    vname           = gglobs.varnames[gglobs.exgg.select.currentIndex()]
 
     lSM_mask        = np.isfinite(logSlice[vname])          # mask for nan values
     logSliceNoNAN   = logSlice[vname][lSM_mask]             # all NANs removed
@@ -652,7 +652,7 @@ def plotMovingAverage(x, logSlice, scaleFactor, varPlotStyle):
     #dprint("lower, upper, delta:", lower, upper, upper - lower)
 
     if upper - lower > 2: # needs more than a single record
-        if gglobs.ex.varDisplayCheckbox[vname].isChecked():
+        if gglobs.exgg.varDisplayCheckbox[vname].isChecked():
 
             mav_label                   = "MvAvg, N={:0.0f} ({:0.0f}sec)".format(N, new_mav)
 

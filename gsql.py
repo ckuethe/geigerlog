@@ -30,8 +30,6 @@ __license__         = "GPL3"
 
 from   gutils       import *
 
-import sqlite3      # sudo -H pip3 install  pysqlite3; but should be part of python3
-
 
 def DB_getLocaltime():
     """gets the localtime as both Julianday as well as timetag, like:
@@ -93,7 +91,7 @@ def DB_closeDatabase(DB_Connection):
     fncname = "DB_closeDatabase: "
 
     vprint(fncname + "Closing database ", DB_Connection)
-    debugIndent(1)
+    setDebugIndent(1)
 
     if DB_Connection == None:
         wprint(fncname + "Database cannot be closed as it is not open")
@@ -105,7 +103,7 @@ def DB_closeDatabase(DB_Connection):
             srcinfo = fncname + "Exception: connection is: {}".format(DB_Connection)
             exceptPrint(e, sys.exc_info(), srcinfo)
 
-    debugIndent(0)
+    setDebugIndent(0)
 
 
 def DB_deleteDatabase(DB_Connection, DB_FilePath):
@@ -115,7 +113,7 @@ def DB_deleteDatabase(DB_Connection, DB_FilePath):
 
     dprint(fncname + "Deleting DB at file", DB_FilePath)
 
-    DB_closeDatabase  (DB_Connection) # try to close DB
+    DB_closeDatabase  (DB_Connection)     # try to close DB
     try:    os.remove (DB_FilePath)       # try to remove DB file
     except: pass
 
@@ -126,7 +124,7 @@ def DB_openDatabase(DB_Connection, DB_FilePath):
     fncname = "DB_openDatabase: "
 
     dprint(fncname + "DBpath: '{}'".format(DB_FilePath))
-    debugIndent(1)
+    setDebugIndent(1)
 
     needToCreateDB = False
 
@@ -169,7 +167,7 @@ def DB_openDatabase(DB_Connection, DB_FilePath):
 
     gglobs.currentConn      = DB_Connection
 
-    debugIndent(0)
+    setDebugIndent(0)
 
     return DB_Connection
 
@@ -190,7 +188,7 @@ def DB_createStructure(DB_Connection):
     fncname = "DB_createStructure: "
 
     dprint(fncname)
-    debugIndent(1)
+    setDebugIndent(1)
 
     # execute all sql to create database structure
     for sql in sqlCreate:
@@ -205,7 +203,7 @@ def DB_createStructure(DB_Connection):
     dprint(fncname + "complete")
 
     DB_commit(DB_Connection)
-    debugIndent(0)
+    setDebugIndent(0)
 
 
 def DB_insertData(DB_Connection, datalist):
@@ -444,7 +442,7 @@ def createFFmapFromDB():
     """Read data from table bin as blob and print map of FFs into notePad"""
 
     if gglobs.hisConn == None:
-        gglobs.ex.showStatusMessage("No data available")
+        gglobs.exgg.showStatusMessage("No data available")
         return
 
     start = time.time()
@@ -458,7 +456,7 @@ def createFFmapFromDB():
         fprint("No binary data found in this database", error=True)
         return
 
-    gglobs.ex.setBusyCursor()
+    gglobs.exgg.setBusyCursor()
 
     lenLine   = 1024
     lenChunk  = 16
@@ -489,14 +487,14 @@ def createFFmapFromDB():
     fprint(lstlines)
     vprint("timing 16b per char chunks: {:7.2f}ms".format((time.time() -start)*1000))
 
-    gglobs.ex.setNormalCursor()
+    gglobs.exgg.setNormalCursor()
 
 
 def createParseFromDB():
     """Read the data from the database data table include comments and parse comments """
 
     if gglobs.hisConn == None:
-        gglobs.ex.showStatusMessage("No data available")
+        gglobs.exgg.showStatusMessage("No data available")
         return
 
     fprint(header("Show History Data with Parse Comments"))
@@ -508,7 +506,7 @@ def createParseFromDB():
         fprint("No Parse Comments data found in this database", error=True)
         return
 
-    gglobs.ex.setBusyCursor()
+    gglobs.exgg.setBusyCursor()
 
     sql = """
             select
@@ -567,7 +565,7 @@ def createParseFromDB():
     fprint(printstring[:-1])
     fprint(ruler)
 
-    gglobs.ex.setNormalCursor()
+    gglobs.exgg.setNormalCursor()
 
 
 def createLstFromDB(*args, lmax=12, full=True):
@@ -576,7 +574,7 @@ def createLstFromDB(*args, lmax=12, full=True):
     #vprint("createLstFromDB:  lmax={}, full={}".format(lmax, full))
 
     if gglobs.hisConn == None:
-        gglobs.ex.showStatusMessage("No data available")
+        gglobs.exgg.showStatusMessage("No data available")
         return
 
     if full: addh = ""          # all lines
@@ -590,7 +588,7 @@ def createLstFromDB(*args, lmax=12, full=True):
         fprint("No binary data found in this database", error=True)
         return
 
-    gglobs.ex.setBusyCursor()
+    gglobs.exgg.setBusyCursor()
 
     histlen     = len(hist)                  # Total length; could be any length e.g. when read from file
     histRC      = hist.rstrip(b'\xFF')       # after right-clip FF (removal of all trailing 0xff)
@@ -635,7 +633,7 @@ def createLstFromDB(*args, lmax=12, full=True):
         for a in listlstlines[-lmax:]: fprint(a)
     fprint("")
 
-    gglobs.ex.setNormalCursor()
+    gglobs.exgg.setNormalCursor()
 
 
 def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
@@ -644,7 +642,7 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
     fncname = "DB_convertCSVtoDB: "
 
     dprint(fncname + "CSV_FilePath: ", CSV_FilePath, ", DB_Connection: ", DB_Connection)
-    debugIndent(1)
+    setDebugIndent(1)
 
     plimit = 10 # limit for number of lines to print
 
@@ -658,7 +656,7 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
     # rlines[6]:     40, 2018-12-19 10:20:19,      ,      ,      0,       0
     # rlines[7]:     41, 2018-12-19 10:20:20,      ,      ,      0,       0
     # also possible:
-    #rlines[2]: #FORMAT: '<#>ByteIndex, Date&Time, CPM, CPS' (Line beginning with '#' is comment)
+    # rlines[2]: #FORMAT: '<#>ByteIndex, Date&Time, CPM, CPS' (Line beginning with '#' is comment)
 
 #    print("rlines: len:{}, lines as read: ".format(len(rlines)), rlines)
 
@@ -718,11 +716,12 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
             elif "INDEX" in sss:
                 continue
             else:
+                cjday = None
                 #print("sslines[i]:", i, sslines[i])
                 lenssi = len(sslines[i])
                 if lenssi > 1:
                     ctype = ss
-                    cjday = sslines[i][1]
+                #    cjday = sslines[i][1]  # was gibt das an?
                     sx = []
                     for j in range(1, lenssi):
                         if sslines[i][j] != None:# if an item is None it cannot be joined
@@ -770,8 +769,14 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
             else:
                 DB_Connection.execute(sqlData,       datalist[0:2] +["0 hours"] + datalist[2:])
 
+        try:
+            #print("DB_convertCSVtoDB: datalist: ", datalist)
+            pass
+        except:
+            pass
+
     DB_commit(DB_Connection)
-    debugIndent(0)
+    setDebugIndent(0)
 
 
 ###############################################################################
@@ -791,7 +796,7 @@ sqlGetLogUnionAsString =   """
                             ifnull(T,       ""),
                             ifnull(P,       ""),
                             ifnull(H,       ""),
-                            ifnull(R,       "")
+                            ifnull(X,       "")
                           ) as datastr,
                     dindex
                 from data
@@ -809,37 +814,6 @@ sqlGetLogUnionAsString =   """
                 from comments
 
                 order by julianday asc, dindex asc
-                """
-
-sqlGetHisUnionAsString =   """
-                select
-                    julianday,
-                    printf(" %8s, %19s, %7s, %7s, %7s, %7s, %7s, %7s",
-                            dindex            ,
-                            datetime(julianday),
-                            ifnull(cpm,     ""),
-                            ifnull(cps,     ""),
-                            ifnull(cpm1st,  ""),
-                            ifnull(cps1st,  ""),
-                            ifnull(cpm2nd,  ""),
-                            ifnull(cps2nd,  "")
-                          ) as datastr,
-                    dindex
-                from data
-
-                union
-
-                select
-                    cjulianday as julianday,
-                    printf("#%8s, %19s, %s",
-                            ctype               ,
-                            datetime(cjulianday),
-                            cinfo
-                          ) as commentstr,
-                    ctype
-                from comments
-
-                order by data.julianday asc, dindex asc
                 """
 
 # sql INSERT commands
@@ -948,19 +922,22 @@ def getShowCompactDataSql(varchckd):
     ruler  = "#>  Index,            DateTime"
     filler = [""] * 24
     for i, vname in enumerate(gglobs.varnames):
+        #print("i:, vname: ", i, vname)
         #vname = gglobs.varnames[i]
         if varchckd[vname]:
+            #print("varchecked: i:, vname: ", i, vname)
             filler [i]    = ", %7s"
             filler [i+12] = """, ifnull({}, "")""".format(vname)
             ruler        += ", {:>7s}".format(vname)
         else:
+            #print("NOT varchecked: i:, vname: ", i, vname)
             filler [i]    = ""
             filler [i+12] = ""
 
     sqlprintft = sqlprintftmplt.format(*filler)
     #print("sqlprintft:", sqlprintft)
 
-    sql =   """
+    OLDsql =   """
             select
                 julianday,
                 {}
@@ -984,6 +961,33 @@ def getShowCompactDataSql(varchckd):
 
             order by julianday asc, rowid asc
             """.format(sqlprintft) # order by julianday asc, dindex asc, rowid asc : not good
+
+    sql =   """
+            select
+                julianday,
+                {}
+                as datastr,
+                dindex,
+                rowid
+            from data
+
+            union
+
+            select
+                cjulianday as julianday,
+                printf("#%8s, %19s, %s",
+                        ctype               ,
+                        datetime(cjulianday),
+                        cinfo
+                      ) as commentstr,
+                ctype,
+                rowid
+            from comments
+
+            order by julianday asc, dindex asc, rowid asc
+            """.format(sqlprintft) # order by julianday asc, dindex asc, rowid asc : not good wieso not good? geht doch????
+
+
     #print("sql:", sql)
 
     return sql, ruler
