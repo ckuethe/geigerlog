@@ -26,7 +26,7 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -36,8 +36,11 @@ import urllib.request           # for use with Radiation World Map
 import urllib.parse             # for use with Radiation World Map
 
 import gsql
-import gaudio
+#import gaudio
+import gsounddev
 
+#~xt, yt, vline, zero, FitFlag, FitSelector = 0, 0, True, "None", True, 1
+xt, yt, vline, zero, FitFlag, FitSelector = 0, 0, True, "None", True, "Prop"
 
 
 def printSuSt():
@@ -65,7 +68,6 @@ def printSuSt():
 def getlstats(logTime, logVar, vname):
     """get the text for the QTextBrowser in printStats"""
 
-    #vnameFull   = gglobs.vardict[vname]
     vnameFull   = gglobs.vardict[vname][0]
 
     logSize          = logTime.size
@@ -85,10 +87,10 @@ def getlstats(logTime, logVar, vname):
     logVar_95        = logVar_std * 1.96   # 95% confidence range
 
 
-    if vname in ("CPM", "CPM1st", "CPM2nd", "R"):
+    if vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd"):
         logVar_text      = "(in units of: {})".format(gglobs.Yunit)
 
-    elif vname in ("CPS",  "CPS1st", "CPS2nd"):
+    elif vname in ("CPS",  "CPS1st", "CPS2nd", "CPS3rd"):
         if gglobs.Yunit == "CPM":   unitText = "CPS"
         else:                       unitText = gglobs.Yunit
         logVar_text      = "(in units of: {})".format(unitText)
@@ -99,23 +101,32 @@ def getlstats(logTime, logVar, vname):
     ltext = []
     ltext.append("Variable: {} {}\n".format(vnameFull, logVar_text))
 
-    if   gglobs.Yunit == "CPM" and (vname in ("CPM", "CPM1st", "CPM2nd", "R")):
+    if   gglobs.Yunit == "CPM" and (vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd")):
         ltext.append("  Counts    = {:10,.0f}  Counts calculated as: Average CPM * Log-Duration[min]\n".format(logVar_avg * logtime_delta * 24 * 60))
 
-    elif gglobs.Yunit == "CPM" and (vname in ("CPS", "CPS1st", "CPS2nd")):
+    elif gglobs.Yunit == "CPM" and (vname in ("CPS", "CPS1st", "CPS2nd", "CPS3rd")):
         ltext.append("  Counts    = {:10,.0f}  Counts calculated as: Average CPS * Log-Duration[sec]\n".format(logVar_avg * logtime_delta * 24 * 60 * 60))
 
     else:
         ltext.append("")
 
+    #~print("----------------vname: ", vname)
     ltext.append("                       % of avg")
     ltext.append("  Average   ={:8.2f}      100%       Min  ={:8.2f}        Max  ={:8.2f}" .format(logVar_avg,                              logVar_min,          logVar_max)          )
-    ltext.append("  Variance  ={:8.2f} {:8.2f}%"                                          .format(logVar_var,  logVar_var  / logVar_avg * 100.))
-    ltext.append("  Std.Dev.  ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_std,  logVar_std  / logVar_avg * 100.,  logVar_avg-logVar_std,  logVar_avg+logVar_std)  )
-    ltext.append("  Sqrt(Avg) ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_sqrt, logVar_sqrt / logVar_avg * 100.,  logVar_avg-logVar_sqrt, logVar_avg+logVar_sqrt) )
-    ltext.append("  Std.Err.  ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_err,  logVar_err  / logVar_avg * 100.,  logVar_avg-logVar_err,  logVar_avg+logVar_err) )
-    ltext.append("  Median    ={:8.2f} {:8.2f}%       P_5% ={:8.2f}        P_95%={:8.2f}" .format(logVar_med,  logVar_med  / logVar_avg * 100., np.nanpercentile(logVar, 5), np.nanpercentile(logVar, 95)))
-    ltext.append("  95% Conf*)={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_95,   logVar_95   / logVar_avg * 100.,  logVar_avg-logVar_95,   logVar_avg+logVar_95)   )
+    if logVar_avg != 0:
+        ltext.append("  Variance  ={:8.2f} {:8.2f}%"                                          .format(logVar_var,  logVar_var  / logVar_avg * 100.))
+        ltext.append("  Std.Dev.  ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_std,  logVar_std  / logVar_avg * 100.,  logVar_avg-logVar_std,         logVar_avg+logVar_std)  )
+        ltext.append("  Sqrt(Avg) ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_sqrt, logVar_sqrt / logVar_avg * 100.,  logVar_avg-logVar_sqrt,        logVar_avg+logVar_sqrt) )
+        ltext.append("  Std.Err.  ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_err,  logVar_err  / logVar_avg * 100.,  logVar_avg-logVar_err,         logVar_avg+logVar_err) )
+        ltext.append("  Median    ={:8.2f} {:8.2f}%       P_5% ={:8.2f}        P_95%={:8.2f}" .format(logVar_med,  logVar_med  / logVar_avg * 100.,  np.nanpercentile(logVar, 5),   np.nanpercentile(logVar, 95)))
+        ltext.append("  95% Conf*)={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_95,   logVar_95   / logVar_avg * 100.,  logVar_avg-logVar_95,          logVar_avg+logVar_95)   )
+    else:
+        ltext.append("  Variance  ={:8.2f}  {:>8s}"                                             .format(logVar_var,  "N.A."))
+        ltext.append("  Std.Dev.  ={:8.2f}  {:>8s}       LoLim={:8.2f}        HiLim={:8.2f}"   .format(logVar_std,  "N.A."                         ,  logVar_avg-logVar_std,         logVar_avg+logVar_std)  )
+        ltext.append("  Sqrt(Avg) ={:8.2f}  {:>8s}       LoLim={:8.2f}        HiLim={:8.2f}"   .format(logVar_sqrt, "N.A."                         ,  logVar_avg-logVar_sqrt,        logVar_avg+logVar_sqrt) )
+        ltext.append("  Std.Err.  ={:8.2f}  {:>8s}       LoLim={:8.2f}        HiLim={:8.2f}"   .format(logVar_err,  "N.A."                         ,  logVar_avg-logVar_err,         logVar_avg+logVar_err) )
+        ltext.append("  Median    ={:8.2f}  {:>8s}       P_5% ={:8.2f}        P_95%={:8.2f}"   .format(logVar_med,  "N.A."                         ,  np.nanpercentile(logVar, 5),   np.nanpercentile(logVar, 95)))
+        ltext.append("  95% Conf*)={:8.2f}  {:>8s}       LoLim={:8.2f}        HiLim={:8.2f}"   .format(logVar_95,   "N.A."                         ,  logVar_avg-logVar_95,          logVar_avg+logVar_95)   )
 
     return "\n".join(ltext)
 
@@ -128,6 +139,8 @@ def printStats():
     if gglobs.logTime is None:
         gglobs.exgg.showStatusMessage("No data available") # when called without a loaded file
         return
+
+    gglobs.exgg.setBusyCursor()
 
     logSize          = logTime.size
     logtime_size     = logTime.size
@@ -142,12 +155,12 @@ def printStats():
     lstats.setLineWrapMode(QTextEdit.NoWrap)
     lstats.setTextInteractionFlags(Qt.LinksAccessibleByMouse|Qt.TextSelectableByMouse)
 
-    lstats.append("from file: {}\n".format(gglobs.currentDBPath))
+    lstats.append("Data from file: {}\n".format(gglobs.currentDBPath))
     lstats.append("Totals")
     lstats.append("  Filesize  = {:12,.0f} Bytes".format(os.path.getsize(gglobs.currentDBPath)))
     lstats.append("  Records   = {:12,.0f} shown in current plot".format(logSize))
     lstats.append("")
-    lstats.append("Legend:   *): Approx. valid for a Poisson Distribution when Average > 10\n")
+    lstats.append("Legend:   *): Approximately valid for a Poisson Distribution when Average > 10\n")
     lstats.append("="*100)
 
     lstats.append("Time")
@@ -190,6 +203,8 @@ def printStats():
     layoutV = QVBoxLayout(d)
     layoutV.addWidget(lstats)
     layoutV.addWidget(bbox)
+
+    gglobs.exgg.setNormalCursor()
 
     d.exec_()
 
@@ -252,8 +267,12 @@ def pushToWeb():
     lendata = len(cpmdata)
     CPM     = np.mean(cpmdata)
     ACPM    = CPM
-    #print("gglobs.calibration:", gglobs.calibration)
-    uSV     = CPM * gglobs.calibration  # gglobs.calibration may be 'auto' if no device connected!
+
+    if gglobs.calibration1st == "auto":
+        uSV = 0
+    else:
+        uSV = CPM / gglobs.calibration1st  # gglobs.calibration1st, 2nd, 3rd may be 'auto' if no device connected!
+    #~print("gglobs.calibration1st:", gglobs.calibration1st, "CPM:", CPM, "ACPM:", ACPM, "uSV:", uSV)
 
     #Defintions valid only for GMCmap.com
     data         = {}
@@ -333,43 +352,81 @@ def pushToWeb():
         efprint(answer.decode('UTF-8'))
 
 
-def selectPlotVars():
-    """Selecting the vars for the scatter plot"""
+def selectScatterPlotVars():
+    """Selecting the vars for the scatter plot and display and fit options"""
+
+    global xt, yt, vline, zero, FitFlag, FitSelector # to keep the selectios
 
     if gglobs.logTime is None:              # when called without a loaded file
         gglobs.exgg.showStatusMessage("No data available")
         return
 
-    # X-axis vars
+    # X-axis and Y-axis vars
     xlist = QListWidget()
-    for vname in gglobs.varnames:
-        xlist.addItem(vname)
-    xlist.setCurrentRow(0)
-    xlist.setMinimumHeight(270)
-
-    # Y-axis vars
+    xlist.setSelectionMode(QAbstractItemView.SingleSelection)
+    xlist.addItem("time")
     ylist = QListWidget()
-    for vname in gglobs.varnames:
-        ylist.addItem(vname)
-    ylist.setCurrentRow(0)
+    ylist.setSelectionMode(QAbstractItemView.SingleSelection)
+    ylist.addItem("time")
+    for i, vname in enumerate(gglobs.varnames):
+        if gglobs.varcheckedCurrent[vname]:
+            #~print("gglobs.varcheckedCurrent[vname]: ", vname,  gglobs.varcheckedCurrent[vname])
+            xlist.addItem(gglobs.vardict[vname][0])
+            ylist.addItem(gglobs.vardict[vname][0])
+
+    if xt == 0:
+        xlist.setCurrentRow(0)
+        ylist.setCurrentRow(0)
+    else:
+        for i in range(len(xlist)):
+            if xlist.item(i).text() == xt: xlist.setCurrentRow(i)
+            if ylist.item(i).text() == yt: ylist.setCurrentRow(i)
 
     # force origin to zero?
-    layoutT = QHBoxLayout()
-    b0 = QRadioButton("No Forcing")
-    layoutT.addWidget(b0)
-    b1 = QRadioButton("Force X=0")
-    layoutT.addWidget(b1)
-    b2 = QRadioButton("Force Y=0")
-    layoutT.addWidget(b2)
-    b3 = QRadioButton("Force X,Y=0     ")
-    b3.setChecked(True)
-    layoutT.addWidget(b3)
+    b0 = QRadioButton("Show Optimal ")             # this is default
+    b1 = QRadioButton("Show X=0")
+    b2 = QRadioButton("Show Y=0")
+    b3 = QRadioButton("Show X,Y=0")
 
-    # draw lines?
-    checkb  = QCheckBox("Connecting Line")
-   # checkb.setLayoutDirection(Qt.RightToLeft)
-    checkb.setChecked(True)
+    if   zero == "None"      : b0.setChecked(True)
+    elif zero == "x"         : b1.setChecked(True)
+    elif zero == "y"         : b2.setChecked(True)
+    elif zero == "x and y"   : b3.setChecked(True)
+    else                     : b0.setChecked(True)
+
+    # draw connecting lines?
+    checkb  = QCheckBox("Connecting Line")      # default is yes
+    checkb.setChecked(vline)
+
+    layoutT = QHBoxLayout()
+    layoutT.addWidget(b3)
+    layoutT.addWidget(b1)
+    layoutT.addWidget(b2)
+    layoutT.addWidget(b0)
+
     layoutT.addWidget(checkb)
+    layoutT.addStretch()
+
+    # add polynomial fit?                         default is yes
+    checkF = QCheckBox("Add Polynomial Fit   of order:")
+    checkF.setChecked(FitFlag)
+
+    # selector for order of fit                   default is 1st order = linear
+    cboxF = QComboBox()
+    cboxF.addItems(["Prop", "0", "1", "2", "3", "4", "5", "6", "7"])
+    cboxF.setMaximumWidth(70)
+    cboxF.setToolTip('Select the degree of the polynomial fit')
+    #~print("-------------FitSelector: ", FitSelector)
+
+    if FitSelector == "Prop":
+        cboxF.setCurrentIndex(0)
+    else:
+        cboxF.setCurrentIndex(int(FitSelector) + 1)
+
+    layoutF = QHBoxLayout()
+    layoutF.addWidget(checkF)
+    layoutF.addWidget(cboxF)
+    layoutF.addStretch()
 
     bbox = QDialogButtonBox()
     bbox.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok )
@@ -389,6 +446,7 @@ def selectPlotVars():
     d.setFont(gglobs.exgg.fontstd)
     d.setWindowTitle("Select Variables for Scatter Plot")
     d.setWindowModality(Qt.ApplicationModal)
+    d.setMinimumHeight(350)
     #d.setWindowModality(Qt.NonModal)
     #d.setWindowModality(Qt.WindowModal)
     d.setStyleSheet("QLabel { background-color:#DFDEDD; color:rgb(40,40,40); font-size:30px; font-weight:bold;}")
@@ -397,21 +455,20 @@ def selectPlotVars():
     layoutV.addLayout(layoutH0)
     layoutV.addLayout(layoutH)
     layoutV.addLayout(layoutT)
+    layoutV.addLayout(layoutF)
     layoutV.addWidget(bbox)
 
-    retval = d.exec_()
+    retval = d.exec()
     #print("reval:", retval)
     if retval != 100: return  # ESC key produces 0
 
-    xt      = xlist.currentItem().text()
-    yt      = ylist.currentItem().text()
-    vline   = checkb.isChecked()
-
-    #print("x:", xt, ",  y:", yt)
-    #print("b0, b1, b2, b3;", b0, b1, b2, b3)
-    #print("b0, b1, b2, b3;", b0.text(), b1.text(), b2.text(), b3.text())
-    #print("b0, b1, b2, b3;", b0.isChecked(), b1.isChecked(), b2.isChecked(), b3.isChecked())
-    #print("check:", vline)
+    #~print("xlist.currentItem(): ", xlist.currentItem().text())
+    #~print("ylist.currentItem(): ", ylist.currentItem().text())
+    xt          = xlist.currentItem().text()
+    yt          = ylist.currentItem().text()
+    vline       = checkb.isChecked()
+    FitFlag     = checkF.isChecked()
+    FitSelector = cboxF.currentText()
 
     if   b0.isChecked():  zero = "None"
     elif b1.isChecked():  zero = "x"
@@ -419,39 +476,50 @@ def selectPlotVars():
     elif b3.isChecked() : zero = "x and y"
     else                : zero = "None"
 
-    plotScatter(xt,yt, vline, zero)
+    plotScatter(xt, yt, vline, zero, FitFlag, FitSelector)
 
 
-def plotScatter(vx, vy, vline, zero):
+def plotScatter(vx, vy, vline, zero, FitFlag, FitSelector):
     """Plotting a Scatter plot"""
 
-    wprint("plotScatter: x:{}, y:{}, vline:{}, zero:{}".format(vx, vy, vline, zero))
+    vprint("plotScatter: x:{}, y:{}, vline:{}, zero:{}, FitFlag:{}, FitSelector:{}".format(vx, vy, vline, zero, FitFlag, FitSelector))
 
     # Plotstyle
-    if vline: linestyle = 'solid'
-    else:     linestyle = 'none'
-
     plotstyle        = {'color'             : 'black',
-                        'linestyle'         : linestyle,
+                        'linestyle'         : 'solid' if vline else 'none',
                         'linewidth'         : '0.5',
-                        'label'             : '',
+                        'label'             : 'testlabel',
                         'markeredgecolor'   : 'black',
                         'marker'            : 'o',
-                        'markersize'        : '30',
+                        'markersize'        : '60',
                         'alpha'             : 1,
                         }
+
     if gglobs.currentDBPath is None: DataSrc = "No Data source!"
     else:                            DataSrc = os.path.basename(gglobs.currentDBPath)
 
-    try:
-        x0 = gglobs.logSlice[vx]
-        y0 = gglobs.logSlice[vy]
-    except Exception as e:
-        fprint(header("Plot Scatter"))
-        fprint("ERROR in plotScatter: Exception: e:", e)
-        return
-        #x0 = np.asarray([1,2,3,4,5])
-        #y0 = np.asarray([6,7,8,9,10])
+    localvardict = gglobs.vardict
+    localvardict.update( {'time' : ('time [d]', 'time') } )
+
+    if vx == "time":
+        x0 = gglobs.logTimeDiffSlice
+    else:
+        try:
+            x0 = gglobs.logSlice[vx]
+        except Exception as e:
+            fprint(header("Plot Scatter"))
+            fprint("ERROR in plotScatter: Exception: e:", e)
+            return
+
+    if vy == "time":
+        y0 = gglobs.logTimeDiffSlice
+    else:
+        try:
+            y0 = gglobs.logSlice[vy]
+        except Exception as e:
+            fprint(header("Plot Scatter"))
+            fprint("ERROR in plotScatter: Exception: e:", e)
+            return
 
     ymask                   = np.isfinite(y0)      # mask for nan values
     y1                      = y0[ymask]
@@ -461,30 +529,30 @@ def plotScatter(vx, vy, vline, zero):
     y                       = y1[xmask]
     x                       = x1[xmask]
 
-    if y.size > 0:
-        plotstyle['markersize'] = float(plotstyle['markersize']) / np.sqrt(y.size)
-    else:
-        plotstyle['markersize'] = 3
+    if y.size > 0:  plotstyle['markersize'] = float(plotstyle['markersize']) / np.sqrt(y.size)
+    else:           plotstyle['markersize'] = 3
 
-    fig2 = plt.figure(2, facecolor = "#E7F9C9")
-    plt.clf()
+    fig2 = plt.figure(facecolor = "#E7F9C9")
+    gglobs.plotScatterFigNo = plt.gcf().number
+    vprint("plotScatter: open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
+
     plt.title("Scatter Plot\n", fontsize=12, loc='center')
     subTitleLeft  = DataSrc
     subTitleRight = "Recs:" + str(len(x))
     plt.title(subTitleLeft,  fontsize=10, fontweight='normal', loc = 'left')
     plt.title(subTitleRight, fontsize=10, fontweight='normal', loc = 'right')
 
-    plt.xlabel("x = " + gglobs.vardict[vx][0], fontsize=12)
-    plt.ylabel("y = " + gglobs.vardict[vy][0], fontsize=12)
+    plt.xlabel("x = " + localvardict[vx][0], fontsize=12)
+    plt.ylabel("y = " + localvardict[vy][0], fontsize=12)
 
     plt.grid(True)
-    #plt.subplots_adjust(hspace=None, wspace=.2 , left=.17, top=0.85, bottom=0.15, right=.97)
-    plt.subplots_adjust(hspace=None, wspace=.2 , left=.1, top=0.90, bottom=0.1, right=.97)
+    plt.subplots_adjust(hspace=None, wspace=.2 , left=.15, top=0.90, bottom=0.1, right=.97)
     plt.ticklabel_format(useOffset=False)
 
     # hide the cursor position from showing in the Nav toolbar
     ax1 = plt.gca()
     ax1.format_coord = lambda x, y: ""
+    #fig2.canvas.toolbar.set_message = lambda x: "" # suppress all messages???
 
     # canvas - this is the Canvas Widget that displays the `figure`
     # it takes the `figure` instance as a parameter to __init__
@@ -494,12 +562,11 @@ def plotScatter(vx, vy, vline, zero):
 
     labout  = QTextBrowser() # label to hold the description
     labout.setFont(gglobs.exgg.fontstd)
-    labout.setMinimumHeight(60)
+    labout.setMinimumHeight(210)
     txtlines  = "Connecting lines are {}drawn".format("" if vline else "not ")
     txtorigin = "an origin of zero is enforced for {}".format(zero)
-    labout.setText("Scatter Plot of y = {} versus x = {}.".format(gglobs.vardict[vy][0], gglobs.vardict[vx][0]))
+    labout.setText("Scatter Plot of y = {} versus x = {}.".format(localvardict[vy][0], localvardict[vx][0]))
     labout.append("{}; {}.".format(txtlines, txtorigin))
-#    labout.append("Blue line is: y=x")
 
     d = QDialog()
     gglobs.plotScatterPointer = d
@@ -509,7 +576,6 @@ def plotScatter(vx, vy, vline, zero):
     #d.setWindowModality(Qt.NonModal)
     d.setWindowModality(Qt.WindowModal)
 
-
     okButton = QPushButton("OK")
     okButton.setCheckable(True)
     okButton.setAutoDefault(True)
@@ -518,7 +584,7 @@ def plotScatter(vx, vy, vline, zero):
     selectButton = QPushButton("Select")
     selectButton.setCheckable(True)
     selectButton.setAutoDefault(False)
-    selectButton.clicked.connect(lambda:  nextScatter())
+    selectButton.clicked.connect(lambda:  nextScatterPlot())
 
     bbox = QDialogButtonBox()
     bbox.addButton(okButton,                QDialogButtonBox.ActionRole)
@@ -528,7 +594,7 @@ def plotScatter(vx, vy, vline, zero):
     layoutH.addWidget(bbox)
     layoutH.addWidget(navtoolbar)
     layoutH.addStretch()
-    layoutH.addStretch() # not enough with single stretch !!!
+    layoutH.addStretch()        # not enough with single stretch !!!
 
     layoutV = QVBoxLayout(d)
     layoutV.addLayout(layoutH)
@@ -537,77 +603,94 @@ def plotScatter(vx, vy, vline, zero):
 
     plt.plot(x, y, **plotstyle) # need to plot first, so xlim, ylim become available!
 
-    # draws y=x as blue line
-    xlim = ax1.get_xlim() # xlim is tuple
+    xlim = ax1.get_xlim()       # xlim is tuple
     ylim = ax1.get_ylim()
-    xymax = max(xlim[1], ylim[1])
-    xymin = min(0, xlim[0], ylim[0])
 
-# Do NOT draw the blue y=x line - could be confusing
-#    plt.plot([xymin, xymax], [xymin, xymax])
+    labout.append("\nPolynomial Coefficients of the Least-Squares-Regression Fit:")
+    labout.append("Lowest power first: y = #0 + #1 * x + #2 * x² + #3 * x³ + ...")
 
-    # resets the limit to state before blue line was drawn
-    ax1.set_ylim(ylim)
-    ax1.set_xlim(xlim)
+    if FitFlag:
+        if FitSelector != "Prop":
+            pfit = np.polyfit(x, y, int(FitSelector))
+            dprint("plotScatter: pfit: ", pfit)
+            for i,f in enumerate(np.flip(pfit)):
+                labout.append("#{:d} : {: .4g}".format(i, f))
 
-    if   zero == "x" :
-        plt.xlim(left   = 0)
-    elif zero == "y" :
-        plt.ylim(bottom = 0)
+            p  = np.poly1d(pfit)
+            xs = sorted(x)
+            plt.plot(xs, p(xs), color="red", marker=None, linestyle="solid", linewidth=2)
+        else:
+            def func(x, a):
+                return a * x
+
+            from scipy.optimize import curve_fit
+            popt, pcov = curve_fit(func, x, y)
+            dprint("plotScatter: curve_fit: popt, pcov, perr: ", popt, pcov, np.sqrt(np.diag(pcov)))
+            labout.append("#0 : {: .4g} (Prop)".format(0))
+            labout.append("#1 : {: .4g}".format(popt[0]))
+
+            #~plt.plot(x, func(x, *popt), color="green", marker=None, linestyle="solid", linewidth=2)
+            plt.plot(x, func(x, *popt), color="red", marker=None, linestyle="solid", linewidth=2)
+
+
+    if   zero == "x" :      plt.xlim(left   = 0)
+    elif zero == "y" :      plt.ylim(bottom = 0)
     elif zero == "x and y":
         plt.ylim(bottom = 0)
         plt.xlim(left   = 0)
-    elif zero == "None":
-        pass
+    elif zero == "None":    pass
 
-# show window
+    # show window
     fig2.canvas.draw_idle()
-    d.exec_()
+    d.exec()
+    plt.close(gglobs.plotScatterFigNo)
 
 
-def nextScatter():
+def nextScatterPlot():
     """closes the dialog and reopens the var selection """
 
     #print("nextScatter: ")
+    gglobs.plotScatterPointer.close()   # closes the dialog
+    plt.close(gglobs.plotScatterFigNo)  # closes the figure
+    selectScatterPlotVars()
 
-    gglobs.plotScatterPointer.close()
-    selectPlotVars()
 
-
-def plotAudio(dtype="Multi Pulse", duration=None):
+def plotAudio(dtype="Single Pulse", duration=None):
     """Plotting an audio plot"""
 
-    data = gglobs.AudioPlotTotal
-    #print("plotAudio: dtype:{}, data:{}".format(dtype, data))
-    #print("plotAudio: dtype: {}".format(dtype))
+    fncname = "plotAudio: "
+
+    #~data = gglobs.AudioMultiPulses
+    data = gglobs.AudioPlotData
+    #print(fncname + "dtype:{}, data:{}".format(dtype, data))
+    #print(fncname + "dtype: {}".format(dtype))
 
     # if a recording, then crop it otherwise next Multi will show recording space
-    if len(data) > 40 * (gglobs.AudioChunk +10):
-        gglobs.AudioPlotTotal = gglobs.AudioPlotTotal[-(gglobs.AudioChunk + 10):]
+    # doesn't this curt recordings also??????
+    #~if len(data) > 40 * (gglobs.AudioChunk +10):
+        #~gglobs.AudioMultiPulses = gglobs.AudioMultiPulses[-(gglobs.AudioChunk + 10):]
 
     subTitle = dtype
-    flag     = False
+    #~flag     = False
 
-    if data is None :
-        data     = [0] * gglobs.AudioChunk
-        subTitle = "No data"
-        flag     = True
+    #~if data is None :
+        #~data     = [0] * gglobs.AudioChunk
+        #~subTitle = "No data"
+        #~flag     = True
 
-    else:
-        if dtype == "Toggle": dtype = "Multi Pulse"
+    #~else:
+    #~if dtype == "Toggle": dtype = "Multi Pulse"
 
-        if   dtype == "Single Pulse":
-            pass
+    if   dtype == "Single Pulse":
+        pass
 
-        elif dtype == "Multi Pulse":
-            count     = len(data) / (gglobs.AudioChunk + 10) # 10 is: nan values as gap
-            subTitle += " - {:1.0f} pulses shown".format(count)
+    elif dtype == "Multi Pulse":
+        count     = len(data) / (gglobs.AudioChunk + 10) # 10 is: nan values as gap
+        subTitle += " - {:1.0f} pulses shown".format(count)
 
-        elif dtype == "Recording":
-            subTitle += " - {:1.0f} seconds".format(duration)
+    elif dtype == "Recording":
+        subTitle += " - {:1.0f} second".format(duration)
 
-        else:
-            subTitle = "programming error - undefined dtype: '{}'".format(dtype)
 
     # Plotstyle
     plotstyle        = {'color'             : 'black',
@@ -619,9 +702,11 @@ def plotAudio(dtype="Multi Pulse", duration=None):
                         'markersize'        : '1',
                         'alpha'             : 1,
                         }
+    plt.close(99)
 
-    fig2 = plt.figure(22, facecolor = "#E7F9C9")
-    plt.clf()
+    fig2 = plt.figure(99, facecolor = "#E7F9C9")
+    vprint(fncname + "open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
+
     plt.title("AudioCounter Device\n", fontsize=14, loc='center')
     plt.title("Audio Input", fontsize=10, fontweight='normal', loc = 'left')
     plt.title(subTitle, fontsize=10, fontweight='normal', loc = 'right')
@@ -637,45 +722,45 @@ def plotAudio(dtype="Multi Pulse", duration=None):
     # canvas - this is the Canvas Widget that displays the `figure`
     # it takes the `figure` instance as a parameter to __init__
     canvas2 = FigureCanvas(fig2)
-    canvas2.setFixedSize(1000, 450)
+    canvas2.setFixedSize(1000, 550)
     navtoolbar = NavigationToolbar(canvas2, gglobs.exgg)
 
-    labout = QTextBrowser()                    # label to hold the description
+    labout = QTextBrowser()                       # label to hold the description
     labout.setFont(gglobs.exgg.fontstd)           # my std font for easy formatting
     labout.setText("")
 
-    mtext1  = ""
-    mtext1 +=   "Sample Format:    {}"                    .format(gglobs.AudioFormatText)
-    mtext1 += "\nSampled Channels: {} (1=Mono, 2=Stereo)" .format(gglobs.AudioChannels)
-    mtext1 += "\nSampling rate:    {} per second"         .format(gglobs.AudioRate)
+    mtext1  =   "Device:           Input:'{}', Output:'{}'" .format(sd.default.device[0], sd.default.device[1])
+    mtext1 += "\nSample Format:    {}"                      .format(gglobs.AudioFormat)
+    mtext1 += "\nSampled Channels: {} (1=Mono, 2=Stereo)"   .format(gglobs.AudioChannels)
+    mtext1 += "\nSampling rate:    {} per second"           .format(gglobs.AudioRate)
+    mtext1 += "\nSamples:          {} per read"             .format(gglobs.AudioChunk)
+    mtext1 += "\nPulse Height Max: ±{} "                    .format(gglobs.AudioPulseMax)
+    mtext1 += "\nPulse Threshold:  {} %"                    .format(gglobs.AudioThreshold)
+    mtext1 += "\nPulse Direction:  {} "                     .format(("POSITIVE" if gglobs.AudioPulseDir else "NEGATIVE"))
 
-    mtext2 = ""
-    mtext2 += "\nSamples:          {} per read"           .format(gglobs.AudioChunk)
-    mtext2 += "\nPulse Height Max: ±{} "                  .format(gglobs.AudioPulseMax)
-    mtext2 += "\nPulse Threshold:  {} %"                  .format(gglobs.AudioThreshold)
-    mtext2 += "\nPulse Direction:  {} "                   .format(("POSITIVE" if gglobs.AudioPulseDir else "NEGATIVE"))
+    #~if flag:
+        #~labout.append("No data; is the AudioCounter Device connected? Try the Recording button")
+    #~else:
+    if   dtype == "Single Pulse":
+        labout.append("Showing the last detected AudioCounter pulse")
+        #~labout.append(mtext1)
 
-    if flag:
-        labout.append("No data; is the AudioCounter Device connected? Try the Recording button")
-    else:
-        if   dtype == "Single Pulse":
-            labout.append("Showing the last detected AudioCounter pulse")
-            labout.append(mtext1 + mtext2)
+    elif dtype == "Multi Pulse":
+        labout.append("Showing the last (up to 40) detected AudioCounter pulses")
+        #~labout.append(mtext1)
 
-        elif dtype == "Multi Pulse":
-            labout.append("Showing the last (up to 40) detected AudioCounter pulses")
-            labout.append(mtext1 + mtext2)
+    elif dtype == "Recording":
+        #~if duration == 0:
+            #~labout.append("FAILURE - try the Recording button again")
+        #~else:
+        labout.append("Showing a straight recording of {} second - no pulse detection applied".format(duration))
+        #~labout.append(mtext1)
 
-        elif dtype == "Recording":
-            if duration == 0:
-                labout.append("FAILURE - try the Recording button again")
-            else:
-                labout.append("Showing a straight recording of {} seconds - no pulse detection applied".format(duration))
-                labout.append(mtext1  + mtext2)
+    labout.append(mtext1)
 
-        else:
-            subTitle = "programming error - undefined dtype: '{}'".format(dtype)
-            labout.append(subTitle)
+        #~else:
+            #~subTitle = "programming error - undefined dtype: '{}'".format(dtype)
+            #~labout.append(subTitle)
 
     d = QDialog()
     gglobs.plotAudioPointer = d
@@ -732,11 +817,12 @@ def plotAudio(dtype="Multi Pulse", duration=None):
     plt.ylabel("Amplitude [rel]", fontsize=14)
     plt.ylim(-35000, 35000)
 
-    x = np.arange(len(data)) * 1 / gglobs.AudioRate * 1000 # x-axis data
+    x = np.arange(len(data)) * 1 / gglobs.AudioRate * 1000 # create the x-axis data
     plt.plot(x, data,  **plotstyle)
     #d.update() # "Updates the widget unless updates are disabled or the widget is hidden."
 
     fig2.canvas.draw_idle()
+    playWav("ok")
     d.exec_()
 
 
@@ -745,40 +831,51 @@ def reloaddata(dtype):
 
     #print("reloaddata: ", dtype)
 
-    try: # fails if it had never been opened; but then it is closed
+    try: # fails if it had never been opened; but then it is closed anyway
         gglobs.plotAudioPointer.close()
     except:
         pass
+
+    # when a recording was last, then gglobs.AudioMultiPulses will be 44100 samples long,
+    # but even Multi needs only 40*(single pulse + 10) => 1680. Therfore crop it,
+    # otherwise next Multi will show samples from recording
+    if len(gglobs.AudioMultiPulses) > (40 * (gglobs.AudioChunk + 10)):
+        #~gglobs.AudioMultiPulses = gglobs.AudioMultiPulses[-(gglobs.AudioChunk + 10):]
+        gglobs.AudioMultiPulses =  np.array([0])
+
     duration = None
 
     if   dtype == "Single Pulse":
-        gglobs.AudioPlotTotal = gglobs.AudioPlotTotal[-(gglobs.AudioChunk + 10):] # last pulse only
+        gglobs.AudioPlotData = gglobs.AudioMultiPulses[-(gglobs.AudioChunk):] # last pulse only without nan
+        #gglobs.AudioMultiPulses = gglobs.AudioMultiPulses[-(gglobs.AudioChunk):] # last pulse only without nan
 
     elif dtype == "Multi Pulse":
-        #gglobs.AudioPlotTotal = gglobs.AudioPlotTotal[- (gglobs.AudioChunk + 10):] # last 40 pulses only
-        pass
+        pass    # will show all, i.e. up to last 40 pulses
+        gglobs.AudioPlotData = gglobs.AudioMultiPulses
 
-    elif dtype == "Toggle":
-        gglobs.exgg.setBusyCursor()
-        gglobs.AudioPulseDir  = not gglobs.AudioPulseDir
-        gglobs.AudioPlotTotal =     gglobs.AudioPlotTotal[-10:]
-        time.sleep(1)
-        dtype = "Multi Pulse"
-        gglobs.exgg.setNormalCursor()
-
-    else: # Recording
+    elif dtype == "Recording":
         gglobs.exgg.setBusyCursor()
         duration = 1 # seconds
-        duration = gaudio.getLongChunk(duration) # may return 0 on failure
+        #gsounddev.getLongChunk(duration)
+        gglobs.AudioPlotData = gglobs.AudioRecording
         gglobs.exgg.setNormalCursor()
+
+    else: # dtype == "Toggle":
+        gsounddev.toggleSounddevPulseDir()
+        dtype = "Recording"
+        duration = 1 # seconds
+        #~gglobs.AudioPlotData = gglobs.AudioMultiPulses[-(gglobs.AudioChunk):] # last pulse only without nan
+        gglobs.AudioMultiPulses = np.array([0]) # set to empty as old pulses do not make sense
+        gglobs.AudioPlotData    = gglobs.AudioRecording
 
     plotAudio(dtype, duration)
 
 
 def displayLastValues(self):
     """Displays the last values in big letters"""
+    # For the updating see updateDisplayVariableValue()
 
-   # print("+++++++++++++++++++++++++++++++++++++displayLastValues was called")
+    # print("+++++++++++++++++++++++++++++++++++++displayLastValues was called")
 
     if gglobs.logConn == None:          return
     if gglobs.displayLastValuesIsOn :   return
@@ -793,8 +890,8 @@ def displayLastValues(self):
     d.setWindowModality(Qt.WindowModal)       # can click anywhere, but also can have open many windows
     #d.setWindowModality(Qt.ApplicationModal) # only one window can be open, but can't click anywhere else
     #d.setWindowModality(Qt.NonModal)         # only one window can be open, but can't click anywhere else
-    d.setMinimumWidth(400)
-    d.setStyleSheet("QLabel { background-color : #DFDEDD; color : rgb(80,80,80); }")
+    d.setMinimumWidth(420)
+    d.setStyleSheet("QLabel {background-color:#DFDEDD; color:rgb(80,80,80);}")
 
     bbox    = QDialogButtonBox()
     bbox.setStandardButtons(QDialogButtonBox.Ok)
@@ -812,9 +909,10 @@ def displayLastValues(self):
     t1 = QLabel("Variable")
     t1.setStyleSheet("QLabel {color: #111111; font-size:20px; font-weight:bold;}")
     t2 = QLabel("Device")
-    t2.setStyleSheet("QLabel {color: #111111; font-size:20px; font-weight:bold; qproperty-alignment: AlignCenter;}")
+    t2.setStyleSheet("QLabel {color: #111111; font-size:20px; font-weight:bold; qproperty-alignment:AlignCenter;}")
     t3 = QLabel("Value")
-    t3.setStyleSheet("QLabel {color: #111111; font-size:20px; font-weight:bold; qproperty-alignment: AlignCenter;}")
+    t3.setStyleSheet("QLabel {color: #111111; font-size:20px; font-weight:bold; qproperty-alignment:AlignCenter;}")
+    #~ t3.setStyleSheet("QLabel {color: #111111; font-size:20px; font-weight:bold; qproperty-alignment:AlignRight;}")
     gridlo.addWidget(t1,    0, 0)
     gridlo.addWidget(t2,    0, 1)
     gridlo.addWidget(t3,    0, 2)
@@ -827,18 +925,18 @@ def displayLastValues(self):
             dlabels[i] = QLabel(" ")
 
             if not gglobs.varcheckedLog[vname]:
-                val = "{:>16s}".format("not mapped")
+                val = "{:>18s}".format("not mapped")
             else:
                 #if not np.isnan(gglobs.lastValues[vname][0]):
                 if not np.isnan(gglobs.lastValues[vname]):
                     #val = "{:>8.2f}".format(gglobs.lastValues[vname][0])
-                    val = "{:>8.2f}".format(gglobs.lastValues[vname])
+                    val = "{:>10.2f}".format(gglobs.lastValues[vname])
                 else:
-                    val = "{:>8s}".format("  --- ")
+                    val = "{:>10s}".format("  --- ")
             gglobs.exgg.vlabels[i] = QLabel(val)
             gglobs.exgg.vlabels[i].setFont(QFont("Monospace", 22, weight=QFont.Black))
             if gglobs.logging and gglobs.varcheckedLog[vname]:
-                gglobs.exgg.vlabels[i].setStyleSheet("QLabel {background-color : #F4D345; color : black; }")
+                gglobs.exgg.vlabels[i].setStyleSheet("QLabel {background-color:#F4D345; color:black; }")
             elif not gglobs.logging and gglobs.varcheckedLog[vname]:
                 gglobs.exgg.vlabels[i].setStyleSheet("QLabel {color:darkgray; }")
             else:
@@ -852,9 +950,9 @@ def displayLastValues(self):
                 dlabels[i].setAlignment(Qt.AlignCenter)
                 dlabels[i].setStyleSheet("QLabel {color:#111111; font-size:14px;}")
 
-            gridlo.addWidget(klabels[i],            i + 1, 0)
-            gridlo.addWidget(dlabels[i],            i + 1, 1)
-            gridlo.addWidget(gglobs.exgg.vlabels[i],  i + 1, 2)
+            gridlo.addWidget(klabels[i],             i + 1, 0)
+            gridlo.addWidget(dlabels[i],             i + 1, 1)
+            gridlo.addWidget(gglobs.exgg.vlabels[i], i + 1, 2)
 
     layoutV.addLayout(gridlo)
 

@@ -25,7 +25,7 @@ gi2c.py - I2C support; limited to dongle ELV with Sensors BME280 and TSL2591
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -155,7 +155,7 @@ def getI2CValues(varlist):
             vir                 = round(scaleVarValues(vname, ir , gglobs.ValueScale[vname]), 2)
             alldata.update(       {vname: vir})
 
-    vprint("{:20s}:  Variables:{}  Data:{}  ".format("getI2CValues", varlist, alldata))
+    vprint("{:20s}:  Variables:{}  Data:{}".format("getI2CValues", varlist, alldata))
 
     return alldata
 
@@ -179,15 +179,19 @@ def getI2CInfo(extended = False, first=False):
         BME280info  = gglobs.bme280['hndl'].BME280getInfo()
         TSL2591info = gglobs.tsl2591['hndl'].TSL2591getInfo()
 
+        gglobs.I2CDeviceDetected = ELVinfo[0]
+
         info  = "{:30s}{}\n"  .format("Connected Device:", "Dongle: {}".format(ELVinfo[0]))
         info += "{:30s}{}\n"  .format("Configured Variables:", gglobs.I2CVariables)
         if extended: info += "\n".join(ELVinfo[1:]) + "\n"
 
         info += "{:30s}{}\n".format("with Sensor:", BME280info[0])
         if extended: info += "\n".join(BME280info[1:])
+        gglobs.I2CSensor1 = BME280info[0]
 
         info += "{:30s}{}".format("with Sensor:", TSL2591info[0])
         if extended: info += "\n".join(TSL2591info[1:])
+        gglobs.I2CSensor2 = TSL2591info[0]
 
         vprint(info.replace("\n", "  "))
     else:
@@ -197,6 +201,57 @@ def getI2CInfo(extended = False, first=False):
             info = gglobs.I2CInfo
 
     return info
+
+
+
+def I2CautoBAUDRATE(usbport):
+    """Tries to find a proper baudrate by testing for successful serial
+    communication at up to all possible baudrates, beginning with the
+    highest"""
+
+    """
+    NOTE: the device port can be opened without error at any baudrate, even
+    when no communication can be done, e.g. due to wrong baudrate. Therfore we
+    test for successful communication by checking for the return string
+    containing 'ELV'.
+    On success, this baudrate will be returned. A baudrate=0 will be returned
+    when all communication fails. On a serial error, baudrate=None will be returned.
+    """
+
+    fncname = "I2CautoBAUDRATE: "
+    dprint(fncname + "Autodiscovery of baudrate on port: '{}'".format(usbport))
+    setDebugIndent(1)
+
+    baudrates = gglobs.I2Cbaudrates
+    baudrates.sort(reverse=True) # to start with highest baudrate
+    for baudrate in baudrates:
+        dprint(fncname + "Trying baudrate:", baudrate, debug=True)
+        try:
+            ABRser = serial.Serial(usbport, baudrate, timeout=0.5, write_timeout=0.5)
+            ABRser.write(b'<y30?')
+            rec = ABRser.read(140)
+            #print("---------------------" + fncname + "rec: ", rec)
+
+            while ABRser.in_waiting:
+                ABRser.read(1)
+                time.sleep(0.1)
+            ABRser.close()
+            if b"ELV" in rec:
+                dprint(fncname + "Success with {}".format(baudrate), debug=True)
+                break
+
+        except Exception as e:
+            errmessage1 = fncname + "ERROR: autoBAUDRATE: Serial communication error on finding baudrate"
+            exceptPrint(e, sys.exc_info(), errmessage1)
+            baudrate = None
+            break
+
+        baudrate = 0
+
+    dprint(fncname + "Found baudrate: {}".format(baudrate))
+    setDebugIndent(0)
+
+    return baudrate
 
 
 class I2CReader(threading.Thread):

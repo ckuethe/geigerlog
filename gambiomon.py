@@ -2,24 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 """
-AmbioMon++ support for a MQTT connection
-"""
-
-"""
-Installing MQTT on Ubuntu:
-see: https://www.digitalocean.com/community/tutorials/how-to-install-and-secure-the-mosquitto-mqtt-messaging-broker-on-ubuntu-16-04
-site includes steps to set up secure server!
-
-To install the software:
-    sudo apt-get install mosquitto mosquitto-clients
-
-Testing MQTT, assuming mosqitto running on mysite.com:
-Subscribe in terminal 1:
-    mosquitto_sub -v -h mysite.com -t ambiomon/#
-Publish in terminal 2:
-    mosquitto_pub -h mysite.com -t ambiomon/temp -m "hello world"
-You should see in terminal 1:
-    ambiomon/temp hello world
+AmbioMon++ - calling AmbioMon++ running on ESP32
 """
 
 ###############################################################################
@@ -40,117 +23,94 @@ You should see in terminal 1:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = [""]
 __license__         = "GPL3"
 
 from   gutils           import *
-
+import gsql                             # database handling
 
 ###############################################################################
-# BEGIN MQTT Callbacks
-###############################################################################
+# unusedtools
 
-def on_connect(client, userdata, flags, rc):
-    """The callback for when the client receives a CONNACK response from the server"""
+# not used. raw data are binary
+def xxxAMshowDatData():
+    """Show AmbioMon type Raw Data (=CSV, ASCII data) from the database table bin"""
 
-    # The value of rc indicates success or not:
-    strrc = {
-            0: "Connection successful",
-            1: "Connection refused - incorrect protocol version",
-            2: "Connection refused - invalid gglobs.ambio_client identifier",
-            3: "Connection refused - server unavailable",
-            4: "Connection refused - bad username or password",
-            5: "Connection refused - not authorised",
-            # 6-255: Currently unused.
-            }
+    if gglobs.hisConn == None:
+        gglobs.exgg.showStatusMessage("No data available")
+        return
 
-    if rc < 6:     src = strrc[rc]
-    else:          src = "Unexpected Connection Response"
-    gglobs.AmbioConnect = (rc, src)
+    fprint(header("Show History Raw Data"))
+    hist    = gsql.DB_readBinblob(gglobs.hisConn)
+    #print("createLstFromDB: hist:", hist)
+    #print("type Hist data: ", type(hist))
 
-    if rc == 0:
-        gglobs.AmbioConnection = True
+    if hist == None:
+        fprint("No Dat data found in this database", error=True)
+        return
+
+    if isinstance(hist, str):           # data are of type  <class 'str'>
+        gglobs.exgg.setBusyCursor()
+        fprint(hist)
+        gglobs.exgg.setNormalCursor()
+
+    elif isinstance(hist, bytes):       # data are of type <class byte>
+        gglobs.exgg.setBusyCursor()
+
+        histsplit = hist.split(b"\n")
+        for a in histsplit:
+            try:
+                fprint(a.decode("UTF-8"))
+            except Exception as e:
+                fprint(a)
+        gglobs.exgg.setNormalCursor()
+
     else:
-        gglobs.AmbioConnection = False
-
-    dprint(">AmbioMon: on_connect: Client connected:")
-    dprint(">          {:20s}: {}".format("with userdata"     , userdata))
-    dprint(">          {:20s}: {}".format("with flags"        , flags))
-    dprint(">          {:20s}: {}".format("with result"       , src), " (Result Code: {})".format(rc))
-
-    # Subscribing on_connect() means that if we lose the connection and
-    # reconnect then subscriptions will be renewed.
-    #gglobs.ambio_client.subscribe("$SYS/#")
-    gglobs.ambio_client.subscribe(gglobs.AmbioServerFolder + "#", qos=2)
+        fprint("Cannot read the Dat data; possibly not of AmbioMon origin")
 
 
-def on_disconnect (client, userdata, rc):
-    """When the client has sent the disconnect message it generates an on_disconnect() callback."""
+# not used. raw data are binary
+def xxxAMsaveHistDatData():
+    """get the AmbioMon data from the database and save to *.csv file"""
+    # is that needed? can be save to csv anyway
 
-    # The rc parameter indicates the disconnection state.
-    # If MQTT_ERR_SUCCESS (0), the callback was called in response to a
-    # disconnect() call.
-    # If any other value the disconnection was unexpected, such as might be
-    # caused by a network error."""
+    if gglobs.hisConn == None:
+        gglobs.exgg.showStatusMessage("No data available")
+        return
 
-    strrc = {
-            0: "MQTT_ERR_SUCCESS",
-            1: "Unexpected disconnection",
-            }
+    fncname = "AMsaveHistDatData: "
+    fprint(header("Save History Raw Data to File"))
+    fprint("from: {}\n".format(gglobs.hisDBPath))
 
-    if rc == 0:     src = strrc[rc]
-    else:           src = strrc[1]
-    gglobs.AmbioDisconnect = (rc, src)
+    hist    = gsql.DB_readBinblob(gglobs.hisConn)
+    if hist == None:
+        fprint("No data found in this database", error=True)
+        return
+    #vprint(fncname + "hist: type: ", type(hist))
 
-    gglobs.AmbioConnection = False         # it is disconnected in any case
+    newpath = gglobs.hisDBPath + ".csv"
+    if isinstance(hist, str):
+        gglobs.exgg.setBusyCursor()
+        #fprint(hist)
+        writeBinaryFile(newpath, bytes(hist, 'utf-8'))
+        gglobs.exgg.setNormalCursor()
 
-    dprint(">AmbioMon: on_disconnect: Client disconnected:")
-    dprint(">          {:20s}: {}".format("with userdata"     , userdata))
-    dprint(">          {:20s}: {}".format("with result"       , src), "(Result Code: {})".format(rc))
+    elif isinstance(hist, bytes):
+        gglobs.exgg.setBusyCursor()
+        #fprint(hist.decode("UTF-8"))
+        writeBinaryFile(newpath, hist)
+        gglobs.exgg.setNormalCursor()
 
-
-def on_subscribe(client, userdata, mid, granted_qos):
-    """Callback when a subscribe has occured"""
-
-    dprint(">AmbioMon: on_subscribe: Topic subscribed:")
-    dprint(">          {:20s}: {}".format("with userdata"     , userdata))
-    dprint(">          {:20s}: {}".format("with mid"          , mid))
-    dprint(">          {:20s}: {}".format("with granted_qos"  , granted_qos))
-
-
-def on_message(client, userdata, msg):
-    """The callback for when a PUBLISH message is received from the server"""
-
-    # message: an instance of MQTTMessage.
-    # This is a class with members topic, payload, qos, retain.
-
-    vprint(">AmbioMon: on_message: topic: {:20s}, payload: {:10s}, qos: {}, retain: {}".format(msg.topic, str(msg.payload), msg.qos, msg.retain))
-    print("type of msg.payload:", type(msg.payload))
-
-    if   msg.topic == gglobs.AmbioServerFolder + "temp":     gglobs.ambio_temp   = float(msg.payload)    # T
-    elif msg.topic == gglobs.AmbioServerFolder + "pressure": gglobs.ambio_press  = float(msg.payload)    # P
-    elif msg.topic == gglobs.AmbioServerFolder + "humid":    gglobs.ambio_hum    = float(msg.payload)    # H
-    elif msg.topic == gglobs.AmbioServerFolder + "cpm":      gglobs.ambio_cpm    = float(msg.payload)    # R
-    elif msg.topic == gglobs.AmbioServerFolder + "rssi":     gglobs.ambio_rssi   = float(msg.payload)    # rssi
-    #else:                                                print("msg.payload:", msg.payload)       # any
+    vprint(fncname + "saved as file: " + newpath)
+    fprint("saved as file: " + newpath)
 
 
-def on_publish(client, userdata, mid):
-    """ Called when a message that was to be sent using the publish() call
-    has completed transmission to the broker"""
-
-    dprint("on_publish: messageID: mid: ", mid)
-    pass
-
-
-###############################################################################
-# END MQTT Callbacks
-###############################################################################
-
-
-def configureAmbioMon():
+# not used
+def xxxconfigureAmbioMon():
     """Set settings for Ambiomon"""
+
+    if not gglobs.AmbioConnection: return "No connected device"
 
     dprint("configureAmbioMon:")
     setDebugIndent(1)
@@ -161,7 +121,7 @@ def configureAmbioMon():
     avolt  = QLineEdit()
     validator = QDoubleValidator(0, 999, 1, avolt)
     avolt.setValidator(validator)
-    avolt.setToolTip('The anode voltage in volt')
+    avolt.setToolTip('The anode voltage in Volt')
     avolt.setText("{:0.6g}".format(gglobs.AmbioVoltage))
 
     # AM Cycle Time
@@ -191,7 +151,18 @@ def configureAmbioMon():
     pwm.setToolTip('The Pulse Width Modulation fraction of the AmbioMon device')
     pwm.setText("{:0.6g}".format(gglobs.AmbioPwm))
 
+
+    # AM Saving
+    lsav     = QLabel("Saving data to Flash:\n(Yes/No)")
+    lsav.setAlignment(Qt.AlignLeft)
+    sav  = QLineEdit()
+    #validator = QDoubleValidator(0.00, 1.00, 1, sav)
+    #sav.setValidator(validator)
+    sav.setToolTip('To switch AmbioMon into saving data mode (Yes/No)')
+    sav.setText("{:s}".format(gglobs.AmbioSav))
+
     graphOptions=QGridLayout()
+    graphOptions.setContentsMargins(10,10,10,10) # spacing around the graph options
     graphOptions.addWidget(lavolt,          0, 0)
     graphOptions.addWidget(avolt,           0, 1)
     graphOptions.addWidget(lctime,          1, 0)
@@ -200,15 +171,14 @@ def configureAmbioMon():
     graphOptions.addWidget(freq,            2, 1)
     graphOptions.addWidget(lpwm,            3, 0)
     graphOptions.addWidget(pwm,             3, 1)
-
-    graphOptionsGroup = QGroupBox()
-    graphOptionsGroup.setLayout(graphOptions)
+    graphOptions.addWidget(lsav,            4, 0)
+    graphOptions.addWidget(sav,             4, 1)
 
     # Dialog box
     d = QDialog()       # set parent self to popup in center of geigerlog window
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setFont(gglobs.fontstd)
-    d.setWindowTitle("Configure AmbioMon")
+    d.setWindowTitle("Configure AmbioMon Device")
     d.setWindowModality(Qt.ApplicationModal)
     #d.setWindowModality(Qt.NonModal)
     #d.setWindowModality(Qt.WindowModal)
@@ -223,7 +193,7 @@ def configureAmbioMon():
     gglobs.btn.setEnabled(True)
 
     layoutV = QVBoxLayout(d)
-    layoutV.addWidget(graphOptionsGroup)
+    layoutV.addLayout(graphOptions)
     layoutV.addWidget(bbox)
 
 #### needs to change !!!!!
@@ -232,9 +202,10 @@ def configureAmbioMon():
 #######
 
 #TESTING
-    #if gglobs.logging:
-    if 0 and gglobs.logging:
-        setbgcolor = 'QLineEdit { background-color: %s;  }' % ("#e0e0e0",)
+
+    #if gglobs.logging:         # no change of parameters when logging
+    if 0 and gglobs.logging:    # allow changes even when logging
+        setbgcolor = 'QLineEdit {background-color:%s;}' % ("#e0e0e0",)
         gglobs.btn  .setEnabled(False)
         ctime  .setEnabled(False)
         ctime  .setStyleSheet(setbgcolor)
@@ -294,94 +265,530 @@ def configureAmbioMon():
         except: lc  = oldpwm
         gglobs.AmbioPwm = lc
 
+        # change the saving mode
+        oldpwm = gglobs.AmbioSav
+        sav    = sav.text().upper()
+        try:
+            if   sav == "YES":  lc = "Yes"
+            else:               lc = "No"
+        except: lc  = oldpwm
+        gglobs.AmbioSav = lc
 
-        setAmbioMonSettings(gglobs.AmbioVoltage, gglobs.AmbioCycletime, gglobs.AmbioFrequency, gglobs.AmbioPwm)
+        # per Web http
+        tranferSettingsToAMDevice(gglobs.AmbioVoltage, gglobs.AmbioCycletime, gglobs.AmbioFrequency, gglobs.AmbioPwm, gglobs.AmbioSav)
 
         dprint("configureAmbioMon: new voltage: "       , gglobs.AmbioVoltage)
         dprint("configureAmbioMon: new cycle time: "    , gglobs.AmbioCycletime)
         dprint("configureAmbioMon: new frequency: "     , gglobs.AmbioFrequency)
         dprint("configureAmbioMon: new PWM: "           , gglobs.AmbioPwm)
+        dprint("configureAmbioMon: new Saving Mode: "   , gglobs.AmbioSav)
 
         fprint(header("Configure AmbioMon Device"))
         fprint("Anode voltage setting:" , "{} V"    .format(gglobs.AmbioVoltage))
         fprint("Cycle time setting:"    , "{} s"    .format(gglobs.AmbioCycletime))
         fprint("Frequency HV gen:"      , "{} Hz"   .format(gglobs.AmbioFrequency))
         fprint("PWM fraction:"          , "{}"      .format(gglobs.AmbioPwm))
+        fprint("Saving mode:"           , "{}"      .format(gglobs.AmbioSav))
 
     setDebugIndent(0)
 
 
-def setAmbioMonSettings(voltage, cycletime, frequency, pwm):
-    """Set Settings like the anode voltage on the AmbioMon Device"""
+# not used
+def xxxtranferSettingsToAMDevice(voltage, cycletime, frequency, pwm, sav):
+    """HTTP:  Transfer all settings to the AmbioMon Device"""
 
-    if gglobs.ambio_client  == None:       return "No connected device"
+    if not gglobs.AmbioConnection: return "No connected device"
 
-    gglobs.ambio_client.publish(gglobs.AmbioServerFolder + "Settings/Volt",      voltage)
-    gglobs.ambio_client.publish(gglobs.AmbioServerFolder + "Settings/Cycletime", cycletime)
-    gglobs.ambio_client.publish(gglobs.AmbioServerFolder + "Settings/Frequency", frequency)
-    gglobs.ambio_client.publish(gglobs.AmbioServerFolder + "Settings/PWM",       pwm)
+    GETString  = ""
+    GETString += "?Volt={}"         .format(voltage)
+    GETString += "&Cycletime={}"    .format(cycletime)
+    GETString += "&Frequency={}"    .format(frequency)
+    GETString += "&PWM={}"          .format(pwm)
+    GETString += "&saving={}"       .format(sav)
 
-    var = 60
-    gglobs.ambio_client.publish(gglobs.AmbioServerFolder + "Settings/Sinus", var)
+    print("gglobs.AmbioTimeout: ", type(gglobs.AmbioTimeout), gglobs.AmbioTimeout)
+    url = _getAmbioUrl() + "/config" + GETString
+    page = urllib.request.urlopen(url, timeout=gglobs.AmbioTimeout)
+    data = page.read().decode("UTF-8")
+    print("data web transfer: ", data)
+
+
+
+# unusedtools
+###############################################################################
+
+
+###############################################################################
+# gambiomon.py internal use only
+
+def _getAmbioUrl():
+    # Port is always 80
+    return "http://{}".format(gglobs.AmbioServerIP)
+
+
+def _getAmbioDevice():
+# get the device like 'ESP32-WROOM-Dev' by calling page '/amID' yielding:
+# 2020-06-02 09:39:01, ESP32-WROOM-Dev, 10.0.0.85, ambiomon.local, 3
+
+    try:
+        url   = _getAmbioUrl() + "/amid"
+        page  = urllib.request.urlopen(url, timeout=gglobs.AmbioTimeout)
+        data  = page.read().decode("UTF-8").split(",")
+    except Exception as e:
+        dprint("Failed _getAmbioDevice at url:'{}' with Exception: ".format(url), e, debug=True)
+        efprint ("{} Getting AmbioMon Device Identifier @ url:<br>'{}' failed with exception:<br>{}".format(stime(), url, cleanHTML(e)))
+        return "NONE"
+
+    return data[1].strip()
+
+
+def _convertUnixtimeToDateTime(unixtime):
+# convert a Unix time in sec into datetime like: 2020-05-10 11:48:50
+    return datetime.datetime.utcfromtimestamp(unixtime).strftime('%Y-%m-%d %H:%M:%S')
+
+
+def _printException(e, rec):
+    dprint  ("Exception _parseValueAdder: ", e)
+    efprint ("AmbioMon History Download had error: ", cleanHTML(e))
+    qefprint("Record is ignored, has Error: ", rec)
+    dprint  ("Record is ignored, has Error: ", rec)
+
+
+def _parseValueAdderCPS(i, rec):
+    """Add the parse results to the *.his list"""
+
+# create the data for the database; datalist covers:
+# Index, DateTime, <modifier>,  CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, X
+# 0      1         2            3    4    5       6       7        8       9       10      11    12     13     14
+
+    #~ print("_parseValueAdder: i, rec:", i, rec)
+    try:
+        reclist      = rec.split(",", 5)        #
+        datalist     = [None] * (gglobs.datacolsDefault + 2)   # (13 + 2)=15 x None
+        datalist[0]  = i                        # byte index
+        datalist[1]  = reclist[0]               # DateTime UTC
+        datalist[2]  = "0 hours"                # the modifier for julianday; here: no modification
+        datalist[4]  = reclist[1]               # cps
+
+        datalist[9]  = reclist[2]               # selector
+        datalist[10] = reclist[3]               # volt
+
+        gglobs.HistoryDataList.append (datalist)
+
+    except Exception as e:
+        _printException(e, rec)
+
+
+def _parseValueAdderCAM(i, rec):
+    """Add the parse results to the *.his list"""
+
+# create the data for the database; datalist covers:
+# Index, DateTime, <modifier>,  CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, X
+# 0      1         2            3    4    5       6       7        8       9       10      11    12     13     14
+
+    #~ print("_parseValueAdder: i, rec:", i, rec)
+    try:
+        reclist      = rec.split(",", 9)    # results in datetime + 6 values + 1 extra for the rest
+        datalist     = [None] * (gglobs.datacolsDefault + 2)   # (13 + 2)=15 x None
+        datalist[0]  = i                    # byte index
+        datalist[1]  = reclist[0]           # DateTime UTC
+        datalist[2]  = "0 hours"            # the modifier for julianday; here: no modification
+        datalist[3]  = reclist[1]           # cpm
+
+        datalist[9]  = reclist[6]           # selector
+        datalist[10] = reclist[7]           # volt
+
+        datalist[11] = reclist[2]           # temp
+        datalist[12] = reclist[3]           # pressure
+        datalist[13] = reclist[4]           # humidity
+        datalist[14] = reclist[5]           # air quality
+
+        gglobs.HistoryDataList.append (datalist)
+
+    except Exception as e:
+        _printException(e, rec)
+
+
+# gambiomon.py use only
+###############################################################################
+
+###############################################################################
+# Public Functions
+
+def AMmakeHistory(source, device):  # source == "AMDeviceCAM" or "AMDeviceCPS"
+    """read the history from an AmbioMon device"""
+
+    fncname = "AMmakeHistory: "
+
+    if not gglobs.AmbioActivation:
+        emsg = "AmbioMon device is not activated"
+        dprint(fncname + emsg)
+        return -1, emsg
+
+    dprint(fncname + "from source: '{}' using device: '{}'".format(source, device))
+    dprint(fncname + "gglobs.AMFilePath: {}".format(gglobs.AMFilePath))
+    setDebugIndent(1)
+
+    error           = 0         # default: no error
+    message         = ""        # default: no message
+
+    start = time.time()
+
+    if   source == "AMDeviceCPS" or source == "AMDeviceCAM":
+    # get data from AmbioMon device
+
+        if not gglobs.AmbioConnection:
+            emsg = "AmbioMon device is not connected"
+            dprint(fncname + emsg)
+            return -1, emsg
+
+        if   source == "AMDeviceCPS": url = _getAmbioUrl() + "/log.cps"
+        elif source == "AMDeviceCAM": url = _getAmbioUrl() + "/log.cam"
+        fprint("Using URL: ", url)
+
+        try:
+            page        = urllib.request.urlopen(url, timeout=10)
+            devicedata  = page.read()   # type(devicedata) = <class 'byte'>
+        except Exception as e:
+            dprint("Failed urlib: Exception: ", e, debug=True)
+            playWav("error")
+            efprint("{} Reading data from Web failed with exception:<br>{}".format(stime(), cleanHTML(e)))
+            setDebugIndent(0)
+            Qt_update()
+            return -1, cleanHTML(e)
+
+    elif source == "AMFileCPS" or source == "AMFileCAM":
+    # get data from AmbioMon File
+        try:
+            devicedata = readBinaryFile(gglobs.AMFilePath)
+        except Exception as e:
+            playWav("error")
+            efprint("{} Reading data from File failed with exception:<br>{}".format(stime(), cleanHTML(e)))
+            setDebugIndent(0)
+            Qt_update()
+            return -1, cleanHTML(e)
+
+    stop       = time.time()
+
+    dtime      = (stop - start)
+    nbytes     = len(devicedata)
+    msg        = "Downloaded {:0.1f} kB from {} in {:0.1f} milliseconds ({:0.1f} kB/s)".format(nbytes / 1000, source, dtime * 1000, nbytes/dtime/1000)
+    vprint(msg)
+    fprint(msg)
+    fprint("Processing data ...")
+    Qt_update()
+
+    data_originDB   = (stime(), gglobs.AmbioDeviceDetected)
+    dbheader        = "File created by reading log from device"
+    dborigin        = "Download from device"
+    dbdevice        = "{}".format(data_originDB[1])
+
+    dumpdata = []
+    if   source == "AMDeviceCPS" or source == "AMFileCPS":
+        #~ upformat = "<HBBL" + "H" * 60
+        upformat = "<BBBL" + "H" * 60
+        wprint("Unpack Format: ", upformat)
+        for i in range(0, len(devicedata), 127):
+            dbuf = devicedata[i : i + 127]
+            data = struct.unpack(upformat, dbuf)
+            volt = data[2] + 350     # volt is given minus 350 to fit into 1 byte
+            dcfg = data[1] & 0x03    # selector is 1, or 2, or 3
+
+            for j in range(0, 60):   # make 60 records
+                dt = _convertUnixtimeToDateTime(data[3] - 60 + j)
+                sdata = "{},{},{},{}".format(
+                                    dt,
+                                    data[4 + j],
+                                    dcfg,
+                                    volt,
+                                    )
+                dumpdata.append(sdata)
+            #~ if i > 1000: break
+
+    elif source == "AMDeviceCAM" or source == "AMFileCAM":
+        #~ upformat = "<HBBLLffff"
+        upformat = "<BBBLLffff"
+        wprint("Unpack Format: ", upformat)
+        for i in range(0, len(devicedata), 27):
+            dbuf = devicedata[i : i + 27]
+            data = struct.unpack(upformat, dbuf)
+            volt = data[2] + 350     # volt is given minus 350 to fit into 1 byte
+            dcfg = data[1] & 0x03    # selector is 1, or 2, or 3
+
+            sdata = "{},{},{:0.2f},{:0.2f},{:0.2f},{:0.2f},{},{}".format( # make single record
+                                _convertUnixtimeToDateTime(data[3]),
+                                data[4],
+                                data[5],
+                                data[6],
+                                data[7],
+                                data[8],
+                                dcfg,
+                                volt,
+                                )
+            dumpdata.append(sdata)
+
+    #~for a in dumpdata[:6]:  print("dumpdata:", a)
+    #~print()
+    #~for a in dumpdata[-6:]: print("dumpdata:", a)
+
+    if len(dumpdata) == 0:
+        error   = -1
+        message = "No valid data found!"
+        dprint(message)
+
+    else:
+    # parse HIST data
+        gglobs.HistoryDataList      = []
+        gglobs.HistoryParseList     = []
+        gglobs.HistoryCommentList   = []
+
+        #~ _getParsedHistoryCPS(dumpdata)
+        if   source == "AMDeviceCPS" or source == "AMFileCPS":
+            for i, rec in enumerate(dumpdata):
+                _parseValueAdderCPS(i, rec)
+
+        elif source == "AMDeviceCAM" or source == "AMFileCAM":
+            for i, rec in enumerate(dumpdata):
+                _parseValueAdderCAM(i, rec)
+
+    # add headers
+        dbhisClines    = [None] * 3
+        #                  ctype    jday, jday modifier to use time unmodified
+        dbhisClines[0] = ["HEADER", None, "0 hours", dbheader]
+        dbhisClines[1] = ["ORIGIN", None, "0 hours", dborigin]
+        dbhisClines[2] = ["DEVICE", None, "0 hours", dbdevice]
+
+    # write to database
+        gsql.DB_insertDevice        (gglobs.hisConn, *data_originDB)
+        gsql.DB_insertComments      (gglobs.hisConn, dbhisClines)
+        gsql.DB_insertComments      (gglobs.hisConn, gglobs.HistoryCommentList)
+        gsql.DB_insertData          (gglobs.hisConn, gglobs.HistoryDataList)
+        gsql.DB_insertParse         (gglobs.hisConn, gglobs.HistoryParseList)
+
+    # write device data to database
+        saveToBin = True
+        if saveToBin:   gsql.DB_insertBin(gglobs.hisConn, devicedata)
+
+        fprint("Database is created", debug=gglobs.debug)
+
+    setDebugIndent(0)
+    return error, message
+
+
+def AMsetDeviceIP():
+    """Set settings for Ambiomon when in Station mode"""
+
+# setting a server address must be possible without a prior connection, because
+# Init fails if IP not accessible
+
+    dprint("AMsetDeviceIP:")
+    setDebugIndent(1)
+
+    # AmbioAP_IP
+    lstaip = QLabel("Domain Name or IP Adress of AmbioMon")
+    lstaip.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+    staip  = QLineEdit()
+    staip.setToolTip("Enter the local Domain Name (if supported) or local IP where your AmbioMon device can be reached")
+    staip.setText("{}".format(gglobs.AmbioServerIP))
+
+    graphOptions=QGridLayout()
+    graphOptions.setContentsMargins(10,10,10,10) # spacing around the graph options
+    graphOptions.addWidget(lstaip, 0, 0)
+    graphOptions.addWidget(staip,  0, 1)
+
+    # Dialog box
+    d = QDialog()       # set parent self to pop up in center of geigerlog window
+    d.setWindowIcon(gglobs.iconGeigerLog)
+    d.setFont(gglobs.fontstd)
+    d.setWindowTitle("Set AmbioMon Device IP")
+    d.setWindowModality(Qt.ApplicationModal)
+    #d.setWindowModality(Qt.NonModal)
+    #d.setWindowModality(Qt.WindowModal)
+    d.setMinimumWidth(400)
+
+    # Buttons
+    bbox = QDialogButtonBox()
+    bbox.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok )
+    bbox.accepted.connect(lambda: d.done(1))
+    bbox.rejected.connect(lambda: d.done(-1))
+
+    gglobs.btn = bbox.button(QDialogButtonBox.Ok)
+    gglobs.btn.setEnabled(True)
+
+    layoutV = QVBoxLayout(d)
+    layoutV.addLayout(graphOptions)
+    layoutV.addWidget(bbox)
+
+    if gglobs.logging:         # no change of parameters when logging
+        gglobs.btn  .setEnabled(False)
+        staip       .setEnabled(False)
+
+    retval = d.exec()
+    #print("reval:", retval)
+
+    if retval != 1:
+        # ESCAPE pressed or Cancel Button
+        dprint("AMsetDeviceIP: Settings unchanged")
+
+    else:
+        # OK pressed
+        gglobs.AmbioServerIP = staip.text().strip()
+
+        dprint("AMsetDeviceIP: new IP Address:    ", gglobs.AmbioServerIP)
+        fprint(header("Configure AmbioMon WiFi Station Mode"))
+        fprint("AmbioMon Station Mode IP:"     , "{}"    .format(gglobs.AmbioServerIP))
+
+    setDebugIndent(0)
+
+
+def AMsetLogDatatype():
+    """Set the datatype GeigerLog will request from Ambiomon (LAST or AVG)"""
+
+    if not gglobs.AmbioConnection: return "No connected device"
+
+    dprint("AMsetLogDatatype:")
+    setDebugIndent(1)
+
+    lstaip = QLabel("Data as LAST point value or last AVG value?")
+    lstaip.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+
+    b0 = QRadioButton("LAST")             # this is default
+    b1 = QRadioButton("AVG")
+
+    if gglobs.AmbioDataType == "LAST" : b0.setChecked(True)
+    else:                               b1.setChecked(True)
+
+    layoutT = QHBoxLayout()
+    layoutT.addWidget(b0)
+    layoutT.addWidget(b1)
+
+    b0.setToolTip("Select 'LAST' to get last point of data set, or 'AVG' to get last 1 min average")
+    b1.setToolTip("Select 'LAST' to get last point of data set, or 'AVG' to get last 1 min average")
+
+    graphOptions=QGridLayout()
+    graphOptions.setContentsMargins(10,10,10,10) # spacing around the graph options
+    graphOptions.addWidget(lstaip,          0, 0)
+    graphOptions.addLayout(layoutT,         0, 1)
+
+    # Dialog box
+    d = QDialog()       # set parent self to popup in center of geigerlog window
+    d.setWindowIcon(gglobs.iconGeigerLog)
+    d.setFont(gglobs.fontstd)
+    d.setWindowTitle("Select Data Type Mode")
+    d.setWindowModality(Qt.ApplicationModal)
+    #d.setWindowModality(Qt.NonModal)
+    #d.setWindowModality(Qt.WindowModal)
+    d.setMinimumWidth(400)
+
+    # Buttons
+    bbox = QDialogButtonBox()
+    bbox.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok )
+    bbox.accepted.connect(lambda: d.done(1))
+    bbox.rejected.connect(lambda: d.done(-1))
+
+    gglobs.btn = bbox.button(QDialogButtonBox.Ok)
+    gglobs.btn.setEnabled(True)
+
+    layoutV = QVBoxLayout(d)
+    layoutV.addLayout(graphOptions)
+    layoutV.addWidget(bbox)
+
+    if gglobs.logging:         # no change of parameters when logging
+        gglobs.btn  .setEnabled(False)
+        b0          .setEnabled(False)
+        b1          .setEnabled(False)
+
+    retval = d.exec()
+    #print("reval:", retval)
+
+    if retval != 1:
+        # ESCAPE pressed or Cancel Button
+        dprint("AMsetLogDatatype: Settings unchanged")
+    else:
+        gglobs.AmbioDataType = "LAST"                   # b0.isChecked()
+        if b1.isChecked(): gglobs.AmbioDataType = "AVG" # b1.isChecked()
+        dprint("AMsetLogDatatype: Data type: ", gglobs.AmbioDataType)
+
+        fprint(header("Select Data Type Mode"))
+        fprint("AmbioMon Data Type:", "{}"    .format(gglobs.AmbioDataType))
+
+    setDebugIndent(0)
 
 
 def getAmbioMonValues(varlist):
-    """Read all AmbioMon data; return only when complete"""
+    """Read all AmbioMon data"""
 
-    #vprint("getAmbioMonValues({})".format(varname))
-    #setDebugIndent(1)
+    fncname = "getAmbioMonValues: "
+
+    #~ print(fncname + "({})".format(varlist))
 
     alldata = {}
 
     if not gglobs.AmbioConnection: # AmbioMon is NOT connected!
-        dprint("getAmbioMonValues: NO AmbioMon connection")
+        dprint(fncname + "NO AmbioMon connection")
         return alldata
 
-    if varlist == None:
-        return alldata
+    if varlist == None:     return alldata
 
-    dataIncomplete = False
-    for vname in varlist:
-        if   vname == "T" and gglobs.ambio_temp  == None :
-            dataIncomplete = True
+    #setDebugIndent(1)
+
+    #~ start = time.time()
+    attempts = 0        # no of attempts to get a connection
+
+    while attempts < 10:
+        try:
+            if not gglobs.logging:  break
+            attempts += 1
+
+            if gglobs.AmbioDataType == "LAST":  url   = _getAmbioUrl() + "/lastdata"
+            else:                               url   = _getAmbioUrl() + "/lastavg"
+
+            page  = urllib.request.urlopen(url, timeout=gglobs.AmbioTimeout)
+            #print("page: geturl : ", page.geturl())
+            #print("page: info   : ", page.info())
+            #print("page: getcode: ", page.getcode())
+            #~ pi = page.info()
+            #~ for a,b in pi.items(): print ("a: ", a, "b: ", b, end="\n")
+            #~ print()
+
+            data  = page.read().decode("UTF-8").split(",")
+            #~print(fncname, data)
+            cpm = float(data[1]) if (float(data[1]) != 4294967295) else gglobs.NAN
+
+            #~alldata.update({"CPM":      float(data[1])      })          # CPM
+            alldata.update({"CPM":      cpm                 })          # CPM
+            alldata.update({"CPS":      float(data[2])      })          # CPS
+            alldata.update({"T":        float(data[3])      })          # T     from BMEX80
+            alldata.update({"P":        float(data[4])      })          # P     from BMEX80
+            alldata.update({"H":        float(data[5])      })          # H     from BMEX80
+            alldata.update({"X":        float(data[6])      })          # Airq  BME680 resistance kOhm (plotted as (LOG10(1/VAL) + 3 )*50)
+
+            #~alldata.update({"CPM1st":   float(data[6])      })          # BME680 resistance kOhm
+            #~alldata.update({"CPS1st":   float(data[6])      })          # BME680 resistance kOhm
+            alldata.update({"CPM1st":   float(data[11])     })          # FreeHeap
+            alldata.update({"CPS1st":   float(data[12])     })          # AllocHeap
+
+            alldata.update({"CPM2nd":   float(data[9])      })          # Chip Voltage
+            alldata.update({"CPS2nd":   float(data[10])     })          # Supply Voltage
+
+            alldata.update({"CPM3rd":   float(data[7])      })          # Selector position
+            alldata.update({"CPS3rd":   float(data[8])      })          # Anode Voltage
+
             break
-        elif vname == "P" and gglobs.ambio_press == None :
-            dataIncomplete = True
-            break
-        elif vname == "H" and gglobs.ambio_hum   == None :
-            dataIncomplete = True
-            break
-        elif vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd", "X") and gglobs.ambio_cpm == None:
-            dataIncomplete = True
-            break
 
-    if not dataIncomplete:
-        for vname in varlist:
-            if   vname == "T":
-                Temp            = gglobs.ambio_temp
-                Temp            = scaleVarValues("T", Temp, gglobs.ValueScale["T"])
-                gglobs.ambio_temp  = None
-                alldata.update({vname: Temp})
+        except Exception as e:
+            dprint(fncname + "Failed with Exception: ", e, debug=True)
+            if attempts == 10:  playWav("error")
+            qefprint("#{}: {}: Reading '{}' failed <br>with exception:  '{}'".format(attempts, stime(), url, cleanHTML(e)))
+            qefprint(" Timeout setting: {} sec".format(gglobs.AmbioTimeout))
+            Qt_update()
+            time.sleep(2) # does a pause help? 0.5 not much; 1 not really
 
-            elif vname == "P":
-                Press           = gglobs.ambio_press
-                Press           = scaleVarValues("P", Press, gglobs.ValueScale["P"])
-                gglobs.ambio_press = None
-                alldata.update({vname: Press})
+    #~ stop = time.time()
+    #~ loadTime = round((stop - start) * 1000, 2)
+    #~ alldata.update({"CPM1st":   float(loadTime)     })                  # Overall duration of loading the data set
 
-            elif vname == "H":
-                Hum             = gglobs.ambio_hum
-                Hum             = scaleVarValues("H", Hum, gglobs.ValueScale["H"])
-                gglobs.ambio_hum   = None
-                alldata.update({vname: Hum})
-
-            elif vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd", "X"):
-                cpm             = gglobs.ambio_cpm
-                cpm             = scaleVarValues(vname, cpm, gglobs.ValueScale[vname])
-                gglobs.ambio_cpm   = None
-                alldata.update({vname: cpm})
-
-    vprint("{:20s}:  Variables:{}  Data:{}  Folder:'{}' ".format("getAmbioMonValues", varlist, alldata, gglobs.AmbioServerFolder))
+    #~vprint("{:20s}:  Data:{} ".format(fncname, alldata))
     #setDebugIndent(0)
 
     return alldata
@@ -392,29 +799,47 @@ def getAmbioMonInfo(extended=False):
 
     if not gglobs.AmbioConnection: return "No connected device"
 
-    if gglobs.ambio_rssi   == None:  rssi = "Not available"
-    else:                            rssi = str(gglobs.ambio_rssi)
-
-    AmbioInfo = """Connected Device:             {}
+    AmbioInfo = """Connected Device:             '{}'
 Configured Variables:         {}
-Geiger tube calib. factor:    {} µSv/h/CPM""".format(\
-                                                gglobs.AmbioDeviceName, \
-                                                gglobs.AmbioVariables, \
-                                                gglobs.AmbioCalibration)
+Geiger tube calib. factor:    {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
+Data Handling [LAST, AVG]:    {}
+TESTING USAGE:  CPM         = GMtube CPM
+                CPS         = GMtube CPS
 
+                CPM1st      = FreeHeap [B]
+                CPS1st      = AllocHeap [B]
+
+                CPM2nd      = Batt Voltage ADS1115
+                CPS2nd      = Batt Voltage ESP32
+
+                CPM3rd      = Selector position
+                CPS3rd      = Anode Voltage
+
+                T           = BME680 Temp
+                P           = BME680 Press
+                H           = BME680 Humid
+                X           = BME680 (log10(1/R[kOhm]) + 3 )*50
+
+""".format(\
+                                gglobs.AmbioDeviceDetected, \
+                                gglobs.AmbioVariables, \
+                                gglobs.AmbioCalibration, 1 / gglobs.AmbioCalibration, \
+                                gglobs.AmbioDataType \
+                                )
     if extended == True:
         AmbioInfo += """
-Connection:                   wireless, MQTT server {}, port:{}
-Folder:                       '{}'
-Internal collection time:     60 s
-Total cycle time (typical):   67 ... 70 s
-Geiger tube voltage setting:  {} Volt
-Wireless signal strength:     {} (rssi)""".format(\
-                                                gglobs.AmbioServerIP, \
-                                                gglobs.AmbioServerPort, \
-                                                gglobs.AmbioServerFolder, \
-                                                gglobs.AmbioVoltage, \
-                                                rssi)
+Geiger tube voltage:          {} Volt
+Cycletime:                    {} sec
+Frequency:                    {} Hz
+PWM:                          {}
+Saving:                       {}
+""".format(\
+                                gglobs.AmbioVoltage,
+                                gglobs.AmbioCycletime,
+                                gglobs.AmbioFrequency,
+                                gglobs.AmbioPwm,
+                                gglobs.AmbioSav,
+                                )
     return AmbioInfo
 
 
@@ -424,128 +849,66 @@ def terminateAmbioMon():
     if not gglobs.AmbioConnection: return
 
     dprint("terminateAmbioMon: Terminating AmbioMon")
-    setDebugIndent(1)
 
-    gglobs.ambio_client.loop_stop()
-    dprint("terminateAmbioMon: client.loop was stopped")
-
-    gglobs.ambio_client.disconnect()    # output printed in callback
-    dprint("terminateAmbioMon: client was disconnected")
-
-    gglobs.ambio_client = None
-    dprint("terminateAmbioMon: client was set to: None")
-
-    # wait for confirmation of dis-connection
-    starttime = time.time()
-    timeout   = True
-    while time.time() < (starttime  + gglobs.AmbioTimeout):
-        #print("gglobs.Ambiodisconnect:", time.time() - starttime, gglobs.Ambiodisconnect)
-        time.sleep(0.05)
-        if not gglobs.AmbioConnection:
-            #print("gglobs.Ambiodisconnect:", time.time() - starttime, gglobs.Ambiodisconnect)
-            timeout = False
-            break
-
-    if timeout:
-        dprint("AmbioMon dis-connection timed out ({} sec)".format(gglobs.AmbioTimeout), debug=True)
-        fprint("<br>ERROR: Dis-Connection from AmbioMon+ server failed", error=True)
-
-    gglobs.AmbioConnection = False  # inconsistent - is set even after timeout
-
-    setDebugIndent(0)
+    gglobs.AmbioConnection = False
 
 
 def initAmbioMon():
-    """Initialize the client and set all Callbacks"""
+    """Initialize """
 
     fncname = "initAmbioMon: "
     errmsg  = ""
 
     if not gglobs.AmbioActivation:
-        dprint(fncname + "Initialzing AmbioMon not possible as AmbioMon device is not activated")
+        errmsg = "Initialzing AmbioMon not possible as AmbioMon device is not activated in configuration"
+        dprint(fncname + errmsg)
         return errmsg
 
     dprint(fncname + "Initialzing AmbioMon")
     setDebugIndent(1)
 
-    gglobs.AmbioDeviceName = "AmbioMon++"
-
     # set configuration
-    if gglobs.AmbioServerIP     == "auto":      gglobs.AmbioServerIP     = "iot.eclipse.org"
-    if gglobs.AmbioServerPort   == "auto":      gglobs.AmbioServerPort   = 1883
-    if gglobs.AmbioServerFolder == "auto":      gglobs.AmbioServerFolder = "/"
-    if gglobs.AmbioTimeout      == "auto":      gglobs.AmbioTimeout      = 3
+    if gglobs.AmbioServerIP     == "auto":  gglobs.AmbioServerIP     = "ambiomon.local"
+    if gglobs.AmbioAP_IP        == "auto":  gglobs.AmbioAP_IP        = "192.168.4.1"
+    if gglobs.AmbioTimeout      == "auto":  gglobs.AmbioTimeout      = 2    # 1 sec scheint zu kurz, 5 sec bringt nichts
+    if gglobs.AmbioCalibration  == "auto":  gglobs.AmbioCalibration  = 154
+    if gglobs.AmbioVariables    == "auto":  gglobs.AmbioVariables    = "CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd, CPM3rd, CPS3rd, T, P, H, X"
+    #~if gglobs.AmbioVariables    == "auto":  gglobs.AmbioVariables    = "CPM, CPS, CPM1st, CPS1st, T, P, H, X"
+    if gglobs.AmbioDataType     == "auto":  gglobs.AmbioDataType     = "LAST"           # using lastdata call, not avg fpr lastavg
+    #~ if gglobs.AmbioDataType     == "auto":  gglobs.AmbioDataType     = "AVG"           # using lastdata call, not avg fpr lastavg
+    if gglobs.AmbioSSID         == "auto":  gglobs.AmbioSSID         = "yourSSID"       # SSID of user's WiFi network
+    if gglobs.AmbioSSIDPW       == "auto":  gglobs.AmbioSSIDPW       = "yourPassword"   # Password of your SSID WiFi network
 
-# set client
-    # Client(client_id="", clean_session=True, userdata=None, protocol=MQTTv311)
-    # protocol: Can be either MQTTv31 or MQTTv311
-    # on Ubuntu 12.04.5 LTS  with kernel 2.6.32-042stab134.8 the
-    # protocol MQTTv311 is NOT working: (does not make a connect)
-    # gglobs.ambio_client = mqtt.Client(cname, True, None, mqtt.MQTTv311)
-    # it is working when protocol MQTTv31 is used
-    gglobs.ambio_client = mqtt.Client(client_id="", clean_session=True, userdata=None, protocol=mqtt.MQTTv31)
+    # depending on where the Ambiomon is mapped to, the calibration of those
+    # vars must also be set:
+    if "1st" in gglobs.AmbioVariables:                      # CPM, CPS, CPM1st, CPS1st
+        gglobs.calibration1st = gglobs.AmbioCalibration
 
-    # set callbacks
-    gglobs.ambio_client.on_connect       = on_connect
-    gglobs.ambio_client.on_subscribe     = on_subscribe
-    gglobs.ambio_client.on_message       = on_message
-    gglobs.ambio_client.on_publish       = on_publish
-    gglobs.ambio_client.on_disconnect    = on_disconnect
+    if "2nd" in gglobs.AmbioVariables:                      # CPM2nd, CPS2nd
+        gglobs.calibration2nd = gglobs.AmbioCalibration
 
-    # connect
-    dprint(fncname + "connect to: AmbioServerIP: '{}', AmbioServerPort: {}".format(gglobs.AmbioServerIP, gglobs.AmbioServerPort))
-    try:
-        gglobs.ambio_client.connect(gglobs.AmbioServerIP, port=gglobs.AmbioServerPort, keepalive=60)
-    except Exception as e:
-        srcinfo = fncname + "ERROR: Connection to IoT server failed"
-        exceptPrint(e, sys.exc_info(), srcinfo)
-        gglobs.ambio_client = None
-        errmsg += "<br>ERROR: Connection failed using server IP='{}', port={}".format(gglobs.AmbioServerIP, gglobs.AmbioServerPort)
-        errmsg += "<br>ERROR: '{}'".format(sys.exc_info()[1])
-        errmsg += "<br>{} not connected. Is server offline? Verify server IP and server port".format(gglobs.AmbioDeviceName)
+    if "3rd" in  gglobs.AmbioVariables:                     # CPM3rd, CPS3rd
+        gglobs.calibration3rd = gglobs.AmbioCalibration
 
-        setDebugIndent(0)
+
+
+    gglobs.AmbioDeviceName      = "AmbioMon++"
+    gglobs.AmbioDeviceDetected  = _getAmbioDevice()                                      # expect like 'ESP32-WROOM-Dev'
+
+    if gglobs.AmbioDeviceDetected == "NONE":
+        errmsg = "<br>No connection to: AmbioServerIP: '{}'".format(gglobs.AmbioServerIP)
+        dprint(fncname + errmsg)
         return errmsg
 
-    #
-    # start looping
-    #
-    ##  # keep as reminder - alternative looping
-    ##  gglobs.ambio_client.loop_read()
-    ##  for i in range(0,6):
-    ##      gglobs.ambio_client.loop(timeout=.1)
-    ##  gglobs.ambio_client.loop_forever()      # indeed forever, it hangs the system
-    ##                                          # CTRL-C will disconnect the gglobs.ambio_client
-    ##  gglobs.ambio_client.loop(timeout=10.0)  # returns control after timeout
+    # connected
+    gglobs.AmbioConnection = True
+    dprint(fncname + "connected to: AmbioServerIP: '{}', detected device: '{}'".format(gglobs.AmbioServerIP, gglobs.AmbioDeviceDetected))
 
-    gglobs.ambio_client.loop_start()            # threaded loop; must be stopped on exit!
-    dprint(fncname + "Threaded loop was started")
-
-    # wait for confirmation of connection
-    starttime = time.time()
-    timeout   = True
-    while time.time() < (starttime  + gglobs.AmbioTimeout):
-        #print("gglobs.AmbioConnect: time:{:1.2f}".format(time.time() - starttime), gglobs.AmbioConnect)
-        time.sleep(0.05)
-        if gglobs.AmbioConnection:
-            #print("gglobs.AmbioConnect: time:{:1.2f}".format(time.time() - starttime), gglobs.AmbioConnect)
-            timeout = False
-            break
-
-    if timeout:
-        # no callback signalling a connection
-        dprint(fncname + "AmbioMon connection timed out ({} sec)".format(gglobs.AmbioTimeout), debug=True)
-        errmsg += "ERROR: Connection to {} server failed; AmbioMon inactivated".format(gglobs.AmbioDeviceName)
-    else:
-        # set only after successful and confirmed connect!
-        if gglobs.AmbioCalibration  == "auto":      gglobs.AmbioCalibration  = 0.0065
-        if gglobs.AmbioVariables    == "auto":      gglobs.AmbioVariables    = "T, P, H, CPM3rd"
-
-        # set the loggable variables
-        DevVars = gglobs.AmbioVariables.split(",")
-        for i in range(0, len(DevVars)):  DevVars[i] = DevVars[i].strip()
-        gglobs.DevicesVars["AmbioMon"] = DevVars
-        #print("DevicesVars:", gglobs.DevicesVars)
+    # set the loggable variables
+    DevVars = gglobs.AmbioVariables.split(",")
+    for i in range(0, len(DevVars)):  DevVars[i] = DevVars[i].strip()
+    gglobs.DevicesVars["AmbioMon"] = DevVars
+    #print("DevicesVars:", gglobs.DevicesVars)
 
     setDebugIndent(0)
     return errmsg

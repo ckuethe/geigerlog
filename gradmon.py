@@ -4,7 +4,6 @@
 """
 RadMonPlus support using a MQTT connection
 """
-#see header of ambiomon for installing and communicating with MQTT server
 
 ###############################################################################
 #    This file is part of GeigerLog.
@@ -24,8 +23,28 @@ RadMonPlus support using a MQTT connection
 ###############################################################################
 
 
+"""
+see header of ambiomon for installing and communicating with MQTT server
+
+Installing MQTT on Ubuntu:
+see: https://www.digitalocean.com/community/tutorials/how-to-install-and-secure-the-mosquitto-mqtt-messaging-broker-on-ubuntu-16-04
+site includes steps to set up secure server!
+
+To install the software:
+    sudo apt-get install mosquitto mosquitto-clients
+
+Testing MQTT, assuming mosqitto running on mysite.com:
+Subscribe in terminal 1:
+    mosquitto_sub -v -h mysite.com -t ambiomon/#
+Publish in terminal 2:
+    mosquitto_pub -h mysite.com -t ambiomon/temp -m "hello world"
+You should see in terminal 1:
+    ambiomon/temp hello world
+"""
+
+
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -64,9 +83,9 @@ def on_connect(client, userdata, flags, rc):
     dprint(">        {:20s}: {}".format("with flags"        , flags))
     dprint(">        {:20s}: {}".format("with result"       , src), " (Result Code: {})".format(rc))
 
-    # Subscribing in on_connect() means that if we lose the connection and
+    # Subscribing within 'on_connect()' means that if we lose the connection and
     # reconnect then subscriptions will be renewed.
-    #gglobs.rm_client.subscribe("$SYS/#")
+    #gglobs.rm_client.subscribe("$SYS/#") # gives huge amount of traffic! Careful!!!
     gglobs.rm_client.subscribe(gglobs.RMServerFolder + "#", qos=2)
 
 
@@ -106,16 +125,16 @@ def on_subscribe(client, userdata, mid, granted_qos):
 
 def on_message(client, userdata, msg):
     """The callback for when a PUBLISH message is received from the server"""
+
     # message: an instance of MQTTMessage.
     # This is a class with members topic, payload, qos, retain.
-
     vprint(">RadMon: on_message: topic: {:20s}, payload: {:10s}, qos: {}, retain: {}".format(msg.topic, str(msg.payload), msg.qos, msg.retain))
     #print("type of msg.payload:", type(msg.payload))
 
     if   msg.topic == gglobs.RMServerFolder + "temp":     gglobs.rm_temp   = float(msg.payload)    # T
     elif msg.topic == gglobs.RMServerFolder + "pressure": gglobs.rm_press  = float(msg.payload)    # P
     elif msg.topic == gglobs.RMServerFolder + "humid":    gglobs.rm_hum    = float(msg.payload)    # H
-    elif msg.topic == gglobs.RMServerFolder + "cpm":      gglobs.rm_cpm    = float(msg.payload)    # R
+    elif msg.topic == gglobs.RMServerFolder + "cpm":      gglobs.rm_cpm    = float(msg.payload)    # CPM*
     elif msg.topic == gglobs.RMServerFolder + "rssi":     gglobs.rm_rssi   = float(msg.payload)    # rssi
     #else:                                                print("msg.payload:", msg.payload)       # any
 
@@ -158,7 +177,7 @@ def getRadMonValues(varlist):
         elif vname == "H" and gglobs.rm_hum   == None :
             dataIncomplete = True
             break
-        elif vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd", "X") and gglobs.rm_cpm == None:
+        elif vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd") and gglobs.rm_cpm == None:
             dataIncomplete = True
             break
 
@@ -182,13 +201,13 @@ def getRadMonValues(varlist):
                 gglobs.rm_hum   = None
                 alldata.update({"H": Hum})
 
-            elif vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd", "X"):
+            elif vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd"):
                 cpm             = gglobs.rm_cpm
                 cpm             = scaleVarValues(vname, cpm, gglobs.ValueScale[vname])
                 gglobs.rm_cpm   = None
                 alldata.update({vname: cpm})
 
-    vprint("{:20s}:  Variables:{}  Data:{}  Folder:'{}' ".format("getRadMonValues", varlist, alldata, gglobs.RMServerFolder))
+    vprint("{:20s}:  Variables:{}  Data:{}  Folder:'{}'".format("getRadMonValues", varlist, alldata, gglobs.RMServerFolder))
     #setDebugIndent(0)
 
     return alldata
@@ -202,12 +221,14 @@ def getRadMonInfo(extended=False):
     if gglobs.rm_rssi == None:       rssi = "Not available"
     else:                            rssi = str(gglobs.rm_rssi)
 
-    RMInfo = """Connected Device:             {}
+    RMInfo = """Connected Device:             '{}'
 Configured Variables:         {}
-Geiger tube calib. factor:    {} µSv/h/CPM""".format(\
-                                                  gglobs.RMDeviceName, \
+Geiger tube calib. factor:    {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
+""".format(\
+                                                  gglobs.RMDeviceDetected, \
                                                   gglobs.RMVariables, \
-                                                  gglobs.Calibration3rd)
+                                                  #~ gglobs.RMCalibration )
+                                                  gglobs.RMCalibration, 1 / gglobs.RMCalibration)
 
     if extended == True:
         RMInfo += """
@@ -278,9 +299,10 @@ def initRadMon():
     setDebugIndent(1)
 
     gglobs.RMDeviceName = "RadMon+"
+    gglobs.RMDeviceDetected  = gglobs.RMDeviceName # no difference so far
 
     # set configuration
-    if gglobs.RMServerIP     == "auto":      gglobs.RMServerIP     = "iot.eclipse.org"
+    if gglobs.RMServerIP     == "auto":      gglobs.RMServerIP     = "mqtt.eclipse.org"
     if gglobs.RMServerPort   == "auto":      gglobs.RMServerPort   = 1883
     if gglobs.RMServerFolder == "auto":      gglobs.RMServerFolder = "/"
     if gglobs.RMTimeout      == "auto":      gglobs.RMTimeout      = 3
@@ -347,8 +369,15 @@ def initRadMon():
         errmsg += "<br>ERROR: Connection to RadMon+ server failed; RadMon+ inactivated"
     else:
         # set only after successful AND confirmed connect!
-        if gglobs.Calibration3rd  == "auto":    gglobs.Calibration3rd  = 0.0065
-        if gglobs.RMVariables     == "auto":    gglobs.RMVariables    = "T, P, H, CPM3rd"
+        if gglobs.RMCalibration  == "auto":    gglobs.RMCalibration  = 154  # inverse of 0.0065
+        defaultRMVariables = "T, P, H, CPM3rd"
+        if gglobs.RMVariables    == "auto":    gglobs.RMVariables    = defaultRMVariables
+
+        if gglobs.RMVariables.count("CPM") > 1:
+            efprint("ALERT: Improper definition of RadMon variables: ", gglobs.RMVariables)
+            qefprint("ALERT: Correct in configuration file!")
+            gglobs.RMVariables    = defaultRMVariables
+            qefprint("ALERT: RadMon variables are reset to: ", gglobs.RMVariables)
 
         # set the loggable variables
         DevVars = gglobs.RMVariables.split(",")

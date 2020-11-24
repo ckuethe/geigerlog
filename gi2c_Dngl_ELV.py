@@ -24,7 +24,7 @@ Code for the ELV USB-I2C Dongle
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -110,7 +110,6 @@ class ELVdongle:
         rec = gglobs.I2Cser.read(length)
         cnt = gglobs.I2Cser.in_waiting
         if cnt > 0:
-            #playWav(stype="err")
             print("ELVreadAdmin: Bytes waiting:", cnt)
             while True:            # read single byte until nothing is returned
                 x = gglobs.I2Cser.read(1)
@@ -173,7 +172,6 @@ class ELVdongle:
         rec = gglobs.I2Cser.read(length * 3 + 2) # 3 chars per byte('FF ') + CR, LF
         cnt = gglobs.I2Cser.in_waiting
         if cnt > 0:
-            #playWav(stype="err")
             print("ELVreadData Bytes waiting:", cnt)
             while True:                # read single byte until nothing is returned
                 x = gglobs.I2Cser.read(1)

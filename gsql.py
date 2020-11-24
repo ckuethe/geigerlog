@@ -24,7 +24,7 @@ gsql.py - GeigerLog commands to handle sqlite3 databases
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -644,11 +644,37 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
     dprint(fncname + "CSV_FilePath: ", CSV_FilePath, ", DB_Connection: ", DB_Connection)
     setDebugIndent(1)
 
-    plimit = 10 # limit for number of lines to print
+    hilimit    = 30   # highest number of lines to print
+    deltalimit = 30   # lines before hilimit to print
+    lolimit    = hilimit - deltalimit
 
-    with open(CSV_FilePath, "r") as cfghandle: # read CSV file as list of str
-        rlines = cfghandle.readlines()
-    # reading lines like:(not shown: all have \n at the end!)
+#   fails when non-UTF-8 characters in file like after file data corruption
+#   compare with geigerlog f'on getCSV()
+#    with open(CSV_FilePath, "r") as cfghandle: # read CSV file as list of str
+#        rlines = cfghandle.readlines()
+
+    with open(CSV_FilePath, "rb") as cfghandle: # read CSV file as bytes
+        byteline = cfghandle.read()
+        #print("byteline:", byteline)
+
+    strlines = ""
+    for a in byteline.split(b"\n"):
+        try:
+            rl = a.decode("UTF-8")
+        except Exception as e:
+            rl = "#" + str(a)
+        strlines += rl + "\n"
+
+    rlines = strlines.split("\n")
+
+#TESTING limiting count of lines
+    #linex = 8730                # breaks with 8670, i.e. line 8669
+    #rlines = rlines[:linex]
+    #for i in range(linex - 30, linex ):
+    #    print("rlines[{}] : ".format( i), rlines[i], end="")
+################################
+
+    # reading lines like:(not shown: all have \n at the end!)   !!!!! not true: LF is gone at this stage
     # rlines[0]: #HEADER, File created from History Download Binary Data
     # rlines[1]: #ORIGIN, Downloaded <Date Unknown> from device '<Device Unknown>'
     # rlines[2]: #    0, 2018-12-19 10:18:26, Date&Time Stamp; Type:'history saving off', Interval:0 sec
@@ -658,28 +684,35 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
     # also possible:
     # rlines[2]: #FORMAT: '<#>ByteIndex, Date&Time, CPM, CPS' (Line beginning with '#' is comment)
 
-#    print("rlines: len:{}, lines as read: ".format(len(rlines)), rlines)
+    #print("rlines: len:{}, lines as read: ".format(len(rlines)), rlines[:50])
 
     sslines = []
     for i in range(0, len(rlines)):
         #print("rlines[{}]: len:{}, line as read: ".format(i, len(rlines[i])), rlines[i])
         #print("ord:", ord(rlines[i][0]))
+
         if rlines[i].strip() == "": continue
-        if i < plimit:        vprint("rlines[{}]: {}".format(i, rlines[i][:-1]))
-        splitrlines = (rlines[i][:-1]).split(',')
+
+        #~ if i >= lolimit and i <= hilimit:        wprint("wprint rlines[{}]: {}".format(i, rlines[i][:-1]))
+        if i >= lolimit and i <= hilimit:        wprint("wprint rlines[{}]: {}".format(i, rlines[i]))
+
+        #~ splitrlines = (rlines[i][:-1]).split(',')
+        splitrlines = (rlines[i]).split(',')
         ssline=[]       # split and stripped rline
         for a in splitrlines:
             b = a.strip()
             if b == "": b = None
             ssline.append(b)
         sslines.append(ssline)
- #   print("sslines: len:{}, lines: ".format(len(sslines)), sslines)
+    #print("sslines: len:{}, lines: ".format(len(sslines)), sslines[:50])
 
     sqlData     = sqlInsertData
     sqlComments = sqlInsertComments
 
     for i in range(0, len(sslines)):
-        #if i < plimit: print("sslines[{}]: {}".format(i, sslines[i]))
+
+        #if i >= lolimit and i <= hilimit:      print("sslines[{}]: {}".format(i, sslines[i]))
+
         if sslines[i][0][0] == '#':
             ss  = sslines[i][0][1:].strip()
             sss = ss.upper()
@@ -740,7 +773,7 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
                     cjday = None
                     cinfo = ""
 
-            if i < plimit: vprint(i, ",  Comments: ", [ctype, cjday, "0 hours", cinfo])
+            if i >= lolimit and i <= hilimit:      wprint(i, ",  Comments: ", [ctype, cjday, "0 hours", cinfo])
             gglobs.currentConn.execute(sqlComments,  [ctype, cjday, "0 hours", cinfo])
 
         else:
@@ -750,7 +783,6 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
             # therefore fill up datalist from the bottom
             for j in range(0, (gglobs.datacolsDefault + 1)):
                 try:
-                    #val = sslines[i][j]
                     pointer_value = gglobs.pointer[j]
                     if pointer_value == -1:
                         val = None
@@ -760,7 +792,8 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
                     val = None
                 datalist[j] = val
 
-            if i < plimit: vprint(i, ",  data:     {}".format(datalist))
+            if i >= lolimit and i <= hilimit:      wprint(i, ",  data:     {}".format(datalist))
+
             if datalist[1] == None:
                 ctype = datalist[0]
                 cjday = None

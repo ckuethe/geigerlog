@@ -3,7 +3,7 @@
 
 """
 gglobs.py - GeigerLog's Super-Global Variables; can be read and modified
-in all scripts
+            in all scripts
 
 include in programs with:
     import gglobs
@@ -27,77 +27,36 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = [""]
 __license__         = "GPL3"
-__version__         = "0.9.92"              # version of next GeigerLog
-__version__         = "0.9.92pre14"
-
-
-# if the configuration file is missing or incorrect
-startup_failure     = ""                    # will hold error text to show
-
-# I2C stuff
-# I2C Dongles
-ELVdongle           = "ELVdongle"           # ELV USB-I2C Dongle
-elv                 = None                  # becomes instance of the ELV USB-I2C device
-
-# I2C Sensors and Modules
-bme280              = {
-                       "name": "BME280",
-                       "feat": "Temperature, Pressure, Humidity",
-                       "addr": 0x77,        # (d119)  addr: 0x76, 0x77
-                       "type": 0x60,        # (d96)   BME280 has chip_ID 0x60
-                       "hndl": None,        # handle
-                       "dngl": None,        # connected with dongle
-                      }
-
-tsl2591             = {
-                       "name": "TSL2591",
-                       "feat": "Light (Vis, IR)",
-                       "addr": 0x29,        # (d41)  addr: 0x29
-                       "type": 0x50,        # Device ID 0x50
-                       "hndl": None,        # handle
-                       "dngl": None,        # connected with dongle
-                      }
+__version__         = "1.0"               # version of next GeigerLog
+#__version__         = "1.0pre14"
 
 
 # constants
 NAN                 = float('nan')        # 'not-a-number'; used as 'missing value'
+#INAN               = int('nan')          # gibt es nicht; int ist zwangsläufig immer definiert
 JULIANUNIX          = 2440587.5416666665  # julianday('1970-01-01 00:00:00') (UNIX time start)
-JULIAN111           = 1721425.5  - 1      # julianday('0001-01-01 00:00:00') (matplotlib time start)
+JULIAN111           = 1721425.5 - 1       # julianday('0001-01-01 00:00:00') (matplotlib time start)
                                           # Why this minus 1? strange but needed
 
 # counters
-xprintcounter       = 0                   # the count of dprint and vprint commands
+xprintcounter       = 0                   # the count of dprint, vprint, and wprint commands
 
-# Default Calibration
-# must be defined even if no connection exists. Maybe redefined in config.
-# The GMC factory default calibration factor is linear, i.e. the same
-# for all 3 calibration points defined in a GMC counter.
-# For a M4011 tube the calibration factor implemented in firmware is 0.0065 µSv/h/CPM
-# For the 2nd tube in a GMC500+ device, different factors were seen:
-# E.g.: from a calibration point #3 setting of 25CPM=4.85µSv/h the calibration
-# factor is 0.194 µSv/h/CPM. While a calibration point #3 setting of
-# 25CPM=9.75µSv/h results in 0.39 µSv/h/CPM!
-# However, calibration determined in my own experiment reported here:
-# http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=5369
-# see Reply #10, Quote: “With Thorium = 0.468, and K40 = 0.494,
-# I'd finally put the calibration factor for the 2nd tube, the SI3BG,
-# to 0.48 µSv/h/CPM. Which makes it 74 fold less sensitive than the M4011!”
-
-DefaultCalibration1st   = 0.0065          # in units of µSv/h/CPM
-DefaultCalibration2nd   = 0.48            # in units of µSv/h/CPM
-DefaultCalibration3rd   = 0.0065          # in units of µSv/h/CPM
+# messages
+startup_failure     = ""                  # if configuration file is missing or
+                                          # incorrect, this will hold error text to show
 
 # pointers
-exgg                = None                # a pointer to ggeiger
+exgg                = None                # pointer to ggeiger
 notePad             = None                # pointer to print into notePad area
 logPad              = None                # pointer to print into logPad area
 btn                 = None                # the cycle time OK button; for inactivation
 plotAudioPointer    = None                # points to the dialog window of plotaudio
 plotScatterPointer  = None                # points to the dialog window of plotscatter
-playWavPointer      = None                # points to the pyaudio instance
+plotScatterFigNo    = None                # points to the window number of plotscatter
+iconGeigerLog       = None                # points to the QIcon pixmap for 'icon_geigerlog.png'
 
 # sql database
 currentConn         = None                # connection to CURRENT database
@@ -111,15 +70,18 @@ werbose             = False               # more verbose than verbose
 devel               = False               # set some conditions for development CAREFUL !!!
 devel1              = False               # =devel  + ADDITIONAL condition: load default db: default.logdb
 devel2              = False               # =devel1 + ADDITIONAL condition: make connections
+tput                = False               # to issue the tput command
 redirect            = False               # on True redirects output from stdout and stderr to file stdlogPath
 debugIndent         = ""                  # to indent printing
 
 #special flags
 testing             = False               # if true then some testing constructs will be activated CAREFUL !!!
+GStesting           = False               # active only in module ggscout.py
 test1               = False               # to run a specific test
 test2               = False               # to run a specific test
 test3               = False               # to run a specific test
 test4               = False               # to run a specific test
+stattest            = False               # when True display statistics on Normal in Poisson test
 
 # dir & file
 dataDirectory       = "data"              # the data subdirectory to the program directory
@@ -136,6 +98,7 @@ logDBPath           = None                # file path of the log database file
 
 binFilePath         = None                # file path of the bin file (GMC device)
 datFilePath         = None                # file path of the bin file (Gamma Scout device)
+AMFilePath          = None                # file path of the bin file (AmbioMon device, either *CAM or *.CPS file)
 hisFilePath         = None                # file path of the his file
 hisDBPath           = None                # file path of the his database file
 logDBPath           = None                # file path of the log database file
@@ -148,17 +111,19 @@ HistoryParseList    = []                  # where the parse comments are stored 
 HistoryCommentList  = []                  # where the DB comments are stored by makeHist
 activeDataSource    = None                # can be 'Log' or 'His'
 
-manual_filename     = "GeigerLog-Manual.pdf" # name of the included manual file
+manual_filename     = "auto"              # name of the included manual file, like "GeigerLog-Manual-v0.9.93pre17.pdf"
+                                          # on 'auto' GL searches for a file beginning with 'GeigerLog-Manual'
 
 # GUI options
 window_width        = 1366                # the standard screen of 1366 x 768 (16:9),
 window_height       = 768                 #
-window_size         = 'maximized'         # 'auto' or 'maximized'
-windowStyle         = "Breeze"            # may also be defined in config file
+window_size         = "auto"              # 'auto' or 'maximized'
+windowStyle         = "auto"              # may also be defined in config file
 displayLastValuesIsOn = False             # whether the displayLastValues windows is shown
 
 
-# Serial ports
+## Serial ports
+
     # pyserial Parity parameters
     # import serial :
     # serial.PARITY_NONE    = N
@@ -180,9 +145,7 @@ displayLastValuesIsOn = False             # whether the displayLastValues window
 
 GMCbaudrates        = [1200, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600,        115200]
 I2Cbaudrates        = [            4800, 9600,        19200,        38400, 57600, 76800, 115200, 230400]
-GSBaudrates         = [      2400,       9600,                                                           460800]
-# for TESTING ONLY
-#GSBaudrates         = [      2400,       9600,                                           115200,          460800]
+GSbaudrates         = [      2400,       9600,                                                           460800]
 
 # Serial port for GMC devices
 GMCser              = None                # serial port pointer
@@ -203,7 +166,6 @@ I2CttyS             = "ignore"            # to 'ignore' or 'include' '/dev/ttySN
 # Serial port for Gamma-Scout devices
 # NOTE: some responses of Gamma-Scout take almost 1 sec, timeout setting must be well above 1 sec limit!
 GSser               = None                # serial port pointer
-GSDeviceName        = "Gamma-Scout Series"# will be overwritten on init
 GSbaudrate          = 9600                # will be overwritten by a setting in geigerlog.cfg file
 GSusbport           = '/dev/ttyUSB2'      # will be overwritten by a setting in geigerlog.cfg file
 GStimeout           = 3                   # will be overwritten by a setting in geigerlog.cfg file
@@ -211,141 +173,75 @@ GStimeout_write     = 3                   # will be overwritten by a setting in 
 GSttyS              = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
 
 
-#ESP32
-terminal            = None                # for the ESP32
 
 
-# RadMon stuff
-RMActivation        = False               # must be true to use RadMon
-RMConnection        = False               # True when initialized by GeigerLog
-RMDeviceName        = "None"              # can currently be only RadMon+
-RMconnect           = (-99, "")           # flag to signal connection
-RMdisconnect        = (-99, "")           # flag to signal dis-connection
-RMServerIP          = "auto"              # Server IP of the MQTT server, to which
-                                          # the RadMon sends the data
-RMServerPort        = "auto"              # Port of the MQTT server, defaults to 1883
-RMServerFolder      = "auto"              # The MQTT folder as defined in the RadMon+ device
-Calibration3rd      = "auto"              # calibration factor for the tube used
-                                          # in the RadMon+ is set to 0.0065 in InitRadMon,
-                                          # unless redefined in config
-RMVariables         = "auto"              # a list of the variables to log, T,P,H,R
-RMTimeout           = 3                   # waiting for "successful connection" confirmation
-RMCycleTime         = 1                   # cycle time of the RadMon device
+## CALIBRATION
 
-rm_client           = None                # to be set elsewhere
-rm_cpm              = None                # temporary storage for CPM
-rm_temp             = None                # temporary storage for Temperature
-rm_press            = None                # temporary storage for Pressure
-rm_hum              = None                # temporary storage for Humidity
-rm_rssi             = None                # temporary storage for RSSI
+###############################################################################
+## Beginning with version GeigerLog 0.9.94 the calibration is used as inverse of
+## the previous definitions, i.e. 0.0065 µSv/h/CPM becomes 1/0.065 => 153.85 CPM/(µSv/h)
+## This is rounded to 154 CPM/(µSv/h) to use no more than 3 valid digits.
+###############################################################################
 
-# AmbioMon stuff
-AmbioActivation        = False               # must be true to use RadMon
-AmbioConnection        = False               # True when initialized by GeigerLog
-AmbioDeviceName        = "None"              # can currently be only AmbioMon++
-AmbioConnect           = (-99, "")           # flag to signal connection
-AmbioDisconnect        = (-99, "")           # flag to signal dis-connection
-AmbioServerIP          = "iot.eclipse.org"   # Server IP of the MQTT server, to which
-                                          # the RadMon sends the data
-AmbioServerPort        = "auto"              # Port of the MQTT server, defaults to 1883
-AmbioServerFolder      = "auto"              # The MQTT folder as defined in the RadMon+ device
-AmbioCalibration       = "auto"              # calibration factor for the tube used
-                                             # in the AmbioMon++ is set to 0.0065 in init,
-                                             # unless redefined in config
-AmbioVariables         = "auto"              # a list of the variables to log, T,P,H,R
-AmbioTimeout           = 3                   # waiting for "successful connection" confirmation
-AmbioVoltage           = 444.44              # voltage of the GM tube in the RadMon
-AmbioCycletime         = 1                   # cycle time of the RadMon device
-AmbioFrequency         = 2500                # frequency of driving HV generator
-AmbioPwm               = 0.5                 # Pulse Width Modulation of HV generator
-
-ambio_client           = None                # to be set elsewhere
-ambio_cpm              = None                # temporary storage for CPM
-ambio_temp             = None                # temporary storage for Temperature
-ambio_press            = None                # temporary storage for Pressure
-ambio_hum              = None                # temporary storage for Humidity
-ambio_rssi             = None                # temporary storage for RSSI
+# The GMC factory default calibration factor is linear, i.e. the same
+# for all 3 calibration points defined in a GMC counter.
+# For a M4011 tube the calibration factor implemented in firmware is 0.0065 µSv/h/CPM
+# For the 2nd tube in a GMC500+ device, different factors were seen:
+# E.g.: from a calibration point #3 setting of 25CPM=4.85µSv/h the calibration
+# factor is 0.194 µSv/h/CPM. While a calibration point #3 setting of
+# 25CPM=9.75µSv/h results in 0.39 µSv/h/CPM!
+# However, calibration determined in my own experiment reported here:
+# http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=5369
+# see Reply #10, Quote: “With Thorium = 0.468, and K40 = 0.494,
+# I'd finally put the calibration factor for the 2nd tube, the SI3BG,
+# to 0.48 µSv/h/CPM. Which makes it 74 fold less sensitive than the M4011!”
+# Others report even poorer values for the SI3BG:
+# https://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=5554, Reply #17
+# "The new correction factor for the primarily gamma tube is .881CPM/uSv/h or 1.135."
+# This means calibration factor for that (2nd) tube = 1.135 µSv/h/CPM
 
 
-# LabJack stuff
-LJActivation        = False
-LJConnection        = False                     # True when initialized by GeigerLog
-LJDeviceName        = "None"                    # LabJack U3 with probe EI1050
-LJvariables         = "auto"                    # a list of the variables to log; auto=T,H,R
-LJversionLJP        = "undefined until loaded"  # version of LabJackPython
-LJversionU3         = "undefined until loaded"  # version of U3
-LJversionEI1050     = "undefined until loaded"  # version of EI1050
+# Default Calibration
+# must be defined even if no connection exists. May be redefined in config.
+DefaultCalibration1st   = 154             # CPM/(µSv/h), =  0.0065 in units of µSv/h/CPM
+DefaultCalibration2nd   = 2.08            # CPM/(µSv/h), =  0.48   in units of µSv/h/CPM
+DefaultCalibration3rd   = 154             # CPM/(µSv/h), =  0.0065 in units of µSv/h/CPM
+
+# calibration of tubes #1, #2, #3
+calibration1st      = "auto"              # calibration factor for the 1st tube
+                                          # in most GMC counters this is the only tube
+                                          # in a GMC-500+ counter this is the 1st or high sensitivity tube
+calibration2nd      = "auto"              # calibration factor for the 2nd tube
+                                          # in a GMC-500+ counter this is the 2nd or low-sensitivity tube
+calibration3rd      = "auto"              # calibration factor for the 3rd tube
+                                          # in the RadMon+ this is the only tube, set to 154 (0.0065) in InitRadMon
 
 
-# AudioStuff for CPM Clicks
-AudioActivation     = False               # Not available if False
-AudioConnection     = False               # Not connected if False
-AudioDeviceName     = "None"              # to be set in init
-AudioPulseMax       = 2**15               # +/- 32768 as maximum pulse height for 16bit signal
-AudioPulseDir       = False               # False for negative; True for positive pulse
-AudioThreshold      = 60                  # Percentage of pulse height to trigger a count
-                                          # 60% of +/- 32768 => ~20000
-AudioRate           = 2**15               # sampling rate audio; set after activation
-AudioChunk          = 256                 # samples per read
-AudioChannels       = 1                   # 1= Mono, 2=Stereo
-AudioFormat         = None                # becomes pyaudio.paInt16 (=8) in Init
-AudioFormatText     = None                # becomes "16 bit int"
 
-AudioLastCpm        = 0                   # audio clicks CPM
-AudioLastCps        = 0                   # audio clicks CPS
-AudioThreadStop     = False               # True to stop the audio thread
-AudioWithSound      = False               # switch the replay of click sound on or off
-AudioVariables      = "CPM2nd, CPS2nd"    # prelim
-AudioCalibration    = 0.09                # µSv/h/CPM as specified by FTLab for the SGP-001
-AudioPlotTotal      = None                # stores the concatenated audio data for plotting
-
-# I2C stuff
-I2CActivation       = False               # Not available if False; to be set via config
-I2CConnection       = False               # Not connected if False
-I2CVariables        = "auto"
-I2CThread           = None                # Thread used for I2C
-
-# Gamma-Scout stuff
-GSActivation        = False               # Not available if False; to be set via config
-GSConnection        = False               # Not connected if False
-GSDeviceName        = None                # to be assigned in GS Init
-GSVariables         = "auto"
-GSFirmware          = None                # to be set in GS init
-GSSerialNumber      = None                # to be set in GS init
-GSDateTime          = None                # to be set when setting DateTime
-GSMemory            = None                # to be set when calling History
-GSCalibration       = "auto"              # auto will become 0.009 in initGammaScout
-GSinPCmode          = False               # determines whether terminateGammaScout will attempt to
-                                          # switch off PC mode
-
-# GMC Device Options                      # will be set after reading the version of the counter from the device
+# GMC stuff                               # will be set after reading the version of the counter from the device
 GMCActivation       = False               # To use or not use a GMC Device counter
 GMCConnection       = False               # Not connected if False
-GMCDeviceName       = "None"              # to be detected in init
-
-# GMC Bugs
-locationBug         = ["GMC-500+Re 1.18", "GMC-500+Re 1.21"] # see the FIRMWARE BUGS topic
-                                          # in the configuration file
-# GMC Other
-deviceDetected      = "auto"              # will be replaced after connection with full
+GMCDeviceName       = None                # to be detected in init; generic name like: "GMC Device"
+GMCdeviceDetected   = None                # will be replaced after connection with full specific
                                           # name as detected, like 'GMC-300Re 4.20'
                                           # had been 14 chars, can now be longer
-memory              = "auto"              # Can be configured for 64kB or 1 MB in the config file
+GMCvariables        = "auto"              # which variables are natively supported
+
+# GMC Bugs
+locationBug         = ["GMC-500+Re 1.18", # see the FIRMWARE BUGS topic
+                       "GMC-500+Re 1.21"] # in the configuration file
+
+# GMC Other
+GMCmemory           = "auto"              # Can be configured for 64kB or 1 MB in the config file
 SPIRpage            = "auto"              # size of page to read the history from device
 SPIRbugfix          = "auto"              # if True then reading SPIR gives one byte more than
                                           # requested  (True for GMC-300 series)
-calibration1st      = "auto"              # calibration factor for the only tube in most
-                                          # GMC counters, or the 1st tube in a GMC-500+ counter
-calibration2nd      = "auto"              # calibration factor for the 2nd tube in a GMC-500+ counter
-                                          # CPM * calibration => µSv/h
-
 endianness          = "auto"              # big- vs- little-endian for calibration value storage
 configsize          = "auto"              # 256 bytes in 300series, 512 bytes in 500/600 series
 voltagebytes        = "auto"              # 1 byte in the 300 series, 5 bytes in the 500/600 series
 variables           = "auto"              # a list of the variables to sample, CPM, CPS, 1st, 2nd
 nbytes              = "auto"              # the number of bytes the CPM and CPS calls, as well as
                                           # the calls to 1st and 2nd tube deliver
-GMCvariables        = "auto"              # which variables are natively supported
 
 cfg                 = None                # Configuration bytes of the counter. 256 bytes in 300series, 512 bytes in 500series
 #cfgOffsetPower      = 0                   # Offset in config for Power status (0=OFF, 255= ON)
@@ -366,6 +262,169 @@ savedatatypes       = (
 savedatatype        = "Unknown - will become known when the device is connected"
 savedataindex       = None
 
+
+# AudioCounter
+AudioActivation     = False               # Not available if False
+AudioConnection     = False               # Not connected if False
+AudioDevice         = "auto"              # to be set in init to (None, None)
+AudioLatency        = "auto"              # to be set in init to (1.0, 1.0) sec latency
+AudioDeviceName     = "None"              # to be set in init
+AudioPulseMax       = None                # +/- 32768 as maximum pulse height for 16bit signal
+AudioPulseDir       = None                # False for negative; True for positive pulse
+AudioThreshold      = None                # Percentage of pulse height to trigger a count
+                                          # 60% of +/- 32768 => approx 20000
+AudioRate           = None                # becomes 44100:  sampling rate audio; works for most sound cards
+AudioChunk          = None                # becomes 32:     samples per read
+AudioChannels       = None                # becomes (1,1):  1= Mono, 2=Stereo
+AudioFormat         = None                # becomes (int16, int16): signed 16 bit resolution
+
+AudioLastCpm        = 0                   # audio clicks CPM
+AudioLastCps        = 0                   # audio clicks CPS
+AudioThreadStop     = False               # True to stop the audio thread
+AudioVariables      = "auto"              #
+AudioCalibration    = "auto"              # units: CPM / (µSv/h)
+AudioMultiPulses    = None                # stores the concatenated audio data for plotting
+AudioRecording      = None                # stores the Recording
+AudioPlotData       = None                # stores the data to be plotted
+
+# I2C stuff
+I2CActivation       = False               # Not available if False; to be set via config
+I2CConnection       = False               # Not connected if False
+I2CDeviceName       = None                # to be assigned in I2c Init; now:
+I2CDeviceDetected   = None              # to be assigned in I2C init with specific name,
+I2CVariables        = "auto"
+I2CThread           = None                # Thread used for I2C
+I2CSensor1          = None                # the BME280
+I2CSensor2          = None                # the TSL259
+I2CFirmware         = None                # to be set in init, but included in DeviceDetected
+I2CSerialNumber     = None                # to be set in init, but not available
+I2CInfo             = None                # to be set in init
+
+# I2C Dongles
+ELVdongle           = "ELVdongle"         # ELV USB-I2C Dongle
+elv                 = None                # becomes instance of the ELV USB-I2C device
+
+# I2C Sensors and Modules
+bme280              = {
+                       "name": "BME280",
+                       "feat": "Temperature, Pressure, Humidity",
+                       "addr": 0x77,      # (d119)  addr: 0x76, 0x77
+                       "type": 0x60,      # (d96)   BME280 has chip_ID 0x60
+                       "hndl": None,      # handle
+                       "dngl": None,      # connected with dongle
+                      }
+
+tsl2591             = {
+                       "name": "TSL2591",
+                       "feat": "Light (Vis, IR)",
+                       "addr": 0x29,      # (d41)  addr: 0x29
+                       "type": 0x50,      # Device ID 0x50
+                       "hndl": None,      # handle
+                       "dngl": None,      # connected with dongle
+                      }
+
+
+# Gamma-Scout stuff
+GSActivation        = False               # Not available if False; to be set via config
+GSConnection        = False               # Not connected if False
+GSDeviceName        = None                # to be assigned in GS Init; now: "Gamma-Scout"
+GSDeviceDetected    = None                # to be assigned in GS init with specific name, now same "Gamma-Scout"
+GSVariables         = "auto"
+GSCalibration       = "auto"              # auto will become 0.009 in initGammaScout
+GSFirmware          = None                # to be set in GS init
+GSSerialNumber      = None                # to be set in GS init
+GSDateTime          = None                # to be set when setting DateTime
+GSMemory            = 0                   # to be set when calling History
+GSinPCmode          = False               # determines whether terminateGammaScout will attempt to
+
+
+# RadMon stuff
+RMActivation        = False               # must be true to use RadMon
+RMConnection        = False               # True when initialized by GeigerLog
+RMDeviceName        = None                # can currently be only RadMon+
+RMDeviceDetected    = None                # can currently be only RadMon+
+RMServerIP          = "auto"              # MQTT server IP, to which RadMon sends the data
+RMServerPort        = "auto"              # Port of the MQTT server, defaults to 1883
+RMServerFolder      = "auto"              # The MQTT folder as defined in the RadMon+ device
+RMCalibration       = "auto"              # calibration factor for the tube used
+RMVariables         = "auto"              # a list of the variables to log, T,P,H,R
+RMTimeout           = 3                   # waiting for "successful connection" confirmation
+RMCycleTime         = 1                   # cycle time of the RadMon device
+
+RMconnect           = (-99, "")           # flag to signal connection
+RMdisconnect        = (-99, "")           # flag to signal dis-connection
+
+rm_client           = None                # to be set in gradmon.initRadMon
+rm_cpm              = None                # temporary storage for CPM
+rm_temp             = None                # temporary storage for Temperature
+rm_press            = None                # temporary storage for Pressure
+rm_hum              = None                # temporary storage for Humidity
+rm_rssi             = None                # temporary storage for RSSI
+
+
+# AmbioMon stuff
+AmbioActivation     = False               # must be true to use AmbioMon++
+AmbioConnection     = False               # True after being initialized by GeigerLog
+AmbioDeviceName     = None                # can currently be only AmbioMon++
+AmbioDeviceDetected = None                # can currently be only AmbioMon++
+AmbioServerIP       = "auto"              # server Domain name or IP to which AmbioMon connects
+AmbioAP_IP          = "auto"              # server IP address of Ambiomon in Access Point mode, Default = "192.168.4.1"
+AmbioSSID           = "auto"              # SSID of user's WiFi network
+AmbioSSIDPW         = "auto"              # Password of user's WiFi network
+AmbioCalibration    = "auto"              # calibration factor for the tube used
+AmbioVariables      = "auto"              # a list of the variables to log
+AmbioDataType       = "auto"              # "LAST" or "AVG" for lastdata or lastavg
+AmbioTimeout        = "auto"              # waiting for successful connection
+
+# settings for the AmbioMon device
+AmbioVoltage        = 444.44              # voltage of the GM tube in the AmbioMon
+AmbioCycletime      = 1                   # cycle time of the AmbioMon device
+AmbioFrequency      = 1500                # frequency of driving HV generator
+AmbioPwm            = 0.5                 # Pulse Width Modulation of HV generator
+AmbioSav            = "Yes"               # Switching into saving mode (Yes/No)
+
+
+
+# LabJack stuff
+LJActivation        = False
+LJConnection        = False                     # True when initialized by GeigerLog
+LJDeviceName        = "None"                    # LabJack U3 with probe EI1050
+LJVariables         = "auto"                    # a list of the variables to log; auto=T,H,R
+LJversionLJP        = "undefined until loaded"  # version of LabJackPython
+LJversionU3         = "undefined until loaded"  # version of U3
+LJversionEI1050     = "undefined until loaded"  # version of EI1050
+
+
+# RaspiStuff
+RaspiActivation     = False               # Not available if False
+RaspiConnection     = False               # Not connected if False
+RaspiDevice         = "None"              # to be set in init
+RaspiDeviceName     = "None"              # to be set in init
+RaspiPulseMax       = 2**15               # +/- 32768 as maximum pulse height for 16bit signal
+RaspiPulseDir       = False               # False for negative; True for positive pulse
+RaspiThreshold      = 60                  # Percentage of pulse height to trigger a count
+                                          # 60% of +/- 32768 => approx 20000
+RaspiRate           = 44100               # sampling rate audio; works for most sound cards
+RaspiChunk          = 32                  # samples per read
+RaspiChannels       = 1                   # 1= Mono, 2=Stereo
+RaspiFormat         = None                # becomes (int16, int16)
+RaspiLatency        = None                # becomes setting in sec
+
+RaspiLastCpm        = 0                   # audio clicks CPM
+RaspiLastCps        = 0                   # audio clicks CPS
+RaspiThreadStop     = False               # True to stop the audio thread
+RaspiVariables      = "auto"              #
+RaspiCalibration    = "auto"              # units: CPM / (µSv/h)
+RaspiMultiPulses    = None                # stores the concatenated audio data for plotting
+RaspiRecording      = None                # stores the Recording
+RaspiPlotData       = None                # stores the data to be plotted
+
+
+
+#ESP32
+terminal            = None                # for the ESP32
+
+
 # Logging Options
 cpm_counter         = 0                   # counts readings since last start logging; prints as index in log
 logging             = False               # flag for logging
@@ -379,15 +438,25 @@ keepFF              = False               # Flag in startup-options
                                           # real value and not an 'Empty' one. See manual in chapter
                                           # on parsing strategy
 fullhist            = False               # If False breaks history recording when 8k FF is read
-                                            # if True reads the whole history from memory
+                                          # if True reads the whole history from memory
 
 # Graphic Options
 #ruler:     = "## Index,            DateTime,     CPM,     CPS,  CPM1st,  CPS1st,  CPM2nd,  CPS2nd,    Temp,   Press,   Humid,   RMCPM"
-varnames            = ("CPM", "CPS", "CPM1st", "CPS1st", "CPM2nd", "CPS2nd", "CPM3rd", "CPS3rd", "T", "P", "H", "X") # 12 vars
-datacolsDefault     = 1 + len(varnames)   # max number of data columns supported,
-                                          # currently = 13:
-                                          # as : (index excluded; is not data),
-                                          # DateTime plus varnames above
+varnames            = ( "CPM",
+                        "CPS",
+                        "CPM1st",
+                        "CPS1st",
+                        "CPM2nd",
+                        "CPS2nd",
+                        "CPM3rd",
+                        "CPS3rd",
+                        "T",
+                        "P",
+                        "H",
+                        "X")              # 12 vars
+
+datacolsDefault     = 1 + len(varnames)   # max number of data columns supported, currently = 13:
+                                          # as : DateTime plus varnames above (index excluded; is not data),
 
 vardict             = {# short,     long,            very short names
                         "CPM"    : ("CPM",           "M"  ),
@@ -404,7 +473,7 @@ vardict             = {# short,     long,            very short names
                         "X"      : ("Xtra",          "X"  ),
                       }
 
-varunit             = {                     # units of Variable; CPM*, CPS*, T can change
+varunit             = {                      # units of Variable; CPM*, CPS*, T can change
                         "CPM"    :"CPM",     # can have unit: "µSv/h"
                         "CPS"    :"CPS",     # can have unit: "µSv/h"
                         "CPM1st" :"CPM",     # can have unit: "µSv/h"
@@ -430,9 +499,13 @@ varStyleDefault     = {
                         "CPM1st" : ("deepskyblue",   "solid"),
                         "CPS1st" : ("violet",        "solid"),
                         "CPM2nd" : ("cyan",          "solid"),
-                        "CPS2nd" : ("pink",          "solid"),
-                        "CPM3rd" : ("blue",          "dotted"),
-                        "CPS3rd" : ("magenta",       "dotted"),
+                        #~"CPS2nd" : ("pink",          "solid"),
+                        "CPS2nd" : ("#9b59b6",          "solid"),
+                        #~"CPM3rd" : ("blue",          "dotted"),
+                        #~"CPS3rd" : ("magenta",       "dotted"),
+                        "CPM3rd" : ("brown",          "solid"),
+                        #~"CPS3rd" : ("#c39bd3",       "solid"),
+                        "CPS3rd" : ("#F9AF00",       "solid"),
                         "T"      : ("red",           "solid"),
                         "P"      : ("black",         "solid"),
                         "H"      : ("green",         "solid"),
@@ -475,7 +548,15 @@ GraphScale["X"]      = "VAL"               # no scaling
 
 
 DevicesConnected     = 0                   # number of connected devices; determined upon connecting
-DevicesNames         = ("GMC", "Audio", "I2C", "RadMon", "AmbioMon", "LabJack", "Gamma-Scout") # all supported devices
+DevicesNames         = ("GMC",
+                        "Audio",
+                        "I2C",
+                        "RadMon",
+                        "AmbioMon",
+                        "LabJack",
+                        "Gamma-Scout",
+                        "Raspi")           # all supported devices
+
 DevicesVars          = {                   # holder for varnames in all supported devices
                         "GMC"        : None,
                         "Audio"      : None,
@@ -484,20 +565,32 @@ DevicesVars          = {                   # holder for varnames in all supporte
                         "AmbioMon"   : None,
                         "LabJack"    : None,
                         "Gamma-Scout": None,
+                        "Raspi"      : None,
                        }
 
-varcheckedCurrent   = {}                    # is variable checked for inclusion in plot
-varcheckedLog       = {}                    # is variable checked for inclusion in plot for Log
-varcheckedHis       = {}                    # is variable checked for inclusion in plot for History
-varlabels           = {}                    # info on avg, StdDev etc; will be set in gplot
-loggableVars        = {}                    # Vars which can be logged with current connections
+DevicesActive        = {                   # holder for activated status of all supported devices
+                        "GMC"        : False,
+                        "Audio"      : False,
+                        "I2C"        : False,
+                        "RadMon"     : False,
+                        "AmbioMon"   : False,
+                        "LabJack"    : False,
+                        "Gamma-Scout": False,
+                        "Raspi"      : False,
+                       }
+
+varcheckedCurrent   = {}                   # is variable checked for inclusion in plot
+varcheckedLog       = {}                   # is variable checked for inclusion in plot for Log
+varcheckedHis       = {}                   # is variable checked for inclusion in plot for History
+varlabels           = {}                   # info on avg, StdDev etc; will be set in gplot
+loggableVars        = {}                   # Vars which can be logged with current connections
 
 for vname in varnames:
-    varcheckedLog       [vname] = False     # set all false
-    varcheckedHis       [vname] = False     # set all false
-    varcheckedCurrent   [vname] = False     # set all false
-    varlabels           [vname] = ""        # set all to empty
-    loggableVars        [vname] = False     # set all False
+    varcheckedLog       [vname] = False    # set all false
+    varcheckedHis       [vname] = False    # set all false
+    varcheckedCurrent   [vname] = False    # set all false
+    varlabels           [vname] = ""       # set all to empty
+    loggableVars        [vname] = False    # set all False
 
 #print("varchecked: ", varcheckedCurrent)
 #print("varlabels:  ", varlabels)
@@ -704,99 +797,93 @@ With the Redirect option all output - including Python error
 messages - will go into the redirect file geigerlog.stdlog.
 """
 
-
-xxxhelpOptions = """
-Usage:  geigerlog [Options] [Commands]
-
-By default, data files will be read-from/written-to the
-data directory "data", a subdirectory to the program
-directory
-
-Options:
-    -h, --help          Show this help and exit.
-    -d, --debug         Run with printing debug info.
-                        Default is debug = False
-    -v, --verbose       Be more verbose.
-                        Default is verbose = False.
-    -V, --Version       Show version status and exit.
-    -R  --Redirect      Redirect stdout and stderr to
-                        file geigerlog.stdlog (for debugging).
-    -s  --style name    Sets the style; see also
-                        Commands: 'showstyles' and manual.
-                        Default is set by your system
-    -p, --port name     Sets the USB-Port to name.
-                        Default is name = /dev/ttyUSB0.
-    -b, --baudrate N    Sets the baudrate to N.
-                        Default is N = 57600.
-
-Commands:
-    showstyles          Show a list of styles avail-
-                        able on your system and exit.
-                        For usage details see manual.
-    keepFF              Keeps all hexadecimal FF
-                        (Decimal 255) values as a
-                        real value and not an 'Empty'
-                        one. See manual in chapter
-                        on parsing strategy.
-    devel               Development settings; careful!
-                        see program code
-
-To watch debug and verbose output start the program from the
-command line in a terminal. The output will print to the terminal.
-
-With the Redirect option all output - including Python error
-messages - will go into the redirect file geigerlog.stdlog.
-"""
-
 helpQuickstart = """
-<style>h3 { color: darkblue; margin:5px 0px 5px 0px; padding:0px; } p, ol, ul { margin:4px 0px 4px 0px; padding:0px;} </style>
+<!doctype html>
+<style>
+    h3          { color: darkblue; margin:10px 0px 5px 0px; padding:0px; }
+    p, ol, ul   { margin:8px 0px 4px 0px; padding:0px;}
+</style>
 <H3>Mouse Help</H3><p>resting your mouse cursor briefly over an item of the window shows a ToolTip message providing info on the item!
-<br><br>Assuming a USB cable is connecting computer and device:</p>
+
 <h3>USB Port and Baudrate</h3>
-<p>If you do know your USB Port and baudrate setting, start GeigerLog with these options:<br>
-&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
-<span style="font-family:'Courier';margin:30px;">geigerlog -p yourport -b yourbaudrate</span>
-<br>On a Linux system e.g.:
-&nbsp;&nbsp;&nbsp;&nbsp;<span style="font-family:'Courier';margin:30px;">geigerlog -p /dev/ttyUSB0 -b 57600</span>
+<p>Assuming a USB cable is connecting computer and device:</p>
+<p>Start GeigerLog and from the menu choose <b>Help -> Show & Select USB Port and
+Baudrate</b>, or press the blue <b>Help Port</b> toolbar button.
+Select the proper settings for your device, and press ok.
 
-<br>On a Windows system e.g.:
-&nbsp;&nbsp;<span style="font-family:'Courier';margin:30px;">geigerlog -p COM3 -b 57600</span></p>
-
-<p>If you don't know your settings read the manual first in chapter 'GMC-Devices' before you start the <b>USB Autodiscovery</b> in the Help menu.</p>
+<p>If you don't know the proper settings you may start the <b>USB Autodiscovery</b>
+from the Help menu for your device, but it is strongly suggested that you first
+read the manual in the chapters for your device and heed the CAUTION message popping up!</p>
 
 <h3>Start Logging</h3>
+<p>This will create a database file to store newly acquired data from the devices.</p>
 <ol>
-<li>Connect the computer with the devices<br>(menu: Device -> Connect Devices, or click the 'Connect' button)</li>
-<li>Switch GMC device on (menu: Device -> GMC Series -> Switch Power ON)</li>
-<li>Load a log file (menu: Logging -> Get Log File or Create New One)<br>
+<li>Connect the computer with the devices<br>(menu: <b>Device -> Connect Devices</b>, or click the <b>Connect</b> button)</li>
+<li>GMC device only: Switch device power on<br>(menu: <b>Device -> GMC Series -> Switch Power ON</b>))</li>
+<li>Load a log file<br>(menu: <b>Log -> Get Log File or Create New One</b>)<br>
 In the Get Log File dialog enter a new filename and press Enter,
-<br>or select an existing file to <b>APPEND</b> new data to this file</li>
-<li>Start logging (menu: Log -> Start Logging, or click the 'Start Log' toolbar icon)</li>
+or select an existing file to <b>APPEND</b> new data to this file.</li>
+<li>Start logging<br>(menu: <b>Log -> Start Logging</b>, or click the <b>Start Log</b> toolbar icon)</li>
 </ol>
 
-<h3>Get History from Device</h3>
+<h3>Get History</h3>
+<p>This will create a database file to store all data downloaded from the internal storage of the device.</p>
 <ol>
-<li>Connect the computer with the devices<br>(menu: Device -> Connect Devices, or click the 'Connect' button)</li>
-<li>Get history from device (menu: History  -> Get History from Device)</li>
+<li>Connect the computer with the devices<br>(menu: <b>Device -> Connect Devices</b>, or click the <b>Connect</b> button)</li>
+<li>Get history from device<br>(menu: <b>History -> &lt;Your device&gt; -> Get History from Device</b>)</li>
 <li>Enter a new filename (e.g. enter 'myfile' and press Enter) or select an existing file
 <br>Note: selecting an existing file will <b>OVERWRITE</b> this file!</li>
 </ol>
-&nbsp;&nbsp;This will download all data from the internal storage of the device and create a database file
+
 
 <h3>Graphical Analysis</h3>
 <p>To zoom into the graph either enter the Time Min and
-Time Max values manually, or much easier, do a mouse-left-click to the left
-of the feature in the graph and right-click to the right, and then click the Apply button.
-Use other features as detailed in the manual.</p>
+Time Max values manually, or, much easier, do a mouse-left-click to the left
+of the feature in the graph and right-click to the right, and then click the Apply button.</p>
 
-<h3>More in the GeigerLog Manual</h3>
-<p>Available locally (menu: Help -> GeigerLog Manual) and <a href="https://sourceforge.net/projects/geigerlog/files/GeigerLog-Manual.pdf">online</a>
+<p>Use other features as detailed in the manual.</p>
+
+<h3>GeigerLog Manual</h3>
+<p>Available locally (menu: <b>Help -> GeigerLog Manual</b>) and <a href="https://sourceforge.net/projects/geigerlog/files/">online</a>
 at SourceForge project GeigerLog: <a href="https://sourceforge.net/projects/geigerlog/">https://sourceforge.net/projects/geigerlog/</a></p>
 """
 
 
+helpFirmwareBugs = """
+<!doctype html>
+<style>
+    h3              { color: darkblue; margin:5px 0px 5px 0px; padding:0px; }
+    p, ol, ul, li   { margin:4px 0px 10px 0px; padding:0px;}
+    td, th          { padding: 0px 30px 0px 0px;}
+</style>
+
+<h3>Firmware bugs in some devices</h3>
+
+<p><b>Device Model Name:  GMC-500+</b></p>
+
+<p>When this device is on firmware 1.18 it identifies itself with an empty identifier,
+which prohibits use on GeigerLog. It should identify itself as 'GMC-500+Re 1.18'.</p>
+
+<p>A work-around is to cycle the connection: ON -> OFF -> ON. Then it should work.</p>
+
+<p>This bug is corrected with firmware 1.21. It is recommended to contact GMC support for an update.
+The Geiger counter will then identify itself as 'GMC-500+Re 1.21'.</p>
+<p>-------------------------------------------------------------------------------</p>
+<p><b>Device Model Name:  GMC-500 / 600 series</b></p>
+
+<p>Some firmware versions, at least 1.18 and 1.21, have a bug (location bug) which
+results in errors in the parsing of the history file. It is advised to upgrade at least to
+the 1.22 firmware!</p>
+"""
+
+
+
 helpWorldMaps = """
-<style>h3 { color: darkblue; margin:5px 0px 5px 0px; padding:0px; } p, ol, ul, li { margin:4px 0px 10px 0px; padding:0px;} </style>
+<!doctype html>
+<style>
+    h3          { color: darkblue; margin:5px 0px 5px 0px; padding:0px; }
+    p, ol, ul   { margin:4px 0px 4px 0px; padding:0px;}
+</style>
 
 <H3>Radiation World Maps</H3>
 
@@ -809,7 +896,7 @@ Some are run by governments, others by enthusiastic hobbyists.</p>
 
 <ul>
 <li><a href='http://www.gmcmap.com/' >gmcmap.com</a> - This is the one supported by GQ Electronics</li>
-<li><a href='https://radmon.org/index.php' >radmon.org</a> - Presently closed for new users after being hacked</li>
+<li><a href='https://radmon.org/index.php' >radmon.org</a> - Opened again after hacking episode</li>
 <li><a href='https://blog.safecast.org/' >safecast.org</a> - Accepting radiation as well as air quality data</li>
 </ul>
 
@@ -886,8 +973,8 @@ here; the links will guide you to sites with more extensive specifications.<br><
 <table >
   <tr>
     <th >    </th>
-    <th >Germany</th>
-    <th >USA</th>
+    <td ><b>Germany</b></td>
+    <td ><b>USA</b></td>
   </tr>
   <tr>
     <td >Yearly exposure</td>
@@ -912,68 +999,68 @@ here; the links will guide you to sites with more extensive specifications.<br><
 
 helpAbout = """
 <!doctype html>
-<p><span style='color:darkblue;'><b>GeigerLog</b></span> is a combination of data logger, data presenter, and data analyzer.</p>
+<style>
+    h3              { color: darkblue; margin:5px 0px 5px 0px; padding:0px; }
+    p, ol, ul, li   { margin:4px 0px 10px 0px; padding:0px;}
+    td, th          { padding: 0px 30px 0px 0px;}
+</style>
 
-<p>It is based on Python (Version 3), hence it runs on Linux, Windows, Macs, and other systems.</p>
+<p><span style='color:darkblue; font:bold; font-size:x-large;'>GeigerLog</span>
+is a combination of data logger, data presenter, and data analyzer.</p>
 
-<p>GeigerLog had initially been developed for the sole use with Geiger counters, but has now become
-a more universal tool, which equally well handles environmental data like temperature, air-pressure,
-and humidity, and is prepared for future sensors.</p>
+<p>It is based on Python (Version 3), hence it runs on Linux, Windows, Macs,
+and other systems.</p>
 
-<p>In its present state it can e.g. be deployed as a
-monitor for a remote weather station, complemented with a Geiger counter to monitor radioactivity.</p>
+<p>GeigerLog had initially been developed for the sole use with Geiger counters,
+but has now become a more universal tool, which equally well handles
+environmental data like temperature, air-pressure, and humidity, and is prepared
+for future sensors.</p>
+
+<p>In its present state it can e.g. be deployed as a monitor for a remote
+weather station, complemented with a Geiger counter to monitor radioactivity.</p>
 
 <p><br>Currently Supported Devices:</p>
 
-<p><b>GMC Devices:</b><br>GeigerLog continuous to support GQ Electronics's GMC-3xx, GMC-5xx, and GMC-6xx line
-of classical Geiger counters, including the variants with an additional 2nd Geiger tube.</p>
+<p><b>GMC Devices:</b><br>GeigerLog continuous to support GQ Electronics's
+GMC-3xx, GMC-5xx, and GMC-6xx line of classical Geiger counters, including the
+variants with an additional 2nd Geiger tube.</p>
 
-<p><b><span style='color: red;'>New: </span>AudioCounter Devices:</b>
-<br>GeigerLog now supports Geiger counters, which only give an audio click for a radioactive event.</p>
+<p><b>AudioCounter Devices:</b>
+<br>GeigerLog supports Geiger counters which only give an audio click for a
+radioactive event.</p>
 
-<p><b><span style='color: red;'>New: </span>I2C Devices:</b>
-<br>Supporting devices connect by the I2C interface</p>
+<p><b>I2C Devices:</b>
+<br>GeigerLog supports devices connected by the I2C interface</p>
 
 <p><b>RadMon Devices:</b>
-<br>Support of the RadMon+ hardware, which can provide a Geiger counter as well as an
-environmental sensor for temperature, air-pressure (atmospheric-pressure), and humidity.</p>
+<br>GeigerLog supports the RadMon+ hardware, which can provide a Geiger counter
+as well as an environmental sensor for temperature, air-pressure
+(atmospheric-pressure), and humidity.</p>
 
-<p><b><span style='color: red;'>New: </span>AmbioMon Devices:</b>
-<br>Support of hardware which can provide a Geiger counter as well as an
-environmental sensor for temperature, air-pressure (atmospheric-pressure), and humidity.</p>
+<p><b>AmbioMon Devices:</b>
+<br>GeigerLog supports AmbioMon++ hardware, devices which can provide a Geiger
+counter as well as an environmental sensor for temperature, air-pressure
+(atmospheric-pressure), and humidity.</p>
 
-<p><b><span style='color: red;'>New: </span>LabJack Devices:</b>
-<br>Support the u3 and Ei1050 hardware from LabJack.</p>
+<p><b>LabJack Devices:</b>
+<br>GeigerLog supports the u3 and Ei1050 hardware from LabJack.</p>
 
-<p><br>The most recent version of GeigerLog can be found at project GeigerLog at Sourceforge:
-<a href="https://sourceforge.net/projects/geigerlog/">https://sourceforge.net/projects/geigerlog/</a>.
-An up-to-date GeigerLog-Manual is there as well.</p>
+<p><b>Gamma-Scout Devices:</b>
+<br>GeigerLog supports the Geiger counters from Gamma-Scout.</p>
 
-<p>References:
-<br>&nbsp;&nbsp;Author.............: {}
-<br>&nbsp;&nbsp;Version GeigerLog..: {}
-<br>&nbsp;&nbsp;Copyright..........: {}
-<br>&nbsp;&nbsp;License............: {} see included file 'COPYING' and <a href="http://www.gnu.org/licenses">http://www.gnu.org/licenses</a>
+<p><br>The most recent version of GeigerLog as well as an up-to-date
+GeigerLog-Manual can be found at project GeigerLog at Sourceforge:
+<a href="https://sourceforge.net/projects/geigerlog/">
+https://sourceforge.net/projects/geigerlog/</a>.</p>
+
+<p>References:</p>
+<table>
+<tr><td>&nbsp;&nbsp;Author:                         </td> <td>%s</td></tr>
+<tr><td>&nbsp;&nbsp;Version GeigerLog:&nbsp;&nbsp;  </td> <td>%s</td></tr>
+<tr><td>&nbsp;&nbsp;Copyright:                      </td> <td>%s</td></tr>
+<tr><td>&nbsp;&nbsp;License:                        </td> <td>%s see included
+file 'COPYING' and <a href="http://www.gnu.org/licenses">http://www.gnu.org/licenses</a></td></tr>
+</table>
+<br>
 """
 
-
-helpFirmwareBugs = """==== Help on Geiger Counter Firmware Bugs ====================================\n
-This provides info on recently discovered bugs in the Geiger counters.
-
-Device Model Name:  GMC-500+
-
-When this device is on firmware 1.18 it identifies itself with an empty identifier,
-which prohibits use on GeigerLog. It should identify itself as 'GMC-500+Re 1.18'.
-
-A work-around is to cycle the connection: ON --> OFF --> ON. Then it should work.
-
-This bug is corrected with firmware 1.21. It is recommended to contact GMC support for an update.
-The Geiger counter will then identify itself as 'GMC-500+Re 1.21'.
--------------------------------------------------------------------------------
-Device Model Name:  GMC-500 / 600 series
-
-Some firmware versions, at least 1.18 and 1.21, have a bug (location bug) which
-results in errors in the parsing of the history file. It is advised to upgrade at least to
-the 1.22 firmware!
-
-"""

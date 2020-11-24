@@ -28,7 +28,7 @@ Data in the form:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -90,7 +90,8 @@ def getXLabelsToD():
 
     if totalDays > 5:
         #print 1
-        tformat = '%Y-%m-%d  %H:%M:%S'
+        #tformat = '%Y-%m-%d  %H:%M:%S'
+        tformat = '%Y-%m-%d'
     elif totalDays > 1:
         #print 2
         tformat = '%Y-%m-%d  %H:%M:%S'
@@ -200,14 +201,14 @@ def makePlot():
 
     fncname = "makePlot: "
     #print(fncname + "  gglobs.currentDBData.shape:",   gglobs.currentDBData.shape)
-    #print(fncname + "  gglobs.currentDBData:\n",   gglobs.currentDBData[:3])
-    #print(fncname + "  gglobs.currentDBData:",     gglobs.currentDBData)
-    #print(fncname + "  gglobs.logDBData:",         gglobs.logDBData)
-    #print(fncname + "  gglobs.hisDBData:",         gglobs.hisDBData)
+    #print(fncname + "  gglobs.currentDBData:\n",       gglobs.currentDBData[:3])
+    #print(fncname + "  gglobs.currentDBData:",         gglobs.currentDBData)
+    #print(fncname + "  gglobs.logDBData:",             gglobs.logDBData)
+    #print(fncname + "  gglobs.hisDBData:",             gglobs.hisDBData)
 
-    #print(fncname + "  gglobs.varcheckedCurrent:", gglobs.varcheckedCurrent)
-    #print(fncname + "  gglobs.varcheckedLog:",     gglobs.varcheckedLog)
-    #print(fncname + "  gglobs.varcheckedHis:",     gglobs.varcheckedHis)
+    #print(fncname + "  gglobs.varcheckedCurrent:",     gglobs.varcheckedCurrent)
+    #print(fncname + "  gglobs.varcheckedLog:",         gglobs.varcheckedLog)
+    #print(fncname + "  gglobs.varcheckedHis:",         gglobs.varcheckedHis)
 
     if np.all(gglobs.currentDBData) == None   : return
     if not gglobs.allowGraphUpdate            : return
@@ -238,7 +239,21 @@ def makePlot():
     for vname in gglobs.varnames:
         gglobs.exgg.varDisplayCheckbox[vname].setToolTip(gglobs.vardict[vname][0])
 
-    gglobs.logTime          = gglobs.currentDBData[:,0]             # time data of total file
+
+
+    # Note
+    # Before Matplotlib 3.3, the epoch was 0000-12-31 which lost modern microsecond
+    # precision and also made the default axis limit of 0 an invalid datetime.
+    # In 3.3 the epoch was changed as above. To convert old ordinal floats to the
+    # new epoch, users can do:
+    #     new_ordinal = old_ordinal + mdates.date2num(np.datetime64('0000-12-31'))
+
+    # convert the times from old style to style since matplotlib 3.3
+    TimeBaseCorrection = mpld.date2num(np.datetime64('0000-12-31'))
+
+    #~gglobs.logTime          = gglobs.currentDBData[:,0]             # time data of total file
+    gglobs.logTime          = gglobs.currentDBData[:,0] + TimeBaseCorrection            # time data of total file
+
     gglobs.logTimeFirst     = gglobs.logTime[0]                     # time of first record in total file
     gglobs.logTimeDiff      = gglobs.logTime - gglobs.logTimeFirst  # using time diff to first record in days
 
@@ -248,13 +263,26 @@ def makePlot():
     # chars (before the '.')  may yield a time too low by 1 second, like:
     # 2019-01-02 18:05:00 instead of:
     # 2019-01-02 18:05:01
-    F0 = str(mpld.num2date(gglobs.logTimeFirst))
+
+
+    #~old_ordinal = gglobs.logTimeFirst
+    #~new_ordinal = old_ordinal + mpld.date2num(np.datetime64('0000-12-31'))
+    #print("correction: ",mpld.date2num(np.datetime64('0000-12-31'))) # correction on: 2020-08-18 16:34:11.609016 is: -719163.0
+    #~print("************************************gglobs.logTimeFirst: ", gglobs.logTimeFirst)
+    #~print("************************************new_ordinal        : ", new_ordinal)
+
+    #~F0 = (mpld.num2date(new_ordinal))
+    F0 = (mpld.num2date(gglobs.logTimeFirst))
+    F0 = F0.strftime("%Y-%m-%d %H:%M:%S.%f")
     try:
-        strFirstRecord = "{}{:02.0f}".format(F0[:17], float(F0[17:F0.find("+")])) # good!
+        # good! 2020-08-18 16:34:11.609016 -> 2020-08-18 16:34:12
+        #~strFirstRecord = "{}{:02.0f}".format(F0[:17], float(F0[17:F0.find("+")])) # good!
+        strFirstRecord = "{}{:02.0f}".format(F0[:17], float(F0[17:])) # good!
     except:
-        strFirstRecord = F0[:19] # bad!
-    #print("mpld.num2date(gglobs.logTimeFirst):", mpld.num2date(gglobs.logTimeFirst))
-    #print("reduced to:                        ", strFirstRecord)
+        # bad! 2020-08-18 16:34:11.609016 -> 2020-08-18 16:34:11
+        strFirstRecord = F0[:19]
+
+    #~print("F0: ", F0, "reduced to: ", strFirstRecord)
 
     # define the data source and label for the X-axis,
     # either Time-since-epoch 0001-01-01 or Time-since-start in days
@@ -320,17 +348,24 @@ def makePlot():
     ax2 = ax1.twinx()                            # right Y-Axis
 
     vnameselect   = gglobs.varnames[gglobs.exgg.select.currentIndex()]
-    if vnameselect in ("CPM", "CPS", "CPM1st", "CPS1st", "CPM2nd", "CPS2nd", "R"):
+    #if vnameselect in ("CPM", "CPS", "CPM1st", "CPS1st", "CPM2nd", "CPS2nd", "R"):
+    if vnameselect in ("CPM", "CPS", "CPM1st", "CPS1st", "CPM2nd", "CPS2nd", "CPM3rd", "CPS3rd"):
         ax1.grid(b=True, axis="both")         # left Y-axis grid + X-grid
     else:
         ax1.grid(b=True, axis="x")            # X-axis grid
         ax2.grid(b=True, axis="y")            # right Y-axis grid
 
 
-    plt.title(os.path.basename(gglobs.currentDBPath), fontsize=9, fontweight='normal', loc = 'left')
-    mysubTitle = "Recs:" + str(gglobs.logTimeSlice.size)
-    plt.title(mysubTitle, fontsize= 9, fontweight='normal', loc = 'right', backgroundcolor='none') # transparent background of title
-    plt.subplots_adjust(hspace=None, wspace=None , left=None, top=0.80, bottom=None, right=.87)
+    #plt.title(os.path.basename(gglobs.currentDBPath), fontsize=9, fontweight='normal', loc = 'left')
+    #mysubTitle = "Recs:" + str(gglobs.logTimeSlice.size)
+    #plt.title(mysubTitle, fontsize= 9, fontweight='normal', loc = 'right', backgroundcolor='none') # transparent background of title
+
+    mysubTitle = os.path.basename(gglobs.currentDBPath) + "   " + "Recs:" + str(gglobs.logTimeSlice.size)
+    #plt.title(mysubTitle, fontsize= 9, fontweight='normal', loc = 'right', backgroundcolor='none') # transparent background of title
+    plt.title(mysubTitle, fontsize= 9, fontweight='normal', loc = 'right')
+
+    #~plt.subplots_adjust(hspace=None, wspace=None , left=None, top=0.80, bottom=None, right=.87)
+    plt.subplots_adjust(hspace=None, wspace=None , left=0.15, top=0.80, bottom=None, right=.87)
 
     # avoid "offset" and "scientific notation" on the Y-axis
     # i.e. showing scale in exponential units
@@ -353,24 +388,26 @@ def makePlot():
     #
     # X-axis
     ax1.set_xlabel(xLabelStr, fontsize=10, fontweight='bold')
+
     # Y1-axis
     if gglobs.Yunit == "CPM":   ylabel = "Counter  [CPM or CPS]"
     else:                       ylabel = "Counter  [µSv/h]"
     ax1.set_ylabel(ylabel,      fontsize=12, fontweight='bold')
+
     # Y2-axis
     ax2.set_ylabel("Ambient",   fontsize=12, fontweight='bold')
 
     #
     # set the scaling factor
     #
-    if gglobs.calibration1st    == "auto":  scale1st = gglobs.DefaultCalibration1st
-    else:                                scale1st = gglobs.calibration1st
+    if gglobs.calibration1st == "auto":  scale1st = 1 / gglobs.DefaultCalibration1st
+    else:                                scale1st = 1 / gglobs.calibration1st
 
-    if gglobs.calibration2nd == "auto":  scale2nd = gglobs.DefaultCalibration2nd
-    else:                                scale2nd = gglobs.calibration2nd
+    if gglobs.calibration2nd == "auto":  scale2nd = 1 / gglobs.DefaultCalibration2nd
+    else:                                scale2nd = 1 / gglobs.calibration2nd
 
-    if gglobs.Calibration3rd  == "auto":  scaleRM  = gglobs.DefaultCalibration3rd
-    else:                                scaleRM  = gglobs.Calibration3rd
+    if gglobs.calibration3rd == "auto":  scale3rd = 1 / gglobs.DefaultCalibration3rd
+    else:                                scale3rd = 1 / gglobs.calibration3rd
 
     scaleFactor = {}
     for i, vname in enumerate(gglobs.varnames):
@@ -389,11 +426,18 @@ def makePlot():
                 scaleFactor[vname]    = scale2nd
                 scaleFactor["CPS2nd"] = scale2nd * 60
 
+        elif vname in ("CPM3rd", "CPS3rd"):
+            if gglobs.Yunit == "CPM":
+                scaleFactor[vname] = 1.0
+            else: # gglobs.Yunit == "µSv/h"
+                scaleFactor[vname]    = scale3rd
+                scaleFactor["CPS3rd"] = scale3rd * 60
+
         elif vname in ("R"):
             if gglobs.Yunit == "CPM":
                 scaleFactor[vname] = 1.0
             else: # gglobs.Yunit == "µSv/h"
-                scaleFactor[vname] = scaleRM
+                scaleFactor[vname] = scale3rd
 
         else:
             scaleFactor[vname] = 1.0
@@ -417,8 +461,6 @@ def makePlot():
     varPlotStyle    = {}    # holds the plotstyle for each variable
     for i, vname in enumerate(gglobs.varnames):
         varPlotStyle[vname]                       = plotstyle.copy()
-        #varPlotStyle[vname]['color']              = gglobs.varcolor[vname]
-        #varPlotStyle[vname]['markeredgecolor']    = gglobs.varcolor[vname]
         varPlotStyle[vname]['color']              = gglobs.varStyle[vname][0]
         varPlotStyle[vname]['markeredgecolor']    = gglobs.varStyle[vname][0]
         varPlotStyle[vname]['linestyle']          = gglobs.varStyle[vname][1]

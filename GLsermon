@@ -1,0 +1,167 @@
+#!/usr/bin/python3
+# -*- coding: UTF-8 -*-
+
+"""
+GLsermon - Serial Monitor to read from and write to a USB-to-Serial Connection
+
+    Start with: 'GLsermon PORTNAME BAUDRATE' with:
+       PORTNAME on Linux   = /dev/ttyUSBx, x = 0, 1, 2, ...
+                on Windows = COMx, x = 0, 1, 2, ...
+       BAUDRATE            = 57600, 115200, ...
+    Starting with 'GLsermon' defaults to PORTNAME = /dev/ttyUSB0, BAUDRATE = 57600
+    Stop with:  CTRL-C
+
+    All communication will be saved to file GLsermon.txt (change name in line 24)
+    Example of file content:
+        Command : <GETVER>>
+        Response: GMC-300Re 4.22
+        R-Values:   71  77  67  45  51  48  48  82 101  32  52  46  50  50
+
+        Command : <GETVOLT>>
+        Response: *
+        R-Values:   42
+
+        Command : <GETCPS>>
+        Response: (Non-decodeable)
+        R-Values:  128   7
+"""
+
+import sys, os
+import serial
+import serial.tools.list_ports       # allows listing of serial ports
+import threading
+
+filename = "GLsermon.txt"            # where all communication will be saved to
+
+
+def printPortList(symlinks=True):
+    """print serial port details. Include symlinks or not"""
+
+    # Pyserial:
+    # 'include_links (bool)' – include symlinks under /dev when they point to a serial port
+    # https://github.com/pyserial/pyserial/blob/master/documentation/tools.rst
+    #
+    # lp = serial.tools.list_ports.comports(include_links=True)  # also shows e.g. /dev/geiger
+    # lp = serial.tools.list_ports.comports(include_links=False) # default; no symlinks shown
+    #
+    # include_links gibt einen Fehler bei pyserial version pyserial: 3.0.1
+    # print("serial.tools.list_ports:", serial.tools.list_ports)
+    # print("serial.tools.list_ports:", serial.tools.list_ports.comports())
+
+    fncname = "    "
+
+    #~print("Listing all Ports: use symlinks: ", symlinks)
+    print("Listing all Ports:")
+
+    try:
+        if symlinks:    lp = serial.tools.list_ports.comports(include_links=True)  # symlinks shown
+        else:           lp = serial.tools.list_ports.comports(include_links=False) # default; no symlinks shown
+        lp.sort()
+    except Exception as e:
+        print(fncname + "Exception: ", e, debug=True)
+        print(fncname + "lp: ", lp, debug=True)
+        lp = []
+
+    for p in lp:    print(fncname, p)
+
+
+
+class KeyboardThread(threading.Thread):
+    """keyboard-input-thread"""
+
+    def __init__(self, input_cbk = None, name='keyboard-input-thread'):
+        self._is_running = True
+        self.input_cbk = input_cbk
+        super(KeyboardThread, self).__init__(name=name)
+        self.start()
+
+    def run(self):
+        while self._is_running:
+            self.input_cbk(input()) #waits to get input + Return
+        sys.exit()
+
+    def stop(self):
+        self._is_running = False
+
+
+def my_callback(inp):
+    """evaluate the keyboard input"""
+
+    #print('You Entered:', inp)
+    ser.write(bytes(inp, 'utf-8'))
+
+    with open(filename, "a") as f:
+        f.write("Command : {}\n".format(inp))
+
+
+if __name__ == "__main__":
+
+    print("\n" + "~" * 100)
+    print("Start with: 'GLsermon PORTNAME BAUDRATE' with:")
+    print("   PORTNAME on Linux   = /dev/ttyUSBx, x = 0, 1, 2, ...")
+    print("            on Windows = COMx, x = 0, 1, 2, ...")
+    print("   BAUDRATE            = 57600, 115200, ...")
+    print("Starting with 'GLsermon' defaults to PORTNAME = /dev/ttyUSB0, BAUDRATE = 57600\n")
+
+    #printPortList(symlinks=False)
+    printPortList(symlinks=True)
+
+    print("\nCommand Line: {}, len: {}".format(sys.argv, len(sys.argv)))
+
+    if len(sys.argv) > 1:   PORT = sys.argv[1]
+    else:                   PORT = "/dev/ttyUSB0"
+
+    if len(sys.argv) > 2:   BAUD = sys.argv[2]
+    else:                   BAUD = 57600    # 115200
+
+    print("    Using Port: ", PORT)
+    print("    Using Baud: ", BAUD)
+
+    try:
+        ser  = serial.Serial(PORT, BAUD, timeout = 1)
+    except:
+        print("\nERROR: Port cannot be opened, exiting\n\n")
+        sys.exit()
+
+    print("    Connection: ", ser, "\n")
+    print("+" * 50)
+
+    with open(filename, "w") as f:  # to empty the file
+        pass
+
+    #start the Keyboard thread
+    kthread = KeyboardThread(my_callback)
+
+    try:
+        while True:
+            val = ser.read_until("\n")
+            if(val > b""):
+                msg = "Response: "
+                try:
+                    msg += val.decode()
+                except:
+                    msg += "(Non-decodeable)"
+                msg += "\n"
+
+                msg += "R-Values: "
+                for a in val:
+                    msg += "{:4d}".format(a)
+                msg += "\n"
+
+                print(msg)
+
+                with open(filename, "a") as f:
+                    f.write(msg + "\n")
+
+            while ser.in_waiting > 0:   # clean pipeline
+                a = ser.read(1)
+                print(a)
+
+
+    except KeyboardInterrupt:
+        #~print("except KeyboardInterrupt")
+        kthread.stop()
+        #print("kthread._is_running:", kthread._is_running)
+        os._exit(1)
+
+

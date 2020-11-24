@@ -24,7 +24,7 @@ counter device or from file and create database.
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = ["Phil Gillaspy"]
 __license__         = "GPL3"
 
@@ -86,9 +86,9 @@ def makeHistory(sourceHist):
             fprint("Removed {} bytes from end of orginal *.bin file of {} bytes".format(lenhistold - len(hist), lenhistold))
 
     elif sourceHist == "Device":
-        data_origin   = str_data_origin.format(stime(), gglobs.deviceDetected)
-        data_originDB = (stime(), gglobs.deviceDetected)
-        fprint("Reading data from connected device: {}".format(gglobs.deviceDetected))
+        data_origin   = str_data_origin.format(stime(), gglobs.GMCdeviceDetected)
+        data_originDB = (stime(), gglobs.GMCdeviceDetected)
+        fprint("Reading data from connected device: {}".format(gglobs.GMCdeviceDetected))
 
         hist    = b""
         page    = gglobs.SPIRpage # 4096 or 2048, see: getDeviceProperties
@@ -98,7 +98,7 @@ def makeHistory(sourceHist):
         dprint("makeHistory: Cleaning pipeline BEFORE reading history")
         extra = gcommands.getExtraByte()
 
-        for address in range(0, gglobs.memory, page): # prepare to read all memory
+        for address in range(0, gglobs.GMCmemory, page): # prepare to read all memory
             time.sleep(0.1) # fails occasionally to read all data when
                             # sleep is only 0.1; still not ok at 0.2 sec
                             # wieder auf 0.1, da GQ Dataviewer deutlich scneller ist
@@ -384,8 +384,8 @@ def parseHIST(hist):
 
                 else:
                     # workaround for the mess created by GQ
-                    #if gglobs.deviceDetected in ("GMC-500+Re 1.18", "GMC-500+Re 1.21"):
-                    if gglobs.deviceDetected in gglobs.locationBug: # default: "GMC-500+Re 1.18", "GMC-500+Re 1.21"
+                    #if gglobs.GMCdeviceDetected in ("GMC-500+Re 1.18", "GMC-500+Re 1.21"):
+                    if gglobs.GMCdeviceDetected in gglobs.locationBug: # default: "GMC-500+Re 1.18", "GMC-500+Re 1.21"
                         histMess = {"ASCII" : 4,
                                     "Triple": 2,
                                     "Quad"  : 3,

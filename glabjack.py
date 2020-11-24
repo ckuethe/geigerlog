@@ -27,7 +27,7 @@ NOTE: verfied to work **ONLY** on Linux; it may work on Mac
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -143,7 +143,7 @@ def getLabJackValues(varlist):
                 u3t             = round(scaleVarValues(vname, u3t, gglobs.ValueScale[vname]), 2)
                 alldata.update({vname: u3t})
 
-    vprint("{:20s}:  Variables:{}  Data:{}  ".format("getLabJackValues", varlist, alldata))
+    vprint("{:20s}:  Variables:{}  Data:{}".format("getLabJackValues", varlist, alldata))
 
     return alldata
 
@@ -159,14 +159,14 @@ def getLabJackInfo(extended = False):
 
     #print("--- getLabJackInfo LabJackPython.listAll(3):", LabJackPython.listAll(3))
     if gglobs.LJConnection  == True:
-        LJInfo = """Connected Device:             {}
+        LJInfo = """Connected Device:             '{}'
 Connected Probe (Status):     {} ({})
 Connection:                   USB
 Configured Variables:         {}""".format(\
                                            gglobs.LJDeviceName, \
                                            "EI1050", \
                                            LJprobe.getStatus(), \
-                                           gglobs.LJvariables)
+                                           gglobs.LJVariables)
 
         if extended == True:
             LJInfo += "\nLabJack Software Versions:\n"
@@ -267,9 +267,9 @@ def initLabJack():
     LJprobe                 = ei1050.EI1050(LJdevice)
     gglobs.LJConnection     = True
 
-    if gglobs.LJvariables  == "auto":   gglobs.LJvariables = "T, H, X"
+    if gglobs.LJVariables  == "auto":   gglobs.LJVariables = "T, H, X"
 
-    DevVars = gglobs.LJvariables.split(",")
+    DevVars = gglobs.LJVariables.split(",")
     for i in range(0, len(DevVars)):  DevVars[i] = DevVars[i].strip()
     gglobs.DevicesVars["LabJack"] = DevVars
     #print("DevicesVars:", gglobs.DevicesVars)
