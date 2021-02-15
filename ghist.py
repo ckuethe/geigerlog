@@ -102,7 +102,7 @@ def makeHistory(sourceHist):
             time.sleep(0.1) # fails occasionally to read all data when
                             # sleep is only 0.1; still not ok at 0.2 sec
                             # wieder auf 0.1, da GQ Dataviewer deutlich scneller ist
-            fprint("Reading page of size {} @address:".format(page), address)
+            fprint("Reading page of size {} @address 0x{:06x}".format(page, address))
 
 #newnewnew
 #REMEMBER: AFTER Factoryreset rewrite the saving mode (showed cpm, although it was CPS!)
@@ -329,8 +329,12 @@ def parseHIST(hist):
                     i   += 12
 
                 elif rec[i+2] == 1: #double data byte coming
-                    msb     = rec[i+3]
-                    lsb     = rec[i+4]
+                    try:
+                        msb     = rec[i+3]
+                        lsb     = rec[i+4]
+                    except IndexError:
+                        msb     = 0
+                        lsb     = 0
                     cpx     = msb * 256 + lsb
                     if CPSmode: cpx = cpx & 0x3fff # count rate limit CPS = 14bit!
                     cpx     = cpx * cpxValid
