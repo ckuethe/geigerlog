@@ -204,35 +204,44 @@ def plotPoisson():
 
 
 
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 # chi squared stuff  ----------------------------------------------------------
-    obs     = hist
-    exp     = pdfs
-    mini    = 0
-    maxi    = len(obs)
+# since 22.Juli 2021 I noticed this error coming up in all data files, even synthetic data:
+# Chi-squared Test Poisson: Exception: For each axis slice, the sum of the observed frequencies
+# must agree with the sum of the expected frequencies to a relative tolerance of 1e-08, but
+# the percent differences are: 1.3829332101245581e-05
+# conclusion: some change in the scipy lib!
+#             --> remove the whole chi-square calculation
+#                 remove also Kolmogorov-Smirnoffcalculation
 
-    # find where obs and exp are both > 5
-    # first the left side
-    for i in range(len(obs)):
-        #print("Left:   i={}, obs={:9.0f}, exp={:9.2f}".format(i, obs[i], exp[i] ))
-        if obs[i] >=5 and exp[i] >= 5:
-            #print("mini--> i={}, obs= {}, exp={}".format(i, obs[i], exp[i]))
-            mini = i
-            break
+    #~obs     = hist
+    #~exp     = pdfs
+    #~mini    = 0
+    #~maxi    = len(obs)
 
-    # now the right side
-    for i in range(mini, len(obs) ):
-        #print("Right: i={}, obs={:9.0f}, exp={:9.2f}".format(i, obs[i], exp[i] ))
-        if obs[i] <= 5 or exp[i] <= 5:
-            #print("maxi--> i={}, obs= {}, exp={}".format(i, obs[i], exp[i]))
-            maxi = i
-            break
+    #~# find where obs and exp are both > 5
+    #~# first the left side
+    #~for i in range(len(obs)):
+        #~#print("Left:   i={}, obs={:9.0f}, exp={:9.2f}".format(i, obs[i], exp[i] ))
+        #~if obs[i] >=5 and exp[i] >= 5:
+            #~#print("mini--> i={}, obs= {}, exp={}".format(i, obs[i], exp[i]))
+            #~mini = i
+            #~break
 
-    # the ignored values on the right side
-    for i in range(maxi, len(obs) ):
-        pass
-        #print("Rest:  i={}, obs={:9.0f}, exp={:9.2f}".format(i, obs[i], exp[i] ))
+    #~# now the right side
+    #~for i in range(mini, len(obs) ):
+        #~#print("Right: i={}, obs={:9.0f}, exp={:9.2f}".format(i, obs[i], exp[i] ))
+        #~if obs[i] <= 5 or exp[i] <= 5:
+            #~#print("maxi--> i={}, obs= {}, exp={}".format(i, obs[i], exp[i]))
+            #~maxi = i
+            #~break
 
-    wprint(fncname + "mini:{}, maxi:{}, diff:{}".format(mini, maxi, maxi - mini))
+    #~# the ignored values on the right side
+    #~for i in range(maxi, len(obs) ):
+        #~pass
+        #~#print("Rest:  i={}, obs={:9.0f}, exp={:9.2f}".format(i, obs[i], exp[i] ))
+
+    #~wprint(fncname + "mini:{}, maxi:{}, diff:{}".format(mini, maxi, maxi - mini))
 
 
 
@@ -266,61 +275,73 @@ def plotPoisson():
     # assumption: for Poisson take 1 extra dof off ddof= 1 (estimate average from data)
     #             for Normal  take 2 extra dof off ddof= 2 (estimate average + StdDev from data)
     #
-    # calc chi2 for Poisson
-    ddofPoiss               = 1
-    dofPoiss                = len(hist[mini:maxi]) - ddofPoiss
-    chi2Poiss, pchi2Poiss   = scipy.stats.chisquare(hist[mini:maxi], f_exp=pdfs[mini:maxi],    ddof=ddofPoiss, axis=None)
-    # testing same fucntion gives p=100%
-    #chi2Poiss, pchi2Poiss   = scipy.stats.chisquare(pdfs[mini:maxi], f_exp=pdfs[mini:maxi],    ddof=ddofPoiss, axis=None)
-    txtChi2Poiss            = "Chi-squared Test Poisson:  DoF = {:1d}, chi² = {:5.1f}, p = {:2.1%}".format(dofPoiss, chi2Poiss, pchi2Poiss)
-    vprint(fncname + txtChi2Poiss)
 
-    # calc chi2 for Normal
-    ddofNorm                = 2
-    dofNorm                 = len(hist[mini:maxi]) - ddofNorm
-    chi2Norm, pchi2Norm     = scipy.stats.chisquare(hist[mini:maxi], f_exp=pdfnorm[mini:maxi], ddof=ddofNorm, axis=None)
-    # testing same fucntion gives p=100%
-    #chi2Norm, pchi2Norm     = scipy.stats.chisquare(pdfnorm[mini:maxi], f_exp=pdfnorm[mini:maxi], ddof=ddofNorm, axis=None)
-    txtChi2Norm             = "Chi-squared Test Normal :  DoF = {:1d}, chi² = {:5.1f}, p = {:2.1%}".format(dofNorm, chi2Norm, pchi2Norm)
-    vprint(fncname + txtChi2Norm)
+    #~# calc chi2 for Poisson
+    #~try:
+        #~ddofPoiss               = 1
+        #~dofPoiss                = len(hist[mini:maxi]) - ddofPoiss
+        #~chi2Poiss, pchi2Poiss   = scipy.stats.chisquare(hist[mini:maxi], f_exp=pdfs[mini:maxi],    ddof=ddofPoiss, axis=None)
+        #~# testing same fucntion gives p=100%
+        #~#chi2Poiss, pchi2Poiss   = scipy.stats.chisquare(pdfs[mini:maxi], f_exp=pdfs[mini:maxi],    ddof=ddofPoiss, axis=None)
+        #~txtChi2Poiss            = "Chi-squared Test Poisson:  DoF = {:1d}, chi² = {:5.1f}, p = {:2.1%}".format(dofPoiss, chi2Poiss, pchi2Poiss)
+    #~except Exception as e:
+        #~dprint("Chi-squared Test Poisson: Exception: ", e)
+        #~txtChi2Poiss            = "Chi-squared Test Poisson:  cannot be calculated!"
+    #~vprint(fncname + txtChi2Poiss)
+
+    #~# calc chi2 for Normal
+    #~try:
+        #~ddofNorm                = 2
+        #~dofNorm                 = len(hist[mini:maxi]) - ddofNorm
+        #~chi2Norm, pchi2Norm     = scipy.stats.chisquare(hist[mini:maxi], f_exp=pdfnorm[mini:maxi], ddof=ddofNorm, axis=None)
+        #~# testing same fucntion gives p=100%
+        #~#chi2Norm, pchi2Norm     = scipy.stats.chisquare(pdfnorm[mini:maxi], f_exp=pdfnorm[mini:maxi], ddof=ddofNorm, axis=None)
+        #~txtChi2Norm             = "Chi-squared Test Normal :  DoF = {:1d}, chi² = {:5.1f}, p = {:2.1%}".format(dofNorm, chi2Norm, pchi2Norm)
+    #~except Exception as e:
+        #~dprint("Chi-squared Test Normal: Exception: ", e)
+        #~txtChi2Norm             = "Chi-squared Test Normal:  cannot be calculated!"
+    #~vprint(fncname + txtChi2Norm)
 
 # END chi squared stuff  ------------------------------------------------------
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+# code inactivated for same reason as chi-squared stuff above
+#~# Kolmogorov-Smirnoff stuff ---------------------------------------------------
+    #~#print("avgx: ", avgx)
+    #~obs     = hist
+    #~exp     = pdfs
+    #~#print("blue values:\n", obs)
+    #~#print("red  values:\n", exp)
 
-# Kolmogorov-Smirnoff stuff ---------------------------------------------------
-    #print("avgx: ", avgx)
-    obs     = hist
-    exp     = pdfs
-    #print("blue values:\n", obs)
-    #print("red  values:\n", exp)
+    #~#print(scipy.stats.kstest(exp,'poisson', args=(20,), alternative='less'))
 
-    #print(scipy.stats.kstest(exp,'poisson', args=(20,), alternative='less'))
+    #~ks_stats_p, ks_pval_p = scipy.stats.kstest(x, 'poisson', args=(avgx,))
+    #~ks_stats_n, ks_pval_n = scipy.stats.kstest(x, 'norm'   , args=(avgx,))
+    #~#print("========================= x_norm    : avg:", avgx, ks_stats_n, ks_pval_n)
+    #~#print("========================= x_pois    : avg:", avgx, ks_stats_p, ks_pval_p)
 
-    ks_stats_p, ks_pval_p = scipy.stats.kstest(x, 'poisson', args=(avgx,))
-    ks_stats_n, ks_pval_n = scipy.stats.kstest(x, 'norm'   , args=(avgx,))
-    #print("========================= x_norm    : avg:", avgx, ks_stats_n, ks_pval_n)
-    #print("========================= x_pois    : avg:", avgx, ks_stats_p, ks_pval_p)
+    #~obs_cum  = np.empty_like(obs)
+    #~exp_cum  = np.empty_like(exp)
 
-    obs_cum  = np.empty_like(obs)
-    exp_cum  = np.empty_like(exp)
+    #~for i in range(0, len(obs) +1):
+        #~obs_cum = np.cumsum(obs[0:i])
+        #~exp_cum = np.cumsum(exp[0:i])
 
-    for i in range(0, len(obs) +1):
-        obs_cum = np.cumsum(obs[0:i])
-        exp_cum = np.cumsum(exp[0:i])
+    #~#print("obs_cum: \n", obs_cum)
+    #~#print("exp_cum: \n", exp_cum)
 
-    #print("obs_cum: \n", obs_cum)
-    #print("exp_cum: \n", exp_cum)
+    #~#diff  = np.empty_like(obs)
+    #~#for i in range(0, len(obs)):
+    #~#    diff[i] = obs_cum[i] - exp_cum[i]
+    #~#print("diff: \n", diff)
+    #~#print("diff: \n", np.absolute(diff))
 
-    #diff  = np.empty_like(obs)
-    #for i in range(0, len(obs)):
-    #    diff[i] = obs_cum[i] - exp_cum[i]
-    #print("diff: \n", diff)
-    #print("diff: \n", np.absolute(diff))
+    #~#diffmax = np.max(np.absolute(diff))
+    #~#print("diffmax: ", diffmax)
 
-    #diffmax = np.max(np.absolute(diff))
-    #print("diffmax: ", diffmax)
-
-# END   Kolmogorov-Smirnoff stuff ---------------------------------------------------
+#~# END   Kolmogorov-Smirnoff stuff ---------------------------------------------
+# !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
     fig2 = plt.figure(facecolor = "#E7F9C9", dpi=gglobs.hidpiScaleMPL)
@@ -389,11 +410,14 @@ def plotPoisson():
     labout.append("Countrates per Bin: {}".format(step))
 
     labout.append("\nGoodness of Fit Poisson :  r²  = {:5.3f}".format(r2))
-    labout.append(txtChi2Poiss)
+
+    # chi stuff all removed, see above
+    #labout.append(txtChi2Poiss)
 
     if gglobs.stattest:
         labout.append("Goodness of Fit Normal  :  r²  = {:5.3f}".format(r2N))
-        labout.append(txtChi2Norm)
+        # chi stuff all removed, see above
+        #~labout.append(txtChi2Norm)
 
 #    labout.append("Kolmogorov-Smirnow Poisson Test: ")
 #    labout.append("Poisson :  statistic = {:5.3f}, pvalue= {:2.3%}".format(ks_stats_p, ks_pval_p))
@@ -417,12 +441,9 @@ def plotPoisson():
     labout.append("Kurtosis  ={:8.2f}  0:Norm.Dist.; shape is:  +:pointy: -:flat".format(scipy.stats.kurtosis(x) ))
     labout.append("")
 
-
     d       = QDialog()
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setWindowTitle("Poisson Test")
-    #d.setWindowModality(Qt.ApplicationModal)
-    #d.setWindowModality(Qt.NonModal)
     d.setWindowModality(Qt.WindowModal)
 
     #~mystatusBar = QStatusBar()
