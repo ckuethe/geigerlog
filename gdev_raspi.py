@@ -133,7 +133,7 @@ def sounddevThreadTarget(Dummy):
             gglobs.RaspiRecording = np.concatenate((gglobs.RaspiRecording, npdata))[-gglobs.RaspiRate:]
         except Exception as e:
             info = fncname + "Exception reading stream "
-            exceptPrint(e, sys.exc_info(), info)
+            exceptPrint(e, info)
             npdata = np.array([0])
         #~print("npdata:  ", type(npdata), npdata[:10])
         #~wdt = (time.time() - wstart) * 1000
@@ -190,7 +190,7 @@ def getRaspiInfo(extended = False):
 
     RaspiInfo = """Connected Device:             '{}'
 Configured Variables:         {}
-Geiger tube calib. factor:    {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)"""\
+Geiger Tube Sensitivity:      {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)"""\
                 .format(
                         gglobs.RaspiDeviceName,
                         gglobs.RaspiVariables,
@@ -282,7 +282,7 @@ def printRaspiDevInfo(extended=False):
 
     setBusyCursor()
 
-    txt = "Raspi Device Info"
+    txt = "Raspi Device"
     if extended:  txt += " Extended"
     fprint(header(txt))
     fprint("Configured Connection:", "None")

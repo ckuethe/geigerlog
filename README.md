@@ -1,9 +1,58 @@
 # README.md:
-
-<!--:~$ grip README.md -->
+<!--
+localhost:
+~$ grip README.md
+include pics:
+![GLMM](/Monitor8k.png "GeigerLog on an 8k monitor")
+![GLMM](/MiniMon-GL.png "GeigerLog running integrated MiniMon device")
+-->
 
 #### NOTE: All **articles** are relocated into the FOLDER named 'Articles'
 ---
+
+## GeigerLog 1.2.1 has been released!
+
+> GeigerLog now supports all current Gamma-Scout Counters, including the lat­est “Online” model, the only one of the breed which allows logging.
+
+> A SimulCounter has been added, which creates its “counts” with a Poisson random number generator. Helpful for understanding the workings of a Geiger counter and GeigerLog.
+
+> Search the entire NotePad for the occurrence of a text like ‘abc’ or ‘123.456’
+
+> The tool GLpipcheck was improved
+
+> The Easter Holidays are approaching, and fittingly, an Easter egg can now be found in GeigerLog. Do your best – perhaps you will see a dancing GEIGERA?
+
+---
+
+## BUG - Alert
+
+you may experience a Python bug on all operating systems if you have updated to
+the latest versions of the Python packages. The error message is "ImportError:
+Failed to import any qt binding" and GeigerLog won't start at all.
+
+For a workaround run these commands in a terminal/command window :
+
+- python -m pip uninstall  PyQt5 PyQt5-Qt PyQt5-sip
+- python -m pip install  PyQt5
+- python -m pip install --force-reinstall  PyQt5-Qt
+
+Remember that depending on your installation you may have to use 'python3'
+instead of plain 'python' !
+
+At the end you will have these versions installed:
+<br>   PyQt5            5.15.3
+<br>   PyQt5-Qt         5.15.2
+<br>   PyQt5-sip        12.8.1
+
+---
+
+
+## GeigerLog 1.2 has been released!
+
+and withdrawn due to a nasty Windows 10 bug
+
+---
+
 
 ## GeigerLog 1.1 has been released!
 
@@ -13,9 +62,6 @@ prepare for the future,
 New features were added:
 
 > GeigerLog now supports HiDPI monitors, it is now running well on an 8k monitor
-
-<!--![GLMM](/Monitor8k.png "GeigerLog on an 8k monitor")
-![GLMM](/MiniMon-GL.png "GeigerLog running integrated MiniMon device")-->
 
 > GeigerLog now supports the MiniMon CO2 Monitors for CO2 measurements in your
 room or office (only on Linux). A standalone version of MiniMon is found

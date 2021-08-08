@@ -94,7 +94,7 @@ def initAudioCounter():
     dprint(fncname + "Initialzing AudioCounter")
     setDebugIndent(1)
 
-    errmsg  = ""                            # what errors can be here?
+    errmsg  = ""                            # what errors can be here? e.g no input device!
     gglobs.AudioDeviceName      = "AudioCounter"
     gglobs.AudioDeviceDetected  = gglobs.AudioDeviceName
     gglobs.Devices["Audio"][0]  = gglobs.AudioDeviceDetected
@@ -104,18 +104,20 @@ def initAudioCounter():
     if gglobs.AudioPulseMax     == "auto": gglobs.AudioPulseMax     = 32768             # +/- 15 bit
     if gglobs.AudioPulseDir     == "auto": gglobs.AudioPulseDir     = False             # => negative
     if gglobs.AudioThreshold    == "auto": gglobs.AudioThreshold    = 60                # % of max
-    if gglobs.AudioCalibration  == "auto": gglobs.AudioCalibration  = 154               # CPM/(µSv/h), = 0.065 µSv/h/CPM
+    if gglobs.AudioSensitivity  == "auto": gglobs.AudioSensitivity  = 154               # CPM/(µSv/h), = 0.065 µSv/h/CPM
     if gglobs.AudioVariables    == "auto": gglobs.AudioVariables    = "CPM3rd, CPS3rd"
 
-    setCalibrations(gglobs.AudioVariables, gglobs.AudioCalibration)
+    setCalibrations(gglobs.AudioVariables, gglobs.AudioSensitivity)
 
     setLoggableVariables("Audio", gglobs.AudioVariables)
 
 
 #Sound Driver settings
 
-    dprint(fncname + "Query Devices: \n", sd.query_devices() )
-    dprint(fncname + "Query Host Apis: \n", sd.query_hostapis(index=None))
+    dprint(fncname + "Query Devices: \n",   sd.query_devices() )
+    dprint(fncname + "Query Host Apis:")
+    if gglobs.debug:
+        for a in sd.query_hostapis(index=None): print(" ", a)
 
     # in defaults with 2 allowed values: 1st=input, 2nd=output
     # samplerate has only one single int value
@@ -128,38 +130,55 @@ def initAudioCounter():
 
     print()
     try:
-        dprint(fncname + "Properties Default Device: {}\n".format(sd.default.device),
-                          sd.query_devices(device=None,
-                          kind='input')) # exactly same result for kind='output'
+        defaultDevice = sd.default.device
+        dprint(fncname + "Default Device (Input, Output): {}".format(defaultDevice))
+        #print(fncname + "Default Device (Input, Output): {}".format(defaultDevice))
+        if defaultDevice[1] != -1 :
+            sdqd = sd.query_devices(device=None, kind='output')
+            vprint(fncname  + "Output Device: ")
+            for key in sdqd: vprint("   {:30s} : {}".format(key, sdqd[key]))
+        else:
+            edprint(fncname + "Output Device: ", "No Default Output Device!")
+
+        if defaultDevice[0] != -1 :
+            sdqd = sd.query_devices(device=None, kind='input')
+            vprint(fncname  + "Input Device : ")
+            for key in sdqd: vprint("   {:30s} : {}".format(key, sdqd[key]))
+        else:
+            edprint(fncname + "Input Device : ", "No Default Input Device!")
+
     except Exception as e:
-        info = fncname + "Exception"
-        exceptPrint(e, sys.exc_info(), info)
+        info = fncname + "Exception in querying default devices"
+        exceptPrint(e, info)
     print()
 
+    if defaultDevice[0] != -1:
+        gglobs.AudioFormat      = sd.default.dtype
+        gglobs.AudioChannels    = sd.default.channels
+        gglobs.AudioRate        = sd.default.samplerate
+        gglobs.AudioChunk       = 32
 
-    gglobs.AudioFormat      = sd.default.dtype
-    gglobs.AudioChannels    = sd.default.channels
-    gglobs.AudioRate        = sd.default.samplerate
-    gglobs.AudioChunk       = 32
+        dprint(fncname + "DEVICE:{}, CHANNELS:{}, FORMAT:{}, Latency:{}, Host API Index:{}, RATE:{}, CHUNK:{}"\
+                        .format(
+                                gglobs.AudioDevice,
+                                gglobs.AudioChannels,
+                                gglobs.AudioFormat,
+                                gglobs.AudioLatency,
+                                sd.default.hostapi,
+                                gglobs.AudioRate,
+                                gglobs.AudioChunk,
+                               )
+             )
 
-    dprint(fncname + "DEVICE:{}, CHANNELS:{}, FORMAT:{}, Latency:{}, Host API Index:{}, RATE:{}, CHUNK:{}"\
-                    .format(
-                            gglobs.AudioDevice,
-                            gglobs.AudioChannels,
-                            gglobs.AudioFormat,
-                            gglobs.AudioLatency,
-                            sd.default.hostapi,
-                            gglobs.AudioRate,
-                            gglobs.AudioChunk,
-                           )
-         )
+        gglobs.AudioConnection = True
 
-    gglobs.AudioConnection = True
+        AudioCounterThread = threading.Thread(target=AudioCounterThreadTarget, args=(None,))
+        gglobs.AudioThreadStop = False
+        AudioCounterThread.start()
+        dprint(fncname + "Thread-status: is alive: ", AudioCounterThread.is_alive())
 
-    AudioCounterThread = threading.Thread(target=AudioCounterThreadTarget, args=(None,))
-    gglobs.AudioThreadStop = False
-    AudioCounterThread.start()
-    dprint(fncname + "Thread-status: is alive: ", AudioCounterThread.is_alive())
+    else:
+        errmsg  = "No Sound Input detected! Is there a proper connection?"
 
     setDebugIndent(0)
 
@@ -172,7 +191,7 @@ def terminateAudioCounter():
     global AudioCounterThread
 
     fncname ="terminateAudioCounter: "
-    dprint(fncname + "Terminating AudioCounter")
+    dprint(fncname)
     if not gglobs.AudioConnection: return fncname + "No AudioCounter connection"
 
     setDebugIndent(1)
@@ -210,12 +229,19 @@ def AudioCounterThreadTarget(Dummy):
     nandata                 = np.full(10, gglobs.NAN)           # creating a gap of 10 values
     chunks40                = (gglobs.AudioChunk + 10) * 40     # the length of 40 single pulses with gaps
 
-    CHUNKstream = sd.InputStream(blocksize=gglobs.AudioChunk)   # no callback so we get blocking read
-    CHUNKstream.start()
     cstart                  = time.time()                       # to record the 1 sec collection period
 
-    while not gglobs.AudioThreadStop:
+    try:
+        CHUNKstream = sd.InputStream(blocksize=gglobs.AudioChunk)   # no callback so we get blocking read
+        CHUNKstream.start()
+    except Exception as e:
+        msg = "Audio cannot be activated. Is an input device missing?"
+        #efprint(msg)
+        exceptPrint(e, msg)
+        gglobs.AudioThreadStop = True
+        return
 
+    while not gglobs.AudioThreadStop:
         #~wstart = time.time()
         try:
             record, overflowed = CHUNKstream.read(gglobs.AudioChunk)
@@ -223,7 +249,7 @@ def AudioCounterThreadTarget(Dummy):
             gglobs.AudioRecording = np.concatenate((gglobs.AudioRecording, npdata))[-gglobs.AudioRate:]
         except Exception as e:
             info = fncname + "Exception reading stream "
-            exceptPrint(e, sys.exc_info(), info)
+            exceptPrint(e, info)
             npdata = np.array([0])
         #~print("npdata:  ", type(npdata), npdata[:10])
         #~wdt = (time.time() - wstart) * 1000
@@ -280,11 +306,11 @@ def getAudioCounterInfo(extended = False):
 
     AudioInfo = """Connected Device:             '{}'
 Configured Variables:         {}
-Geiger tube calib. factor:    {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)"""\
-                .format(
+Geiger Tube Sensitivity:      {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
+""".format(
                         gglobs.AudioDeviceName,
                         gglobs.AudioVariables,
-                        gglobs.AudioCalibration, 1 / gglobs.AudioCalibration
+                        gglobs.AudioSensitivity, 1 / gglobs.AudioSensitivity
                        )
 
     if extended == True:
@@ -364,15 +390,13 @@ def printAudioDevInfo(extended=False):
 
     setBusyCursor()
 
-    txt = "AudioCounter Device Info"
+    txt = "AudioCounter Device"
     if extended:  txt += " Extended"
     fprint(header(txt))
     fprint("Configured Connection:", "Default Audio Input")
     fprint(getAudioCounterInfo(extended=extended))
 
     setNormalCursor()
-
-
 
 
 def plotAudio(dtype="Single Pulse", duration=None):
@@ -407,10 +431,8 @@ def plotAudio(dtype="Single Pulse", duration=None):
                         'alpha'             : 1,
                         }
     plt.close(99)
-
-    #~fig2 = plt.figure(99, facecolor = "#E7F9C9")
-    fig2 = plt.figure(99, facecolor = "#E7F9C9", dpi=gglobs.hidpiScaleMPL)
-    vprint(fncname + "open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
+    fig2 = plt.figure(99, facecolor = "#E7cccc", dpi=gglobs.hidpiScaleMPL)
+    wprint(fncname + "open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
 
     plt.title("AudioCounter Device\n", fontsize=14, loc='center')
     plt.title("Audio Input", fontsize=10, fontweight='normal', loc = 'left')
@@ -464,27 +486,27 @@ def plotAudio(dtype="Single Pulse", duration=None):
     d.setWindowModality(Qt.WindowModal)
 
     okButton = QPushButton("OK")
-    okButton.setCheckable(True)
+    #okButton.setCheckable(True)
     okButton.setAutoDefault(True)
     okButton.clicked.connect(lambda:  d.done(0))
 
     singleButton = QPushButton("Single Pulse")
-    singleButton.setCheckable(True)
+    #singleButton.setCheckable(True)
     singleButton.setAutoDefault(False)
     singleButton.clicked.connect(lambda: reloadAudioData("Single Pulse"))
 
     multiButton = QPushButton("Multi Pulse")
-    multiButton.setCheckable(True)
+    #multiButton.setCheckable(True)
     multiButton.setAutoDefault(False)
     multiButton.clicked.connect(lambda: reloadAudioData("Multi Pulse"))
 
     recordButton = QPushButton("Recording")
-    recordButton.setCheckable(True)
+    #recordButton.setCheckable(True)
     recordButton.setAutoDefault(False)
     recordButton.clicked.connect(lambda: reloadAudioData("Recording"))
 
     togglePulseDirButton = QPushButton("Toggle Pulse Direction")
-    togglePulseDirButton.setCheckable(True)
+    #togglePulseDirButton.setCheckable(True)
     togglePulseDirButton.setAutoDefault(False)
     togglePulseDirButton.clicked.connect(lambda: reloadAudioData("Toggle"))
 
@@ -564,18 +586,264 @@ def reloadAudioData(dtype):
     plotAudio(dtype, duration)
 
 
+def audio_callback(indata, frames, time, status):
+    """This is called (from a separate thread) for each audio block."""
+
+    global liveq
+
+    fncname = "audio_callback: "
+
+    #print(fncname + "np.shape(indata): ", np.shape(indata), ", frames: ", frames, ", time: ", time, ", status: ", status)
+
+    if status:
+        edprint(fncname + "status: ", status)
+
+    #if frames != 11025: return
+
+    liveq.put(indata[:, 0])
 
 
+def updateAnimationPlot(frame):
+    """This is called by matplotlib for each animated plot update.
+
+    Typically, audio callbacks happen more frequently than plot updates,
+    therefore the queue tends to contain multiple blocks of audio data.
+    """
+    global liveq, plotdata
+
+    start = time.time()
+
+    fncname = "updateAnimationPlot: "
+
+    #print(fncname + "frame", frame)
+
+    #counter = 0
+    while True:
+        try:
+            data = liveq.get_nowait()
+            #print("liveq: ", counter)
+            #counter += 1
+        except queue.Empty:
+            #edprint("queue.Empty: ", queue.Empty)
+            break
+
+        shift    = len(data)
+        plotdata = np.roll(plotdata, -shift)
+        plotdata[-shift:] = data
+
+        lines[0].set_ydata(plotdata)
+
+    return lines
 
 
+def makeEnde():
+    global ende
+    ende = True
 
 
+def showLiveAudioSignal():
+    """Plotting a rolling audio plot"""
+
+    fncname = "showLiveAudioSignal: "
+
+    global liveq, lines, plotdata, ende
+    global args_device, args_channels, args_samplerate
+
+    liveq = queue.Queue()
+    ende  = False
+
+    try:
+        #print(fncname + "Audio Devices found on system:\n{}".format(sd.query_devices()))
+
+        #~args_samplerate = 44100 # get default instead
+        args_samplerate = None
+        #args_samplerate = 11050*2
+
+        args_window     = 20000
+        args_downsample = 1
+        #~args_channels   = (1, ) # needed as tuple
+        args_channels   = 1
+        #~args_interval   = 300
+        args_interval   = 50
+        args_device     = None
+
+        if args_samplerate is None:
+            device_info = sd.query_devices(args_device, 'input')
+            args_samplerate = device_info['default_samplerate']
+        #print(fncname + "parameters: ", args_samplerate, args_window, args_downsample, args_channels, args_interval, args_device)
+
+        length   = int(args_window * args_samplerate / (1000 * args_downsample)) # time length in ms
+        plotdata = np.zeros((length))                        # create buffer of required length
+        #~print("length: ", length)                                                # 20000 * 44100 / (1000 * 1) = 882000
+        #~print("plotdata: ", plotdata)                                            # [[0.] [0.] [0.] ... [0.] [0.] [0.]]
+        #~print("np.shape(plotdata): ", np.shape(plotdata))                        # np.shape(plotdata):  (441000, 1)
+
+    except Exception as e:
+        srcinfo = fncname + "Exception: "
+        exceptPrint(e, srcinfo)
+
+    plt.close(77)
+    fig77 = plt.figure(77, facecolor = "#E7cccc", dpi=gglobs.hidpiScaleMPL) # light red
+    vprint(fncname + "open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
+
+    lines = plt.plot(plotdata) # creates a plot array x=0,1,2,... y=0,0,0,
+
+    #~for column, line in enumerate(lines):
+        #~print("column: ", column, ", lines: ", lines, column, line)
+        #~print("x: ", line.get_xdata(orig=True), "\ny: ", line.get_ydata(orig=True))
+
+    plt.title("AudioCounter Device\n", fontsize=14, loc='center')
+    plt.title("Live Audio Signal", fontsize=10, fontweight='normal', loc = 'left')
+
+    plt.grid(True)
+    plt.subplots_adjust(hspace=None, wspace=.2 , left=.11, top=0.85, bottom=0.15, right=.97)
+    plt.ticklabel_format(useOffset=False)
+
+    # do not draw x ticks and x labels
+    plt.tick_params(
+        axis='x',          # changes apply to the x-axis
+        which='both',      # both major and minor ticks are affected
+        bottom=False,      # ticks along the bottom edge are off
+        top=False,         # ticks along the top edge are off
+        labelbottom=False) # labels along the bottom edge are off
+
+    # hide the cursor position from showing in the Nav toolbar
+    ax1 = plt.gca()
+    ax1.format_coord = lambda x, y: ""
+
+    # canvas - this is the Canvas Widget that displays the `figure`
+    # it takes the `figure` instance as a parameter to __init__
+    canvas77 = FigureCanvas(fig77)
+    canvas77.setFixedSize(1000, 550)
+    navtoolbar = NavigationToolbar(canvas77, gglobs.exgg)
+
+    d = QDialog()
+    gglobs.plotAudioPointer = d
+    d.setWindowIcon(gglobs.iconGeigerLog)
+    d.setWindowTitle("AudioCounter Device")
+    #d.setMinimumHeight(700)
+    #d.setWindowModality(Qt.ApplicationModal)
+    #d.setWindowModality(Qt.NonModal)
+    d.setWindowModality(Qt.WindowModal)
+
+    okButton = QPushButton("OK")
+    okButton.setAutoDefault(True)
+    okButton.clicked.connect(lambda:  makeEnde())
+
+    bbox    = QDialogButtonBox()
+    bbox.addButton(okButton,                QDialogButtonBox.ActionRole)
+
+    layoutH = QHBoxLayout()
+    layoutH.setAlignment(Qt.AlignLeft);
+    layoutH.addWidget(bbox)
+    layoutH.addWidget(navtoolbar)
+    layoutH.addStretch() # all stretches needed, very odd!
+    layoutH.addStretch()
+    layoutH.addStretch()
+    layoutH.addStretch()
+    layoutH.addStretch()
+    layoutH.addStretch()
+    layoutH.addStretch()
+    layoutH.addStretch()
+    layoutH.addStretch()
+
+    layoutV = QVBoxLayout(d)
+    layoutV.addLayout(layoutH)
+    layoutV.addWidget(canvas77)
+
+    plt.xlabel("\nTime", fontsize=14)
+    plt.ylabel("Amplitude [rel]", fontsize=14)
+    plt.ylim(-35000, 35000)
+
+  #~ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=True)
+    ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=False)
+    # https://stackoverflow.com/questions/16732379/stop-start-pause-in-python-matplotlib-animation
+
+    playWav("ok")
+
+    d.open()    # needed!
+
+    start = time.time()
+    while True: # one cycle is about 350 ms
+        stream = sd.InputStream(device=args_device, channels=args_channels, samplerate=args_samplerate, callback=audio_callback)
+
+        with stream: # not doing anything, but still needed!
+            pass
+
+        Qt_update() # ohne dies nur leerer Fensterrahmen
+        #d.show() # kein Zusatznutzen; ohne Qt_update nur leeres Bild
+        #time.sleep(0.2)
+        print("time delta: {:0.3f} ms".format(1000*(time.time() -start))) # alle 300 - 400 ms
+        start = time.time()
+
+        if ende: break
+
+    #print("with stream done")
+
+    d.close()
+    ani.event_source.stop() # ouff, this stops the animation!
 
 
+def turnEia(tdir, mmovie):
+
+    turnDir = tdir
+    mmovie.stop()
+    time.sleep(0.3)
+    mmovie.start()
 
 
+def showAudioEia():
+    """https://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=9517&#7803"""
+
+    fncname = "showAudioEia: "
+
+    from PyQt5.QtGui import QMovie
+
+    d = QDialog()
+
+    d.setWindowIcon(gglobs.iconGeigerLog)
+    d.setWindowTitle("Eia")
+    #d.setWindowModality(Qt.ApplicationModal)
+    #d.setWindowModality(Qt.NonModal)
+    d.setWindowModality(Qt.WindowModal)
+
+    okButton = QPushButton("OK")
+    okButton.setAutoDefault(True)
+    okButton.clicked.connect(lambda:  d.close())
+
+    singleButton = QPushButton("Left Turn")
+    singleButton.setAutoDefault(False)
+    singleButton.clicked.connect(lambda: turnEia("Left", movie))
+
+    rightButton = QPushButton("Right Turn")
+    rightButton.setAutoDefault(False)
+    rightButton.clicked.connect(lambda: turnEia("Right", movie))
+
+    bbox    = QDialogButtonBox()
+    bbox.addButton(okButton,                QDialogButtonBox.ActionRole)
+    bbox.addButton(singleButton,            QDialogButtonBox.ActionRole)
+    bbox.addButton(rightButton,             QDialogButtonBox.ActionRole)
 
 
+    peia = "".join(map(chr, [101, 105, 97, 46, 103, 105, 102]))
+    dp = os.path.join(getProgPath(), gglobs.gresDirectory, peia)
+
+    label = QLabel()
+    movie = QMovie(dp)
+    label.setMovie(movie)
+    movie.start()
+
+    layoutH = QHBoxLayout()
+    layoutH.addWidget(bbox)
+    layoutH.addStretch()
+
+    layoutV = QVBoxLayout(d)
+    layoutV.addLayout(layoutH)
+    layoutV.addWidget(label)
+
+    playWav("ok")
+
+    d.exec()
 
 
 
@@ -607,7 +875,6 @@ def plotDataT(AudioMultiPulses, inversrate):
     #   Available styles: Windows, Fusion
     os.environ["QT_STYLE_OVERRIDE"] = ""
 
-    #~fig = plt.figure("Total", figsize=(14, 6))
     fig = plt.figure("Total", figsize=(14, 6), dpi=gglobs.hidpiScaleMPL)
 
     show = 0    # 1: accumulate the counts (don't delete the figure)

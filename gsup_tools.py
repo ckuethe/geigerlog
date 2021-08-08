@@ -40,23 +40,32 @@ xt, yt, vline, zero, FitFlag, FitSelector = 0, 0, True, "None", True, "Prop"
 def printSuSt():
     """Prints an overview of data from all variables"""
 
-
     if gglobs.logTimeSlice is None:
         gglobs.exgg.showStatusMessage("No data available")
         return
 
+    timespan_total = gglobs.logTime[-1] - gglobs.logTime[0]
+    timespan_plot  = gglobs.logTimeSlice[-1] - gglobs.logTimeSlice[0]
+    size_total     = gglobs.logTime.size
+    size_plot      = gglobs.logTimeSlice.size
+    cycle_total    = timespan_total / size_total * 86400 # sec
+    cycle_plot     = timespan_plot  / size_plot  * 86400 # sec
+
     fprint(header("Summary Statistics of Variables selected in Plot"))
-    fprint("File      = {}".format(gglobs.currentDBPath))
-    fprint("Filesize  = {:10,.0f} Bytes".format(os.path.getsize(gglobs.currentDBPath)))
-    fprint("Records   = {:10,.0f} shown in Plot" .format(gglobs.logTimeSlice.size))
+    fprint("File       = {}".format(gglobs.currentDBPath))
+    if os.access(gglobs.currentDBPath , os.R_OK):
+        fprint("Filesize   = {:10,.0f} Bytes".format(os.path.getsize(gglobs.currentDBPath)))
+    else:
+        fprint("Filesize   = File not found!")
+    fprint("Records    = {:10,.0f} total,   {:10,.0f} shown in Plot"    .format(size_total, size_plot))
+    fprint("Time Span  = {:10,.5f} d total, {:10,.5f} d shown in Plot"  .format(timespan_total, timespan_plot))
+    fprint("Avg. Cycle = {:10,.1f} s total, {:10,.1f} s shown in Plot"  .format(cycle_total, cycle_plot))
 
     fprint("          [Unit]      Avg ±StdDev     Variance          Range            Recs  Last Value")
     for i, vname in enumerate(gglobs.varsBook):
         if gglobs.varcheckedCurrent:
-            try:
-                fprint( gglobs.varlabels[vname])
-            except:
-                pass
+            try:    fprint( gglobs.varlabels[vname])
+            except: pass
 
 
 def getlstats(logTime, logVar, vname):
@@ -82,7 +91,6 @@ def getlstats(logTime, logVar, vname):
     logVar_sqrt      = np.sqrt(logVar_avg)
     logVar_95        = logVar_std * 1.96   # 95% confidence range
 
-
     if vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd"):
         logVar_text      = "(in units of: {})".format(gglobs.Yunit)
 
@@ -96,7 +104,7 @@ def getlstats(logTime, logVar, vname):
 
     ltext = []
     ltext.append("Variable: {} {}\n".format(vnameFull, logVar_text))
-    ltext.append("  Recs      = {:10,.0f}  Non-NAN Records".format(records_nonnan))
+    ltext.append("  Recs      = {:10,.0f}  Records".format(records_nonnan))
 
     if   gglobs.Yunit == "CPM" and (vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd")):
         ltext.append("  Counts    = {:10,.0f}  Counts calculated as: Average CPM * Log-Duration[min]\n".format(logVar_avg * logtime_delta * 24 * 60))
@@ -111,12 +119,12 @@ def getlstats(logTime, logVar, vname):
     ltext.append("                       % of avg")
     ltext.append("  Average   ={:8.2f}      100%       Min  ={:8.2f}        Max  ={:8.2f}" .format(logVar_avg,                              logVar_min,          logVar_max)          )
     if logVar_avg != 0:
-        ltext.append("  Variance  ={:8.2f} {:8.2f}%"                                          .format(logVar_var,  logVar_var  / logVar_avg * 100.))
-        ltext.append("  Std.Dev.  ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_std,  logVar_std  / logVar_avg * 100.,  logVar_avg-logVar_std,         logVar_avg+logVar_std)  )
-        ltext.append("  Sqrt(Avg) ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_sqrt, logVar_sqrt / logVar_avg * 100.,  logVar_avg-logVar_sqrt,        logVar_avg+logVar_sqrt) )
-        ltext.append("  Std.Err.  ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_err,  logVar_err  / logVar_avg * 100.,  logVar_avg-logVar_err,         logVar_avg+logVar_err) )
-        ltext.append("  Median    ={:8.2f} {:8.2f}%       P_5% ={:8.2f}        P_95%={:8.2f}" .format(logVar_med,  logVar_med  / logVar_avg * 100.,  np.nanpercentile(logVar, 5),   np.nanpercentile(logVar, 95)))
-        ltext.append("  95% Conf*)={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_95,   logVar_95   / logVar_avg * 100.,  logVar_avg-logVar_95,          logVar_avg+logVar_95)   )
+        ltext.append("  Variance  ={:8.2f} {:8.2f}%"                                          .format(logVar_var,  logVar_var  / logVar_avg * 100))
+        ltext.append("  Std.Dev.  ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_std,  logVar_std  / logVar_avg * 100,  logVar_avg-logVar_std,         logVar_avg+logVar_std)  )
+        ltext.append("  Sqrt(Avg) ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_sqrt, logVar_sqrt / logVar_avg * 100,  logVar_avg-logVar_sqrt,        logVar_avg+logVar_sqrt) )
+        ltext.append("  Std.Err.  ={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_err,  logVar_err  / logVar_avg * 100,  logVar_avg-logVar_err,         logVar_avg+logVar_err) )
+        ltext.append("  Median    ={:8.2f} {:8.2f}%       P_5% ={:8.2f}        P_95%={:8.2f}" .format(logVar_med,  logVar_med  / logVar_avg * 100,  np.nanpercentile(logVar, 5),   np.nanpercentile(logVar, 95)))
+        ltext.append("  95% Conf*)={:8.2f} {:8.2f}%       LoLim={:8.2f}        HiLim={:8.2f}" .format(logVar_95,   logVar_95   / logVar_avg * 100,  logVar_avg-logVar_95,          logVar_avg+logVar_95)   )
     else:
         ltext.append("  Variance  ={:8.2f}  {:>8s}"                                             .format(logVar_var,  "N.A."))
         ltext.append("  Std.Dev.  ={:8.2f}  {:>8s}       LoLim={:8.2f}        HiLim={:8.2f}"   .format(logVar_std,  "N.A."                         ,  logVar_avg-logVar_std,         logVar_avg+logVar_std)  )
@@ -163,9 +171,8 @@ def printStats():
     lstats.append("Time")
     lstats.append("  Oldest rec    = {}  (time = {:.3f} d)".format(oldest,   0))
     lstats.append("  Youngest rec  = {}  (time = {:.3f} d)".format(youngest, logtime_max - logtime_min))
-    #~lstats.append("  Duration      = {:.4g} s   ={:.4g} m   ={:.4g} h   ={:.4g} d".format(logtime_delta *86400., logtime_delta*1440., logtime_delta *24., logtime_delta))
-    lstats.append("  Duration      = {:.1f} s   = {:.3f} m   = {:.3f} h   = {:.3f} d".format(logtime_delta *86400., logtime_delta*1440., logtime_delta *24., logtime_delta))
-    lstats.append("  Cycle average = {:0.2f} s".format(logtime_delta *86400./ (logSize -1)))
+    lstats.append("  Duration      = {:.1f} s   = {:.3f} m   = {:.3f} h   = {:.3f} d".format(logtime_delta *86400, logtime_delta*1440, logtime_delta *24, logtime_delta))
+    lstats.append("  Cycle average = {:0.2f} s".format(logtime_delta *86400/ (logSize -1)))
     lstats.append("="*100)
 
     for i, vname in enumerate(gglobs.varsBook):
@@ -258,29 +265,26 @@ def selectScatterPlotVars():
     layoutT.addWidget(b1)
     layoutT.addWidget(b2)
     layoutT.addWidget(b0)
-
-    layoutT.addWidget(checkb)
     layoutT.addStretch()
 
     # add polynomial fit?                         default is yes
-    checkF = QCheckBox("Add Polynomial Fit   of order:")
+    checkF = QCheckBox("Add Polynomial Fit of order:")
     checkF.setChecked(FitFlag)
 
     # selector for order of fit                   default is 1st order = linear
-    cboxF = QComboBox()
-    cboxF.addItems(["Prop", "0", "1", "2", "3", "4", "5", "6", "7"])
-    cboxF.setMaximumWidth(70)
-    cboxF.setToolTip('Select the degree of the polynomial fit')
-    #~print("-------------FitSelector: ", FitSelector)
+    comboboxF = QComboBox()
+    comboboxF.addItems(["Prop", "0", "1", "2", "3", "4", "5", "6", "7"])
+    comboboxF.setMaximumWidth(70)
+    comboboxF.setToolTip('Select the degree of the polynomial fit')
 
-    if FitSelector == "Prop":
-        cboxF.setCurrentIndex(0)
-    else:
-        cboxF.setCurrentIndex(int(FitSelector) + 1)
+    #~print("-------------FitSelector: ", FitSelector)
+    if FitSelector == "Prop":   comboboxF.setCurrentIndex(0)
+    else:                       comboboxF.setCurrentIndex(int(FitSelector) + 1)
 
     layoutF = QHBoxLayout()
+    layoutF.addWidget(checkb)
     layoutF.addWidget(checkF)
-    layoutF.addWidget(cboxF)
+    layoutF.addWidget(comboboxF)
     layoutF.addStretch()
 
     bbox = QDialogButtonBox()
@@ -304,7 +308,7 @@ def selectScatterPlotVars():
     d.setMinimumHeight(350)
     #d.setWindowModality(Qt.NonModal)
     #d.setWindowModality(Qt.WindowModal)
-    d.setStyleSheet("QLabel { background-color:#DFDEDD; color:rgb(40,40,40); font-size:30px; font-weight:bold;}")
+    #d.setStyleSheet("QLabel { background-color:#DFDEDD; color:rgb(40,40,40); font-size:30px; font-weight:bold;}")
 
     layoutV = QVBoxLayout(d)
     layoutV.addLayout(layoutH0)
@@ -323,7 +327,7 @@ def selectScatterPlotVars():
     yt          = ylist.currentItem().text()
     vline       = checkb.isChecked()
     FitFlag     = checkF.isChecked()
-    FitSelector = cboxF.currentText()
+    FitSelector = comboboxF.currentText()
 
     if   b0.isChecked():  zero = "None"
     elif b1.isChecked():  zero = "x"
@@ -353,14 +357,12 @@ def plotScatter(vx, vy, vline, zero, FitFlag, FitSelector):
     if gglobs.currentDBPath is None: DataSrc = "No Data source!"
     else:                            DataSrc = os.path.basename(gglobs.currentDBPath)
 
-    #~localvardict = gglobs.vardict
-    #~localvardict = gglobs.varsBook
     localvardict = gglobs.varsBook.copy()
     localvardict.update( {'time' : ('time [d]', 'time') } )
 
+    #~print("gglobs.logTimeDiffSlice: ", gglobs.logTimeDiffSlice)
     #~print("gglobs.logSlice: ", gglobs.logSlice)
-
-    print("vx: ", vx)
+    #print("vx: ", vx)
     if vx == "time":
         x0 = gglobs.logTimeDiffSlice
     else:
@@ -371,7 +373,7 @@ def plotScatter(vx, vy, vline, zero, FitFlag, FitSelector):
             fprint("ERROR in plotScatter: Exception: ", e)
             return
 
-    print("vy: ", vy)
+    #print("vy: ", vy)
     if vy == "time":
         y0 = gglobs.logTimeDiffSlice
     else:
@@ -393,7 +395,6 @@ def plotScatter(vx, vy, vline, zero, FitFlag, FitSelector):
     if y.size > 0:  plotstyle['markersize'] = float(plotstyle['markersize']) / np.sqrt(y.size)
     else:           plotstyle['markersize'] = 3
 
-    #~fig2 = plt.figure(facecolor = "#E7F9C9")
     fig2 = plt.figure(facecolor = "#E7F9C9", dpi=gglobs.hidpiScaleMPL)
     gglobs.plotScatterFigNo = plt.gcf().number
     vprint("plotScatter: open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
@@ -427,7 +428,6 @@ def plotScatter(vx, vy, vline, zero, FitFlag, FitSelector):
     labout.setMinimumHeight(210)
     txtlines  = "Connecting lines are {}drawn".format("" if vline else "not ")
     txtorigin = "an origin of zero is enforced for {}".format(zero)
-    #~labout.setText("Scatter Plot of y = {} versus x = {}.".format(localvardict[vy][0], localvardict[vx][0]))
     labout.setText("Scatter Plot of y = {} versus x = {}.".format(localvardict[vy][0], localvardict[vx][0]))
     labout.append("{}; {}.".format(txtlines, txtorigin))
 
@@ -440,24 +440,24 @@ def plotScatter(vx, vy, vline, zero, FitFlag, FitSelector):
     d.setWindowModality(Qt.WindowModal)
 
     okButton = QPushButton("OK")
-    okButton.setCheckable(True)
+    #okButton.setCheckable(True)
     okButton.setAutoDefault(True)
     okButton.clicked.connect(lambda:  d.done(0))
 
     selectButton = QPushButton("Select")
-    selectButton.setCheckable(True)
+    #selectButton.setCheckable(True)
     selectButton.setAutoDefault(False)
     selectButton.clicked.connect(lambda:  nextScatterPlot())
 
     bbox = QDialogButtonBox()
-    bbox.addButton(okButton,                QDialogButtonBox.ActionRole)
-    bbox.addButton(selectButton,            QDialogButtonBox.ActionRole)
+    bbox.addButton(okButton,      QDialogButtonBox.ActionRole)
+    bbox.addButton(selectButton,  QDialogButtonBox.ActionRole)
 
     layoutH = QHBoxLayout()
     layoutH.addWidget(bbox)
     layoutH.addWidget(navtoolbar)
     layoutH.addStretch()
-    layoutH.addStretch()        # not enough with single stretch !!!
+    layoutH.addStretch() # double stretch needed in Py3.6, Py3.9 (others not checked)
 
     layoutV = QVBoxLayout(d)
     layoutV.addLayout(layoutH)
@@ -472,13 +472,9 @@ def plotScatter(vx, vy, vline, zero, FitFlag, FitSelector):
     labout.append("\nPolynomial Coefficients of the Least-Squares-Regression Fit:")
     labout.append("Lowest power first: y = #0 + #1 * x + #2 * x² + #3 * x³ + ...")
 
-    dprint("plotScatter: no data in either x or y: x:", x, ", y:", y)
-    dprint("len(x), (y): ", len(x), len(y))
-    dprint("size(x), (y): ", x.size, y.size)
-
     if FitFlag:
         if x.size != 0 and y.size != 0:
-            dprint("size(x), (y): ", x.size, " ", y.size)
+            #print("size(x), (y): ", x.size, " ", y.size)
 
             if FitSelector != "Prop":
                 try:
@@ -505,14 +501,13 @@ def plotScatter(vx, vy, vline, zero, FitFlag, FitSelector):
                     dprint("plotScatter: curve_fit: popt, pcov, perr: ", popt, pcov, np.sqrt(np.diag(pcov)))
                     labout.append("#0 : {: .4g} (Prop)".format(0))
                     labout.append("#1 : {: .4g}".format(popt[0]))
-                    #~plt.plot(x, func(x, *popt), color="green", marker=None, linestyle="solid", linewidth=2)
                     plt.plot(x, func(x, *popt), color="red", marker=None, linestyle="solid", linewidth=2)
                 except Exception as e:
                     dprint("plotScatter: curve_fit: Failure with exception: ", e)
                     labout.append("\nFailure to plot. Exception: {}".format(e))
                     playWav("err")
         else:
-            dprint("plotScatter: no data in x, y, or both: x:", x, ", y:", y)
+            dprint("plotScatter: no data in either x or y: x:\n", x, "\ny:\n", y)
             labout.append("\nFailure to plot:")
             if x.size == 0: labout.append("   No data in x")
             if y.size == 0: labout.append("   No data in y")
@@ -547,10 +542,10 @@ def displayLastValues(self):
     # print("+++++++++++++++++++++++++++++++++++++displayLastValues was called")
 
     if gglobs.logConn == None:          return
-    if gglobs.displayLastValuesIsOn :   return
+    if gglobs.displayLastValsIsOn :   return
     if gglobs.lastValues == None:       return
 
-    gglobs.displayLastValuesIsOn = True
+    gglobs.displayLastValsIsOn = True
 
     d = QDialog()
     d.setWindowIcon(gglobs.iconGeigerLog)
@@ -580,7 +575,7 @@ def displayLastValues(self):
     t2.setStyleSheet("QLabel {color: #111111; font-size:20px; font-weight:bold; qproperty-alignment:AlignCenter;}")
     t3 = QLabel("Value")
     t3.setStyleSheet("QLabel {color: #111111; font-size:20px; font-weight:bold; qproperty-alignment:AlignCenter;}")
-    #~ t3.setStyleSheet("QLabel {color: #111111; font-size:20px; font-weight:bold; qproperty-alignment:AlignRight;}")
+
     gridlo.addWidget(t1,    0, 0)
     gridlo.addWidget(t2,    0, 1)
     gridlo.addWidget(t3,    0, 2)
@@ -595,9 +590,7 @@ def displayLastValues(self):
             if not gglobs.varcheckedLog[vname]:
                 val = "{:>18s}".format("not mapped")
             else:
-                #if not np.isnan(gglobs.lastValues[vname][0]):
                 if not np.isnan(gglobs.lastValues[vname]):
-                    #val = "{:>8.2f}".format(gglobs.lastValues[vname][0])
                     val = "{:>10.2f}".format(gglobs.lastValues[vname])
                 else:
                     val = "{:>10s}".format("  --- ")
@@ -627,12 +620,12 @@ def displayLastValues(self):
     layoutV.addWidget(bbox)
 
     d.exec_()
-    gglobs.displayLastValuesIsOn = False
+    gglobs.displayLastValsIsOn = False
 
 
 def printPlotData():
-    """Print Data as selected in Plot. Data are taken from the plot, not from
-    the database!"""
+    """Print Data to Notepad as selected in Plot. Data are taken from the plot,
+    not from the database!"""
 
     t0 = gglobs.logTimeSlice
 
@@ -653,10 +646,8 @@ def printPlotData():
         for vname in gglobs.varsDefault:
             if gglobs.exgg.varDisplayCheckbox[vname].isChecked():
                 vi = gglobs.logSlice[vname][i]
-                if np.isnan(vi):
-                    vcc += ", {:>8s}".format("nan")
-                else:
-                    vcc += ", {:>8.2f}".format(gglobs.logSlice[vname][i])
+                if    np.isnan(vi): vcc += ", {:>8s}".format("nan")
+                else:               vcc += ", {:>8.2f}".format(gglobs.logSlice[vname][i])
         fprint(vcc)
         if gglobs.stopPrinting: break
         Qt_update()
@@ -687,18 +678,18 @@ def getLogValues():
     gglobs.exgg.dcycl.setStyleSheet("QPushButton {background-color:#F4D345; color:rgb(0,0,0);}")
     Qt_update()
 
-    if gglobs.GMCActivation:        import gdev_gmc         # GMC counter
-    if gglobs.LJActivation:         import gdev_labjack     # LabJack - then trys to import the LabJack modules
+    if gglobs.GMCActivation:        import gdev_gmc         # GMC
     if gglobs.AudioActivation:      import gdev_audio       # AudioCounter
     if gglobs.RMActivation:         import gdev_radmon      # RadMon - then imports "paho.mqtt.client as mqtt"
     if gglobs.AmbioActivation:      import gdev_ambiomon    # AmbioMon
+    if gglobs.GSActivation:         import gdev_scout      # GammaScout
     if gglobs.I2CActivation:        import gdev_i2c         # I2C  - then imports dongles and sensor modules
-    if gglobs.GSActivation:         import gdev_gscout      # GammaScout
+    if gglobs.LJActivation:         import gdev_labjack     # LabJack - then trys to import the LabJack modules
     if gglobs.RaspiActivation:      import gdev_raspi       # Raspi
     if gglobs.SimulActivation:      import gdev_simul       # SimulCounter
     if gglobs.MiniMonActivation:    import gdev_minimon     # MiniMon
 
-    if gglobs.verbose: print() # empty line only on terminal
+    if gglobs.verbose: print()                              # empty line to terminal only
     vprint(fncname + "saving to:", gglobs.logDBPath)
     setDebugIndent(1)
 
@@ -720,25 +711,25 @@ def getLogValues():
     for devname in gglobs.Devices:
         #print("devname:", devname)
         if   devname == "GMC"           and gglobs.GMCConnection:
-            logValue.update(gdev_gmc.getGMC_Values(gglobs.Devices[devname][1]))
+            logValue.update(gdev_gmc.GMCgetValues(gglobs.Devices[devname][1]))
+
+        elif devname == "Audio"         and gglobs.AudioConnection:
+            logValue.update(gdev_audio.getAudioValues(gglobs.Devices[devname][1]))
 
         elif devname == "RadMon"        and gglobs.RMConnection:
             logValue.update(gdev_radmon.getRadMonValues(gglobs.Devices[devname][1]))
 
         elif devname == "AmbioMon"      and gglobs.AmbioConnection:
-            logValue.update(gdev_ambiomon.getAmbioMonValues(gglobs.Devices[devname][1]))
+            logValue.update(gdev_ambiomon.getAmbioValues(gglobs.Devices[devname][1]))
 
-        elif devname == "LabJack"       and gglobs.LJConnection:
-            logValue.update(gdev_labjack.getLabJackValues(gglobs.Devices[devname][1]))
-
-        elif devname == "Audio"         and gglobs.AudioConnection:
-            logValue.update(gdev_audio.getAudioValues(gglobs.Devices[devname][1]))
+        elif devname == "Gamma-Scout"   and gglobs.GSConnection:
+            logValue.update(gdev_scout.GSgetValues(gglobs.Devices[devname][1]))
 
         elif devname == "I2C"           and gglobs.I2CConnection:
             logValue.update(gdev_i2c.getI2CValues(gglobs.Devices[devname][1]))
 
-        elif devname == "Gamma-Scout"   and gglobs.GSConnection:
-            logValue.update(gdev_gscout.getGammaScoutValues(gglobs.Devices[devname][1]))
+        elif devname == "LabJack"       and gglobs.LJConnection:
+            logValue.update(gdev_labjack.getLabJackValues(gglobs.Devices[devname][1]))
 
         elif devname == "Raspi"         and gglobs.RaspiConnection:
             logValue.update(gdev_raspi.getRaspiValues(gglobs.Devices[devname][1]))
@@ -808,7 +799,8 @@ def getLogValues():
     gglobs.LogReadings += 1
 
 # print get values&save duration
-    vprint("{:<25s}{:0.1f} ms".format("get all values and save:", (time.time() - start)  * 1000))
+    gglobs.LogGetValDur = (time.time() - start)  * 1000
+    vprint("{:<25s}{:0.1f} ms".format("get all values and save:", gglobs.LogGetValDur))
 
 # reset cycle button color
     gglobs.exgg.dcycl.setStyleSheet("QPushButton {}")
@@ -839,7 +831,10 @@ def getLogValues():
 # after  graph: about 90...140ms with this: Connected: GMC( CPM CPS ); RadMon( T P H R ); Audio( CPM2nd CPS2nd );
     #~vprint(fncname + "duration up to graph: {:5.1f} ms".format((before      - start)  * 1000))
     #~vprint(fncname + "duration for   graph: {:5.1f} ms".format((time.time() - before) * 1000))
-    vprint("{:<25s}{:0.1f} ms".format("Total (values & plot):", (time.time() - start)  * 1000))
+    gglobs.LogPlotDur  = (time.time() - before)  * 1000
+    gglobs.LogTotalDur = (time.time() - start)  * 1000
+
+    vprint("{:<25s}{:0.1f} ms".format("Total get & plot:", (time.time() - start)  * 1000))
 
 # relevant only when ESP32 is connected (maybe in conflict with other USB-To Serial devices!)
     #~readSerialConsole()
@@ -872,3 +867,157 @@ def snapLogValue(event):
 
     setDebugIndent(0)
 
+
+
+def pushToWeb():
+    """Send countrate info to web
+    - Presently only the GMC website is supported
+    """
+
+    """
+    Info on GMCmap:
+    from: http://www.gmcmap.com/AutomaticallySubmitData.asp
+
+    Auto submit data URL format:
+    http://www.GMCmap.com/log2.asp?AID=UserAccountID&GID=GeigerCounterID &CPM=nCPM&ACPM=nACPM&uSV=nuSV
+    At lease one reading data has to be submitted.
+        UserAccountID:   user account ID. This ID is assigned once a user registration is completed.
+        GeigerCounterID: a global unique ID for each registered Geiger Counter.
+        nCPM:  Count Per Minute reading from this Geiger Counter.
+        nACPM: Average Count Per Minute reading from this Geiger Counter(optional).
+        nuSv:  uSv/h reading from this Geiger Counter(optional).
+
+    Followings are valid data submission examples:
+        http://www.GMCmap.com/log2.asp?AID=0230111&GID=0034021&CPM=15&ACPM=13.2&uSV=0.075
+        http://www.GMCmap.com/log2.asp?AID=0230111&GID=0034021&CPM=15&ACPM=0&uSV=0
+        http://www.GMCmap.com/log2.asp?AID=0230111&GID=0034021&CPM=15&ACPM=0&uSV=0
+        http://www.GMCmap.com/log2.asp?AID=0230111&GID=0034021&CPM=15
+        http://www.GMCmap.com/log2.asp?AID=0230111&GID=0034021&CPM=15&ACPM=13.2
+
+    The submission result will be returned immediately. Followings are the returned result examples:
+        OK.
+        Error! User is not found.ERR1.
+        Error! Geiger Counter is not found.ERR2.
+        Warning! The Geiger Counter location changed, please confirm the location.
+     """
+
+    # Button and menu will be greyed out anyway; this can never be reached
+    if gglobs.logging == False:
+        efprint("Must be logging to update radiation maps")
+        return
+
+    # Dialog
+    msgbox = QMessageBox()
+    msgbox.setWindowIcon(gglobs.iconGeigerLog)
+    msgbox.setIcon(QMessageBox.Warning)
+    msgbox.setFont(gglobs.fontstd)
+    msgbox.setWindowTitle("Updating Radiation World Maps")
+    msgbox.setStandardButtons(QMessageBox.Ok)
+    msgbox.setDefaultButton(QMessageBox.Ok)
+    msgbox.setEscapeButton(QMessageBox.Ok)
+
+    # Exit if no DataSource or His DataSource; need Log DataSource
+    if gglobs.activeDataSource == None or gglobs.activeDataSource == "His":
+        datatext = "Must show a Log Plot, not His Plot, to update Radiation Maps"
+        msgbox.setText(datatext)
+        retval = msgbox.exec_()
+        return
+
+    cpmdata = gglobs.logSlice["CPM"]
+    #print("cpmdata:", cpmdata)
+    ymask   = np.isfinite(cpmdata)      # mask for nan values
+    cpmdata = cpmdata[ymask]
+    #print("cpmdata:", cpmdata)
+
+    lendata = len(cpmdata)
+    CPM     = np.mean(cpmdata)
+    ACPM    = CPM
+    uSV     = CPM / gglobs.calibration1st
+
+    #~# Defintions valid for cfgKeyHigh[key][0] (0=zero)
+    #~# holding the definitions of the geigerlog,cfg file!
+    #~data         = {}
+    #~data['AID']  = cfgKeyHigh["UserID"][0]
+    #~data['GID']  = cfgKeyHigh["CounterID"][0]
+    #~data['CPM']  = "{:3.1f}".format(CPM)
+    #~data['ACPM'] = data['CPM']
+    #~data['uSV']  = "{:3.2f}".format(uSV)
+    #~gmcmapURL    = cfgKeyHigh["Website"][0] + "/" + cfgKeyHigh["URL"][0]  + '?' + urllib.parse.urlencode(data)
+
+    # Defintions valid for cfgKeyHigh[key][0] (0=zero)
+    # holding the definitions of the geigerlog,cfg file!
+    data         = {}
+    data['AID']  = gglobs.GMCmapUserID
+    data['GID']  = gglobs.GMCmapCounterID
+    data['CPM']  = "{:3.1f}".format(CPM)
+    data['ACPM'] = data['CPM']
+    data['uSV']  = "{:3.2f}".format(uSV)
+    gmcmapURL    = gglobs.GMCmapWebsite + "/" + gglobs.GMCmapURL + '?' + urllib.parse.urlencode(data)
+
+    strdata = ""
+    mapform = "   {:11s}: {}\n"
+    strdata += mapform.format("CPM",        data['CPM'])
+    strdata += mapform.format("ACPM",       data['ACPM'])
+    strdata += mapform.format("uSV",        data['uSV'])
+    strdata += mapform.format("UserID",     data['AID'])
+    strdata += mapform.format("CounterID",  data['GID'])
+    strdata  = strdata[:-1] # remove last linefeed
+
+    # Dialog Confirm Sending
+    #~datatext  = "Calling server: " + cfgKeyHigh["Website"][0] + "/" + cfgKeyHigh["URL"][0]
+    datatext  = "Calling server: " + gglobs.GMCmapWebsite + "/" + gglobs.GMCmapURL
+    datatext += "\nwith these data based on {} datapoints:\n\n".format(lendata)
+    datatext += strdata + "\n\nPlease confirm with OK, or Cancel"
+    msgbox.setText(datatext)
+    msgbox.setStandardButtons(QMessageBox.Ok|QMessageBox.Cancel)
+    msgbox.setDefaultButton(QMessageBox.Ok)
+    msgbox.setEscapeButton(QMessageBox.Cancel)
+    retval = msgbox.exec_()
+    if retval != 1024:   return
+
+    msg = "Updating Radiation World Maps"
+    fprint(header(msg))
+    dprint(msg + " - " +  gmcmapURL)
+    setDebugIndent(1)
+
+    # dprint the data which go to web
+    for a in data:  dprint("{:5s}: {}".format(a, data[a]))
+
+    try:
+        with urllib.request.urlopen(gmcmapURL) as response:
+            answer = response.read()
+        dprint("Server Response: ", answer)
+    except Exception as e:
+        answer  = b"Bad URL"
+        srcinfo = "Bad URL: " + gmcmapURL
+        exceptPrint("pushToWeb: " + str(e), srcinfo)
+
+    # possible gmcmap server responses:
+    #   on proper credentials:                    b'\r\n<!--  sendmail.asp-->\r\n\r\nWarrning! Please update/confirm your location.<BR>OK.ERR0'
+    #   on wrong credentials:                     b'\r\n<!--  sendmail.asp-->\r\n\r\nError! User not found.ERR1.'
+    #   on proper userid but wrong counterid:     b'\r\n<!--  sendmail.asp-->\r\n\r\nError! Geiger Counter not found.ERR2.'
+    #   something wrong in the data part of URL:  b'\r\n<!--  sendmail.asp-->\r\n\r\nError! Data Error!(CPM)ERR4.'
+
+    # ERR0 = Ok
+    if   b"ERR0" in answer:
+        fprint("Successfully updated Radiation World Maps with these data:")
+        fprint(strdata)
+        fprint("Website response:", answer.decode('UTF-8'))
+
+    # ERR1 or ERR2 - wrong userid  or wrong counterid
+    elif b"ERR1" in answer or b"ERR2" in answer :
+        efprint("Failure updating Radiation World Maps.")
+        qefprint("Website response: ", answer.decode('UTF-8'))
+
+    # misformed URL - wrong entry into config?
+    elif b"Bad URL" in answer:
+        efprint("Failure updating Radiation World Maps.")
+        qefprint(" ERROR: ", "Bad URL: " + gmcmapURL)
+
+    # other errors
+    else:
+        efprint("Unexpected response updating Radiation World Maps.")
+        qefprint("Website response: ", answer.decode('UTF-8'))
+
+
+    setDebugIndent(0)

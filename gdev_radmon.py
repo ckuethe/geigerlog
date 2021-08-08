@@ -24,8 +24,6 @@ RadMonPlus support using a MQTT connection
 
 
 """
-see header of ambiomon for installing and communicating with MQTT server
-
 Installing MQTT on Ubuntu:
 see: https://www.digitalocean.com/community/tutorials/how-to-install-and-secure-the-mosquitto-mqtt-messaging-broker-on-ubuntu-16-04
 site includes steps to set up secure server!
@@ -50,11 +48,14 @@ __license__         = "GPL3"
 
 from   gsup_utils           import *
 
+
 try:
-    import paho.mqtt.client as mqtt    # https://pypi.org/project/paho-mqtt/ (needed only by gdev_radmon.py)
+    # https://pypi.org/project/paho-mqtt/
+    import paho.mqtt.client as mqtt
 except Exception as e:
-    edprint("Exception importing 'paho.mqtt.client' module: ", e)
-    edprint("Verify that 'paho-mqtt'is installed using GLpipcheck")
+    msg  = "Module 'paho-mqtt' could not be loaded\n"
+    msg += "Verify that 'paho-mqtt' is installed using gtools/GLpipcheck.py"
+    exceptPrint(e, msg)
     edprint("Halting GeigerLog")
     playWav("err")
     sys.exit()
@@ -69,13 +70,13 @@ def on_connect(client, userdata, flags, rc):
 
     # The value of rc indicates success or not:
     strrc = {
-            0: "Connection successful",
-            1: "Connection refused - incorrect protocol version",
-            2: "Connection refused - invalid gglobs.rm_client identifier",
-            3: "Connection refused - server unavailable",
-            4: "Connection refused - bad username or password",
-            5: "Connection refused - not authorised",
-            # 6-255: Currently unused.
+                0: "Connection successful",
+                1: "Connection refused - incorrect protocol version",
+                2: "Connection refused - invalid gglobs.rm_client identifier",
+                3: "Connection refused - server unavailable",
+                4: "Connection refused - bad username or password",
+                5: "Connection refused - not authorised",
+                # 6-255: Currently unused.
             }
 
     if rc < 6:     src = strrc[rc]
@@ -108,8 +109,8 @@ def on_disconnect (client, userdata, rc):
     # caused by a network error."""
 
     strrc = {
-            0: "MQTT_ERR_SUCCESS",
-            1: "Unexpected disconnection",
+                0: "MQTT_ERR_SUCCESS",
+                1: "Unexpected disconnection",
             }
 
     if rc == 0:     src = strrc[rc]
@@ -135,22 +136,29 @@ def on_subscribe(client, userdata, mid, granted_qos):
 def on_message(client, userdata, msg):
     """The callback for when a PUBLISH message is received from the server"""
 
-    # message: an instance of MQTTMessage.
+    # msg: an instance of MQTTMessage.
     # This is a class with members topic, payload, qos, retain.
+    # type of msg.payload: <class 'bytes'>
     vprint(">RadMon: on_message: topic: {:20s}, payload: {:10s}, qos: {}, retain: {}".format(msg.topic, str(msg.payload), msg.qos, msg.retain))
-    #print("type of msg.payload:", type(msg.payload))
 
-    if   msg.topic == gglobs.RMServerFolder + "temp":     gglobs.rm_temp   = float(msg.payload)    # T
-    elif msg.topic == gglobs.RMServerFolder + "pressure": gglobs.rm_press  = float(msg.payload)    # P
-    elif msg.topic == gglobs.RMServerFolder + "humid":    gglobs.rm_hum    = float(msg.payload)    # H
-    elif msg.topic == gglobs.RMServerFolder + "cpm":      gglobs.rm_cpm    = float(msg.payload)    # CPM*
-    elif msg.topic == gglobs.RMServerFolder + "rssi":     gglobs.rm_rssi   = float(msg.payload)    # rssi
-    #else:                                                print("msg.payload:", msg.payload)       # any
+    try:
+        msg_payload = float(msg.payload) # if msg.payload == '' (empty) then float failes!
+    except Exception as e:
+        msg = "RadMon: on_message: float(msg.payload) failed, msg.payload ='{}'".format(msg.payload)
+        exceptPrint(e, msg)
+        msg_payload = gglobs.NAN
+
+    if   msg.topic == gglobs.RMServerFolder + "temp":     gglobs.rm_temp   = msg_payload    # T
+    elif msg.topic == gglobs.RMServerFolder + "pressure": gglobs.rm_press  = msg_payload    # P
+    elif msg.topic == gglobs.RMServerFolder + "humid":    gglobs.rm_hum    = msg_payload    # H
+    elif msg.topic == gglobs.RMServerFolder + "cpm":      gglobs.rm_cpm    = msg_payload    # CPM*
+    elif msg.topic == gglobs.RMServerFolder + "rssi":     gglobs.rm_rssi   = msg_payload    # rssi
+    #else:  print("msg.topic: {}, msg.payload: {}".format(msg.topic, msg_payload))   # only dose it not used
 
 
 def on_publish(client, userdata, mid):
     """ Called when a message that was to be sent using the publish() call
-    has completed transmission to the broker.  """
+    has completed transmission to the broker"""
 
     #dprint("on_publish: messageID: mid: ", mid)
     pass
@@ -203,6 +211,12 @@ def getRadMonValues(varlist):
                 gglobs.rm_hum   = None
                 alldata.update({"H": Hum})
 
+            elif vname == "X":
+                Rssi            = gglobs.rm_rssi
+                Rssi            = scaleVarValues(vname, Rssi, gglobs.ValueScale[vname])
+                gglobs.rm_rssi  = None
+                alldata.update({"X": Rssi})
+
             elif vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd"):
                 cpm             = gglobs.rm_cpm
                 cpm             = scaleVarValues(vname, cpm, gglobs.ValueScale[vname])
@@ -224,12 +238,12 @@ def getRadMonInfo(extended=False):
 
     RMInfo = """Connected Device:             '{}'
 Configured Variables:         {}
-Geiger tube calib. factor:    {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
+Geiger Tube Sensitivity:      {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
 """.format(\
                                                   gglobs.RMDeviceDetected, \
                                                   gglobs.RMVariables, \
-                                                  #~ gglobs.RMCalibration )
-                                                  gglobs.RMCalibration, 1 / gglobs.RMCalibration)
+                                                  #~ gglobs.RMSensitivity )
+                                                  gglobs.RMSensitivity, 1 / gglobs.RMSensitivity)
 
     if extended == True:
         RMInfo += """
@@ -251,16 +265,13 @@ def printRMDevInfo(extended=False):
 
     setBusyCursor()
 
-    txt = "RadMon Device Info"
+    txt = "RadMon Device"
     if extended:  txt += " Extended"
     fprint(header(txt))
     fprint("Configured Connection:", "MQTT on {}:{} topic:{}".format(gglobs.RMServerIP, gglobs.RMServerPort, gglobs.RMServerFolder))
-    #~fprint(gdev_radmon.getRadMonInfo(extended=extended))
     fprint(getRadMonInfo(extended=extended))
 
     setNormalCursor()
-
-
 
 
 def initRadMon():
@@ -309,7 +320,7 @@ def initRadMon():
         gglobs.rm_client.connect(gglobs.RMServerIP, port=gglobs.RMServerPort, keepalive=60)
     except Exception as e:
         srcinfo = fncname + "ERROR: Connection to IoT server failed"
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
         gglobs.rm_client     = None
         errmsg += "<br>ERROR: Connection failed using server IP='{}', port={}".format(gglobs.RMServerIP, gglobs.RMServerPort)
         errmsg += "<br>ERROR: '{}'".format(sys.exc_info()[1])
@@ -349,16 +360,14 @@ def initRadMon():
         errmsg += "<br>ERROR: Connection to RadMon+ server failed; RadMon+ inactivated"
     else:
         # set only after successful AND confirmed connect!
-        if gglobs.RMCalibration  == "auto":    gglobs.RMCalibration  = 154  # inverse of 0.0065
-        if gglobs.RMVariables    == "auto":    gglobs.RMVariables    = "CPM3rd, T, P, H"
+        if gglobs.RMSensitivity  == "auto":    gglobs.RMSensitivity = 154  # inverse of 0.0065
+        if gglobs.RMVariables    == "auto":    gglobs.RMVariables   = "CPM3rd, T, P, H"
 
-        setCalibrations(gglobs.RMVariables, gglobs.RMCalibration)
+        setCalibrations(gglobs.RMVariables, gglobs.RMSensitivity)
         setLoggableVariables("RadMon", gglobs.RMVariables)
 
     setDebugIndent(0)
     return errmsg
-
-
 
 
 def terminateRadMon():
@@ -366,18 +375,19 @@ def terminateRadMon():
 
     if gglobs.rm_client == None: return
 
-    dprint("terminateRadMon: Terminating RadMon")
+    fncname = "terminateRadMon: "
+
+    dprint(fncname)
     setDebugIndent(1)
 
     gglobs.rm_client.loop_stop()
-    dprint("terminateRadMon: client.loop was stopped")
+    dprint(fncname + "client.loop was stopped")
 
     gglobs.rm_client.disconnect()    # output printed in callback
-    dprint("terminateRadMon: client was disconnected")
+    dprint(fncname + "client was disconnected")
 
-    #print("terminateRadMon: gglobs.rm_client", gglobs.rm_client)
     gglobs.rm_client = None
-    dprint("terminateRadMon: client was set to: None")
+    dprint(fncname + "client was set to: None")
 
     # wait for confirmation of dis-connection
     starttime = time.time()
@@ -392,7 +402,7 @@ def terminateRadMon():
 
     if timeout:
         dprint("RadMon dis-connection timed out ({} sec)".format(gglobs.RMTimeout), debug=True)
-        fprint("<br>ERROR: Dis-Connection from RadMon+ server failed; RadMon+ inactivated", error=True)
+        efprint("<br>ERROR: Dis-Connection from RadMon+ server failed; RadMon+ inactivated")
         setDebugIndent(0)
         retval = ""
     else:

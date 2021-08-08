@@ -4,7 +4,7 @@
 """
 gdev_labjack.py - GeigerLog commands to handle the LabJack U3 with EI1050 probe
 
-NOTE: verfied to work **ONLY** on Linux; it may work on Mac
+NOTE: verfied to work on Linux; it may work on Mac
       Windows needs a different installation of Exodriver
 """
 
@@ -41,31 +41,55 @@ https://github.com/labjack/LabJackPython/blob/master/Examples/EI1050/ei1050Sampl
 INSTALLATIONS:
 To use this device you need the installation of:
 - the so called Exodriver
-- the LabJackPython library
-- the u3 Python module
-- the ei1050 Python module
+- the Python module: LabJackPython.py
+- the Python module: u3.py
+- the Python module: ei1050.py
 
+Exodriver -- Linux-only:
 The Exodriver is here: https://labjack.com/support/software/installers/exodriver
 The latest version is 2.6.0, compatible with Linux kernels from 2.6.28 onwards.
-Download, unzip and run: $ sudo ./install.sh
+The exodriver is stored as: /usr/local/lib/liblabjackusb.so.
 
-LabJackPython is needed in the version 2.0.0 (Jan 2019) or later in order for
-compatibility with Python3! Available here:
-https://labjack.com/support/software/examples/ud/labjackpython
-Unzip and install with: $ sudo python3 setup.py install
+LabJackPython, u3:
+LabJackPython is needed in the version 2.0.0 (Jan 2019) or later. Latest version
+(Feb 2021) is 2.0.4 from September 9, 2020.
+Location: https://labjack.com/support/software/examples/ud/labjackpython
+But preferably the modules are installed via pip (includes u3):
+    python3 -m pip install -U LabJackPython
+On my Python Virtual instllations 'u3.py' is located at: ( X= 6,7,8,9,10)
+/home/ullix/geigerlog/vgl3X/lib/python3.X/site-packages/u3.py
 
-Included in the LabJackPython download are the modules u3 and ei1050
+ei1050.py:
+https://github.com/labjack/LabJackPython/tree/master/Examples/EI1050
+example: https://forums.labjack.com/index.php?showtopic=5804
+
 
 NOTE:
 For detection of a busy LabJack see my discussion "Detecting the presence of an
 U3 even when in use elsewhere" at: https://labjack.com/comment/6040
 
 
+###############################################################################
+New LabJackSoftware 2021-02-03:
+
+==== Device Mappings =================================================================
+The configuration is determined in the configuration file geigerlog.cfg
+
+Device      :  CPM    CPS    CPM1st CPS1st CPM2nd CPS2nd CPM3rd CPS3rd   T   P   H   X
+--------------------------------------------------------------------------------------
+LabJack     :  -      -      -      -      -      -      -      -        X   -   X   X
+Mapping is valid
+
+==== LabJack Device Info Extended ====================================================
+Configured Connection:        USB (auto-configuration)
+Connected Device:             'LabJack'
+Connected Probe (Status):     EI1050 (0)
+Connection:                   USB
+Configured Variables:         T, H, X
 LabJack Software Versions:
---- LabJackPython                : 2.0.0
+--- LabJackPython                : 2.0.4
 --- U3                           : unknown
 --- EI1050                       : unknown
-Connected Probe (Status)         : EI1050 (0)
 LabJack Config:
 --- BootloaderVersion            : 0.11
 --- CIODirection                 : 0
@@ -90,20 +114,23 @@ LabJack Config:
 --- TimerClockDivisor            : 256
 --- TimerCounterMask             : 0
 --- VersionInfo                  : 1
+###############################################################################
 """
 
 from   gsup_utils       import *
 
 try:
     import LabJackPython                        # see installation instructions above
-    import u3                                   # dito
     import ei1050                               # dito
+    import u3                                   # dito
+    #raise Exception
 except Exception as e:
-    edprint("Exception importing LabJack modules: ", e)
-    edprint("See installation instructions in file gdev_labjack.py")
     playWav("err")
-    #~edprint("Halting GeigerLog") # not halting now; no harm is done by running
+    exceptPrint(e, "Exception importing LabJack modules")
+    edprint("See installation instructions in file gdev_labjack.py")
+    #~edprint("Halting GeigerLog") # not halting; no harm is done by running
     #~sys.exit()
+
 
 
 def setLabJackSettings(a, b, c):
@@ -125,7 +152,11 @@ def getLabJackValues(varlist):
 
     latestReading   = None
     while not targetQueue.empty():
-        latestReading = targetQueue.get()
+        try:
+            latestReading = targetQueue.get()
+        except Exception as e:
+            exceptPrint(fncname + str(e), "targetQueue.get() failed")
+            latestReading = gglobs.NAN
 
     if latestReading != None:
         for vname in varlist:
@@ -140,67 +171,17 @@ def getLabJackValues(varlist):
                 alldata.update({vname: Hum})
 
             elif vname == "X":  # from the U3 internal sensor
-                u3t             = LJdevice.getTemperature() - 273.15
+                try:
+                    u3t         = LJdevice.getTemperature() - 273.15
+                except Exception as e:
+                    exceptPrint(fncname + str(e), "LJdevice.getTemperature() failed")
+                    u3t = gglobs.NAN
                 u3t             = round(scaleVarValues(vname, u3t, gglobs.ValueScale[vname]), 2)
                 alldata.update({vname: u3t})
 
     printLoggedValues(fncname, varlist, alldata)
 
     return alldata
-
-
-def getLabJackInfo(extended = False):
-    """Info on the LabJack Device"""
-
-    global LJdevice, LJprobe, targetQueue, thread
-
-    if gglobs.LJActivation == False:
-        dprint("initLabJack: LabJack device not activated")
-        return "LabJack device not activated"
-
-    #print("--- getLabJackInfo LabJackPython.listAll(3):", LabJackPython.listAll(3))
-    if gglobs.LJConnection  == True:
-        LJInfo = """Connected Device:             '{}'
-Connected Probe (Status):     {} ({})
-Connection:                   USB
-Configured Variables:         {}""".format(\
-                                           gglobs.LJDeviceName, \
-                                           "EI1050", \
-                                           LJprobe.getStatus(), \
-                                           gglobs.LJVariables)
-
-        if extended == True:
-            LJInfo += "\nLabJack Software Versions:\n"
-            LJInfo += "--- {:28s} : {}\n".format("LabJackPython", gglobs.LJversionLJP)
-            LJInfo += "--- {:28s} : {}\n".format("U3",            gglobs.LJversionU3)
-            LJInfo += "--- {:28s} : {}\n".format("EI1050",        gglobs.LJversionEI1050)
-            LJInfo += "LabJack Config:"
-            for key, value in sorted(LJdevice.configU3().items()):
-                LJInfo += "\n--- {:28s} : {}".format(key, value)
-    else:
-        LJInfo = """No connected device"""
-
-    return LJInfo
-
-
-def terminateLabJack():
-    """opposit of init ;-)"""
-
-    global LJdevice, LJprobe, targetQueue, thread
-
-    if not gglobs.LJActivation: return
-
-    try:
-        thread.stop()
-        thread.join()       # ???
-    except Exception as e:
-        print("terminateLabJack: Exception: ", e)
-
-    dprint("terminateLabJack: Terminating LabJack")
-
-    if gglobs.LJConnection:
-        LJdevice.close()        # important to detach from USB  !!!
-        gglobs.LJConnection  = False
 
 
 def initLabJack():
@@ -227,10 +208,10 @@ def initLabJack():
     except: gglobs.LJversionLJP     = "unknown"
 
     try:    gglobs.LJversionU3      = u3.__version__            # version of U3
-    except: gglobs.LJversionU3      = "unknown"
+    except: gglobs.LJversionU3      = "undefined"
 
     try:    gglobs.LJversionEI1050  = EI1050.__version__        # version of EI1050
-    except: gglobs.LJversionEI1050  = "unknown"
+    except: gglobs.LJversionEI1050  = "undefined"
 
     try:    LJdevice.close()                                    # important to detach from USB!
     except: pass
@@ -240,8 +221,6 @@ def initLabJack():
         lju3 = u3.U3()
     except Exception as e:
         stre    = str(e)
-        srcinfo = fncname + "ERROR: U3 exception"
-        exceptPrint(e, sys.exc_info(), srcinfo)
 
         if   "Couldn't open device. Please check that the device you are trying to open is connected." in stre:
             errmsg = "No LabJack device found. Is it connected?"
@@ -254,6 +233,9 @@ def initLabJack():
 
         else:
             errmsg = "Connecting to LabJack device gave unexpected error: {}".format(stre)
+
+        srcinfo = fncname + "ERROR: U3 exception: " + errmsg
+        exceptPrint(e, srcinfo)
 
         gglobs.LJConnection     = False
 
@@ -276,15 +258,75 @@ def initLabJack():
     return ""
 
 
+def terminateLabJack():
+    """opposit of init ;-)"""
+
+    global LJdevice, LJprobe, targetQueue, thread
+
+    if not gglobs.LJActivation: return
+
+    fncname = "terminateLabJack: "
+
+    try:
+        thread.stop()
+        thread.join()       # ???
+    except Exception as e:
+        print(fncname + "Exception: ", e)
+
+    dprint(fncname)
+
+    if gglobs.LJConnection:
+        LJdevice.close()        # important to detach from USB  !!!
+        gglobs.LJConnection  = False
+
+
 def printLJDevInfo(extended=False):
     """prints basic info on the LabJack device"""
 
     setBusyCursor()
 
-    txt = "LabJack Device Info"
+    txt = "LabJack Device"
     if extended:  txt += " Extended"
     fprint(header(txt))
     fprint("Configured Connection:", "USB (auto-configuration)")
     fprint(getLabJackInfo(extended=extended))
 
     setNormalCursor()
+
+
+def getLabJackInfo(extended = False):
+    """Info on the LabJack Device"""
+
+    global LJdevice, LJprobe, targetQueue, thread
+
+    fncname = "getLabJackInfo: "
+
+    if gglobs.LJActivation == False:
+        msg = "LabJack device not activated"
+        dprint(fncname + msg)
+        return msg
+
+    #print("--- getLabJackInfo LabJackPython.listAll(3):", LabJackPython.listAll(3))
+    if gglobs.LJConnection  == True:
+        LJInfo = """Connected Device:             '{}'
+Connected Probe (Status):     {} ({})
+Connection:                   USB
+Configured Variables:         {}""".format(\
+                                           gglobs.LJDeviceName, \
+                                           "EI1050", \
+                                           LJprobe.getStatus(), \
+                                           gglobs.LJVariables)
+
+        if extended == True:
+            LJInfo += "\nLabJack Software Versions:\n"
+            LJInfo += "--- {:28s} : {}\n".format("LabJackPython", gglobs.LJversionLJP)
+            LJInfo += "--- {:28s} : {}\n".format("U3",            gglobs.LJversionU3)
+            LJInfo += "--- {:28s} : {}\n".format("EI1050",        gglobs.LJversionEI1050)
+            LJInfo += "LabJack Config:"
+            for key, value in sorted(LJdevice.configU3().items()):
+                LJInfo += "\n--- {:28s} : {}".format(key, value)
+    else:
+        LJInfo = """No connected device"""
+
+    return LJInfo
+

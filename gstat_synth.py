@@ -49,8 +49,8 @@ def createSyntheticData():
     mean        = 30
     cycletime   = 1.0       # in seconds
 
-    # Dialog to input mean value, or input 0 to use default list
-    mean, okPressed = QInputDialog.getDouble(None, "Create Synthetic Log","CPS Mean: Enter mean value, or 0 to use this default list for CPS mean:\n{}".format(default_meanlist), 20, min=0, max=1000000, decimals=2)
+    # Dialog to input single mean value, or input 0 to use default list
+    mean, okPressed = QInputDialog.getDouble(None, "Create Synthetic Log","CPS Mean: Enter desired mean value, or 0 to use this default list for CPS mean:\n{}".format(default_meanlist), 20, min=0, max=1000000, decimals=2)
     if okPressed:
         if mean > 0:    meanlist = (mean,)
         else:           meanlist = default_meanlist
@@ -84,8 +84,8 @@ def createSyntheticData():
     # get data - select the distribution you want
         stddev      = np.sqrt(mean)
 
-        sigt, DataSrc     = getWhiteNoisePoisson(records, mean)            # White Noise from Poisson Distribution
-        #sigt, DataSrc    = getWhiteNoiseNormal(records, mean, stddev)     # White Noise from Normal Distribution
+        sigt, DataSrc     = getWhiteNoisePoisson(records, mean)                             # White Noise from Poisson Distribution
+        #sigt, DataSrc    = getWhiteNoiseNormal(records, mean, stddev)                      # White Noise from Normal Distribution
         #sigt, DataSrc    = getSinus(records, t)                                            # Sine (one or more)
         #sigt, DataSrc    = getWhiteNoiseSine(records, t)                                   # White Noise with Sine
         #sigt, DataSrc    = getConstantData(records, t)                                     # constant + breaks
@@ -189,14 +189,14 @@ def getSinus(records, t):
     DataSrc = "Sinus"
     pi2     = 2.0 * np.pi
 
-    x   = 10.0 + 5.0 * np.sin(t * pi2 / (100. * 60. +  0. )  ) # periode von 100   min
-    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (400. * 60. +  0. )  ) # periode von 400   min
-    x  +=  0.0 + 5.0 * np.sin(t * pi2 / ( 30. * 60. +  0. )  ) # periode von  50   min
-    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  3. * 60. +  4. )  ) # periode von   3.x min
-    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  3. * 60. +  9. )  ) # periode von   3.y min
-    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  3. * 60. + 13. )  ) # periode von   3.z min
-    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  1.0            )  ) # periode von   1   sec
-    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  0.5            )  ) # periode von   0.5 sec
+    x   = 10.0 + 5.0 * np.sin(t * pi2 / (100  * 60 +  0)  ) # periode von 100   min
+    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (400  * 60 +  0)  ) # periode von 400   min
+    x  +=  0.0 + 5.0 * np.sin(t * pi2 / ( 30  * 60 +  0)  ) # periode von  50   min
+    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  3  * 60 +  4)  ) # periode von   3.x min
+    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  3  * 60 +  9)  ) # periode von   3.y min
+    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  3  * 60 + 13)  ) # periode von   3.z min
+    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  1           )  ) # periode von   1   sec
+    x  +=  0.0 + 5.0 * np.sin(t * pi2 / (  0.5         )  ) # periode von   0.5 sec
 
     return x, DataSrc
 
@@ -211,9 +211,9 @@ def getConstantData(records, t):
     x       = np.ones(records) * 1000
 
     for i in range(0, records - 10, 20):
-        x[i] = 500.
-        x[i + 1] = -10.
-        x[i + 2] = 1.
+        x[i]     = 500
+        x[i + 1] = -10
+        x[i + 2] =   1
 
     return x, DataSrc
 
@@ -233,7 +233,7 @@ def getAutocorr(records):
 
     #for a 1 sec cycle time the first 60 records will show a linear down curve
     #for i in range (0, 20):
-    #    x[i] = 1 - i * 1./20.
+    #    x[i] = 1 - i * 1/20
 
     x[0] = 1
 
@@ -266,10 +266,10 @@ def getWhiteNoiseSine(records, t):
     mean = 2500
     std  = np.sqrt(mean)
     x    = np.random.normal(mean, std, size=records)
-    p1   = (100. * 60. + 1.4) / 60.  # 100,0333 min
+    p1   = (100 * 60 + 1.4) / 60  # 100,0333 min
     print("getWhiteNoiseSinusData: p1:", p1)
-    x   +=  40. * std * (np.sin(t * pi2 / p1 ))
-    x   +=  10. * std * (np.sin(t * pi2 / 11. ))
+    x   +=  40 * std * (np.sin(t * pi2 / p1 ))
+    x   +=  10 * std * (np.sin(t * pi2 / 11 ))
 
     return x, DataSrc
 

@@ -51,7 +51,7 @@ def plotPoisson():
     try:
         t0 = gglobs.logTimeDiffSlice
         x0 = gglobs.logSliceMod[vname]
-    except:
+    except Exception as e:
         gglobs.exgg.showStatusMessage("No data available")
         setNormalCursor()
         return
@@ -80,6 +80,7 @@ def plotPoisson():
     if t.size == 0:
         gglobs.exgg.showStatusMessage("No data available")
         setNormalCursor()
+        setDebugIndent(0)
         return
 
     DataSrc     = os.path.basename(gglobs.currentDBPath)
@@ -322,18 +323,8 @@ def plotPoisson():
 # END   Kolmogorov-Smirnoff stuff ---------------------------------------------------
 
 
-    #~fig2 = plt.figure(facecolor = "#E7F9C9")
     fig2 = plt.figure(facecolor = "#E7F9C9", dpi=gglobs.hidpiScaleMPL)
     vprint("plotPoisson: open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
-    #~try:
-        #~plt.clf()
-        #~vprint("plotPoisson: open figs: {},  did plt.clf() on fig #{}".format(len(plt.get_fignums()), plt.gcf().number))
-        #~print("plotPoisson: plt.get_fignums():", plt.get_fignums())
-
-    #~except Exception as e:
-        #~srcinfo = "plotPoisson: plt.clf() failed"
-        #~exceptPrint(e, sys.exc_info(), srcinfo)
-        #~return
 
     plt.suptitle("Histogram with Poisson Fit", fontsize=12 )
     RsubTitle = DataSrc + "  Recs:" + str(x.size)
@@ -386,12 +377,12 @@ def plotPoisson():
         # bins have only 1 count rate
         labout.append("No.                (blue col)   Total    (red line) (Freq - Fit)")
         for i in range(0, len(hist)):
-            labout.append("{:3d}   {:4.1f}           {:8.1f}  {:5.2f}%    {:10.1f}   {:+10.1f}".format(i + 1, bins[i], hist[i], hist[i]*100./lenx, pdfs[i], hist[i] - pdfs[i]))
+            labout.append("{:3d}   {:4.1f}           {:8.1f}  {:5.2f}%    {:10.1f}   {:+10.1f}".format(i + 1, bins[i], hist[i], hist[i]*100 / lenx, pdfs[i], hist[i] - pdfs[i]))
     else:
         # bins have more than one count rate
         labout.append("No.   from ... to  (blue col)   Total    (red line) (Freq - Fit)")
         for i in range(0, len(hist)):
-            labout.append("{:3d}   {:4.1f} ...{:4.1f}   {:8.1f}  {:5.2f}%    {:10.1f}   {:+10.1f}".format(i + 1, bins[i], bins[i+1] - 1, hist[i], hist[i]*100./lenx, pdfs[i], hist[i] - pdfs[i]))
+            labout.append("{:3d}   {:4.1f} ...{:4.1f}   {:8.1f}  {:5.2f}%    {:10.1f}   {:+10.1f}".format(i + 1, bins[i], bins[i+1] - 1, hist[i], hist[i]*100 / lenx, pdfs[i], hist[i] - pdfs[i]))
 
     labout.append("Total count=       {:10.1f}  100.00%   {:10.1f}   {:+10.1f}".format(sum(hist), sum(pdfs), sum(hist - pdfs)))
 
@@ -470,6 +461,7 @@ def plotPoisson():
 
 # show window
     fig2.canvas.draw_idle()
+    setDebugIndent(0)
     d.exec()
     plt.close(fig2)
-    setDebugIndent(0)
+

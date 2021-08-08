@@ -56,14 +56,14 @@ def plotFFT():
         rawt0    = gglobs.logTimeDiffSlice
     except Exception as e:
         srcinfo = "plotFFT: could not load time data"
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
         return
 
     try:
         rawsigt0 = gglobs.logSliceMod[vname]
     except Exception as e:
         srcinfo = "plotFFT: could not load value data"
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
         return
 
     if rawsigt0 is None:
@@ -196,18 +196,8 @@ def plotFFT():
 
 
 # figure and canvas ###################################################
-    #~figFFT = plt.figure(3, facecolor = "#C9F9F0") # blueish tint
-    #~figFFT = plt.figure(facecolor = "#C9F9F0") # blueish tint
     figFFT = plt.figure(facecolor = "#C9F9F0", dpi=gglobs.hidpiScaleMPL) # blueish tint
     vprint("plotFFT: open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
-    #~plt.clf()
-    #~try:
-        #~plt.clf()
-        #~vprint("plotFFT: Did plt.clf()")
-    #~except Exception as e:
-        #~srcinfo = "plotFFT: plt.clf() failed"
-        #~exceptPrint(e, sys.exc_info(), srcinfo)
-
 
     # canvas - this is the Canvas Widget that displays the `figure`
     # it takes the `figure` instance as a parameter to __init__

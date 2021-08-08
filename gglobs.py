@@ -30,8 +30,8 @@ __author__          = "ullix"
 __copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
 __credits__         = [""]
 __license__         = "GPL3"
-__version__         = "1.1"               # version of next GeigerLog
-#__version__         = "1.1.1pre1"          #
+__version__         = "1.2.1"             # version of next GeigerLog
+#__version__         = "1.2pre9"         #
 
 
 # constants
@@ -47,6 +47,7 @@ xprintcounter       = 0                   # the count of dprint, vprint, and wpr
 python_failure      = ""                  # msg wrong Python version
 startupProblems     = ""                  # msg configuration file missing or incorrect
 configAlerts        = ""                  # msg ALERTs when reading config
+notePadSearchText   = ""                  # last entered search text
 
 # pointers
 app                 = None                # points to app
@@ -123,7 +124,7 @@ window_width        = 1366                # the standard screen of 1366 x 768 (1
 window_height       = 768                 #
 window_size         = "auto"              # 'auto' or 'maximized'
 windowStyle         = "auto"              # may also be defined in config file
-displayLastValuesIsOn = False             # whether the displayLastValues windows is shown
+displayLastValsIsOn = False               # whether the displayLastValues windows is shown
 hidpi               = False               # if true the AA_EnableHighDpiScaling will be applied
 hipix               = False               # if true the AA_UseHighDpiPixmaps will be applied
 hidpiActivation     = True                # The PyQt5 commands hidpi and hipix will be applied
@@ -178,6 +179,9 @@ GSusbport           = '/dev/ttyUSB2'      # will be overwritten by a setting in 
 GStimeout           = 3                   # will be overwritten by a setting in geigerlog.cfg file
 GStimeout_write     = 3                   # will be overwritten by a setting in geigerlog.cfg file
 GSttyS              = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
+GSstopbits          = 1                   # generic in pyserial;     will not change in code
+GSbytesize          = 7                   # specific to Gamma-Scout; will not change in code
+GSparity            = "E"                 # specific to Gamma-Scout; will not change in code
 
 
 ## CALIBRATION
@@ -208,17 +212,17 @@ GSttyS              = "ignore"            # to 'ignore' or 'include' '/dev/ttySN
 
 # Default Calibration
 # must be defined even if no connection exists. May be redefined in config.
-DefaultCalib1st     = 154                 # CPM/(µSv/h), =  0.0065 in units of µSv/h/CPM
-DefaultCalib2nd     = 2.08                # CPM/(µSv/h), =  0.48   in units of µSv/h/CPM
-DefaultCalib3rd     = 154                 # CPM/(µSv/h), =  0.0065 in units of µSv/h/CPM
+DefaultSens1st     = 154                 # CPM/(µSv/h), =  0.0065 in units of µSv/h/CPM
+DefaultSens2nd     = 2.08                # CPM/(µSv/h), =  0.48   in units of µSv/h/CPM
+DefaultSens3rd     = 154                 # CPM/(µSv/h), =  0.0065 in units of µSv/h/CPM
 
 # calibration of tubes #1, #2, #3
-calibration1st      = DefaultCalib1st     # calibration factor for the 1st tube
+calibration1st      = DefaultSens1st     # calibration factor for the 1st tube
                                           # in most counters this is the only tube
                                           # in a GMC-500+ counter this is the 1st or high sensitivity tube
-calibration2nd      = DefaultCalib2nd     # calibration factor for the 2nd tube
+calibration2nd      = DefaultSens2nd     # calibration factor for the 2nd tube
                                           # in a GMC-500+ counter this is the 2nd or low-sensitivity tube
-calibration3rd      = DefaultCalib3rd     # calibration factor for the 3rd tube
+calibration3rd      = DefaultSens3rd     # calibration factor for the 3rd tube
                                           # to use more than 1 counter simultaneously; mapping set in config
 
 # DEVICES
@@ -232,29 +236,29 @@ GMCDeviceName       = None                # to be detected in init; generic name
 GMCDeviceDetected   = None                # will be replaced after connection with full specific
                                           # name as detected, like 'GMC-300Re 4.20',
                                           # had been 14 chars fixed, can now be longer
-GMCvariables        = "auto"              # which variables are natively supported
+GMC_variables       = "auto"              # which variables are natively supported
 GMCLast60CPS        = None                # storing last 60 sec of CPS values
 GMCEstFET           = None                # storing last 60 sec of CPS values for estimating the FET effect
 
 # GMC Bugs and settings
-GMCmemory           = "auto"              # Can be configured for 64kB or 1 MB in the config file
+GMC_memory          = "auto"              # Can be configured for 64kB or 1 MB in the config file
 GMC_SPIRpage        = "auto"              # size of page to read the history from device
 GMC_SPIRbugfix      = "auto"              # if True then reading SPIR gives one byte more than
                                           # requested  (True for GMC-300 series)
-GMClocationBug      = ["GMC-500+Re 1.18", # see the FIRMWARE BUGS topic
+GMC_locationBug     = ["GMC-500+Re 1.18", # see the FIRMWARE BUGS topic
                        "GMC-500+Re 1.21"] # in the configuration file
 GMC_FastEstTime     = "auto"              # if != 60 then false data will result
-GMCendianness       = "auto"              # big- vs- little-endian for calibration value storage
-GMCconfigsize       = "auto"              # 256 bytes in 300series, 512 bytes in 500/600 series
-GMCvoltagebytes     = "auto"              # 1 byte in the 300 series, 5 bytes in the 500/600 series
-GMCnbytes           = "auto"              # the number of bytes the CPM and CPS calls, as well as
+GMC_endianness      = "auto"              # big- vs- little-endian for calibration value storage
+GMC_configsize      = "auto"              # 256 bytes in 300series, 512 bytes in 500/600 series
+GMC_voltagebytes    = "auto"              # 1 byte in the 300 series, 5 bytes in the 500/600 series
+GMC_nbytes          = "auto"              # the number of bytes the CPM and CPS calls, as well as
                                           # the calls to 1st and 2nd tube deliver ( 2 or 4)
 GMCcfg              = None                # Configuration bytes of the counter. 256 bytes in 300series, 512 bytes in 500series
-GMCcfgWifiCol       = 0                   # the index column in cfgKeyHigh applicable for the current device
+GMC_WifiIndex       = 0                   # the index column in cfgKeyHigh applicable for the current device
 GMCsavedatatype     = "Unknown - will become known once the device is connected"
 GMCsavedataindex    = None
-GMCWifiEnabled      = False               # does the counter have WiFi or not
-GMCSingleTubeDevice = True                # all are single tube, except 500+, which is doublle tube
+GMC_WifiEnabled     = False               # does the counter have WiFi or not
+GMC_SingleTube      = True                # all are single tube, except 500+, which is doublle tube
 
 
 # AudioCounter
@@ -278,10 +282,11 @@ AudioLastCps        = 0                   # audio clicks CPS
 AudioLast60CPS      = None                # np array storing last 60 sec of CPS values
 AudioThreadStop     = False               # True to stop the audio thread
 AudioVariables      = "auto"              #
-AudioCalibration    = "auto"              # units: CPM / (µSv/h)
+AudioSensitivity    = "auto"              # units: CPM / (µSv/h)
 AudioMultiPulses    = None                # stores the concatenated audio data for plotting
 AudioRecording      = None                # stores the Recording
 AudioPlotData       = None                # stores the data to be plotted
+AudioOei            = None                # the eia storage label
 
 
 # RadMon stuff
@@ -292,7 +297,7 @@ RMDeviceDetected    = None                # can currently be only RadMon+
 RMServerIP          = "auto"              # MQTT server IP, to which RadMon sends the data
 RMServerPort        = "auto"              # Port of the MQTT server, defaults to 1883
 RMServerFolder      = "auto"              # The MQTT folder as defined in the RadMon+ device
-RMCalibration       = "auto"              # calibration factor for the tube used
+RMSensitivity       = "auto"              # calibration factor for the tube used
 RMVariables         = "auto"              # a list of the variables to log, T,P,H,R
 RMTimeout           = 3                   # waiting for "successful connection" confirmation
 RMCycleTime         = 1                   # cycle time of the RadMon device
@@ -313,9 +318,9 @@ AmbioConnection     = False               # True after being initialized by Geig
 AmbioDeviceName     = None                # can currently be only AmbioMon++
 AmbioDeviceDetected = None                # can currently be only AmbioMon++
 AmbioServerIP       = "auto"              # server Domain name or IP to which AmbioMon connects
-AmbioAP_IP          = "auto"              # server IP address of Ambiomon in Access Point mode, Default = "192.168.4.1"
-AmbioSSID           = "auto"              # SSID of user's WiFi network
-AmbioSSIDPW         = "auto"              # Password of user's WiFi network
+#AmbioAP_IP          = "auto"              # IP address of Ambiomon in Access Point mode, Default = "192.168.4.1"
+#AmbioSSID           = "auto"              # SSID of user's WiFi network
+#AmbioSSIDPW         = "auto"              # Password of user's WiFi network
 AmbioCalibration    = "auto"              # calibration factor for the tube used
 AmbioVariables      = "auto"              # a list of the variables to log
 AmbioDataType       = "auto"              # "LAST" or "AVG" for lastdata or lastavg
@@ -335,14 +340,16 @@ GSConnection        = False               # Not connected if False
 GSDeviceName        = None                # to be assigned in GS Init; now: "Gamma-Scout"
 GSDeviceDetected    = None                # to be assigned in GS init with specific name, now same "Gamma-Scout"
 GSVariables         = "auto"
-GSCalibration       = "auto"              # auto will become 0.009 in initGammaScout
+GSSensitivity       = "auto"              # auto will become 108 in init for the LND712 tube
+GStype              = None                # to be set in GS init as: Old, Classic, Online
 GSFirmware          = None                # to be set in GS init
 GSSerialNumber      = None                # to be set in GS init
 GSDateTime          = None                # to be set when setting DateTime
-GSMemory            = 0                   # to be set when calling History
-GSinPCmode          = False               # determines whether terminateGammaScout will attempt to
-GStesting           = False               # required to run GS under simulation; used only in module gdev_gscout.py,
-
+GSusedMemory        = 0                   # to be set when calling History
+GSMemoryTotal       = 65280               # max memory acc to manual, page 16, but when mem was 64450 (830 bytes free), interval was already 7d!
+GSCalibData         = None                # the Gamma-Scout internal calibration data
+GScurrentMode       = None                # "Normal", "PC", "Online"
+GStesting           = False               # required to run GS under simulation; used only in module gdev_scout.py,
 
 
 # I2C stuff
@@ -425,9 +432,9 @@ SimulDeviceName     = "auto"               # to be set in init
 SimulDeviceDetected = "auto"               # to be set in init
 SimulMean           = "auto"               # mean value of the Poisson distribution as CPSmean=10
 SimulVariables      = "auto"               # default is CPM3rd, CPS3rd
-SimulCalibration    = "auto"               # units: CPM / (µSv/h)
-SimulPredictive     = False                # not making a CPM prediction
-SimulPredictLimit   = 25                   # CPM must reach at least this count before making prediction
+SimulSensitivity    = "auto"               # units: CPM / (µSv/h)
+#SimulPredictive     = False                # not making a CPM prediction
+#SimulPredictLimit   = 25                   # CPM must reach at least this count before making prediction
 
 
 # MiniMonCounter
@@ -448,6 +455,9 @@ logcycle            = 3                    # time in seconds between CPM or CPS 
 lastValues          = None                 # last values received from device
 lastRecord          = None                 # last records received from devices
 LogReadings         = 0                    # counts readings since last logging start; prints as index in log
+LogGetValDur        = NAN                  # duration to get all logged values
+LogPlotDur          = NAN                  # duration to plot all logged values
+LogTotalDur         = NAN                  # duration to get and plot all logged values
 
 # History Options
 keepFF              = False                # Flag in startup-options
@@ -521,8 +531,8 @@ Devices = {
             "I2C"        : [None,        None,       False],    # 6
             "LabJack"    : [None,        None,       False],    # 7
             "Raspi"      : [None,        None,       False],    # 8
-            "Simul"      : [None,        None,       False],    # 9
-            "MiniMon"    : [None,        None,       False],    # 10
+            "MiniMon"    : [None,        None,       False],    # 9
+            "Simul"      : [None,        None,       False],    # 10
           }
 
 # VARIABLES - names and style
@@ -541,11 +551,11 @@ varsDefault = { # do not modify this - use copy varsBook !!!!
             "CPM2nd" : ["CPM2nd",        "M2",          "CPM",               "cyan",          "solid" ],    # 5
             "CPS2nd" : ["CPS2nd",        "S2",          "CPS",               "#9b59b6",       "solid" ],    # 6
             "CPM3rd" : ["CPM3rd",        "M3",          "CPM",               "brown",         "solid" ],    # 7
-            "CPS3rd" : ["CPS3rd",        "S3",          "CPS",               "#F9AF00",       "solid" ],    # 8
+            "CPS3rd" : ["CPS3rd",        "S3",          "CPS",               "orange",        "solid" ],    # 8
             "T"      : ["Temperature",   "T",           "°C",                "red",           "solid" ],    # 9
             "P"      : ["Pressure",      "P",           "hPa",               "black",         "solid" ],    # 10
             "H"      : ["Humidity",      "H",           "%",                 "green",         "solid" ],    # 11
-            "X"      : ["Xtra",          "X",           "x",                 "orange",        "solid" ],    # 12
+            "X"      : ["Xtra",          "X",           "x",                 "#8AE234",       "solid" ],    # 12
           }
 
 varsBook            = varsDefault.copy()   # need a copy to allow reset as colorpicker may change color
@@ -616,10 +626,6 @@ GraphScale["X"]      = "VAL"               # no scaling
 helpOptions = """
 Usage:  geigerlog [Options] [Commands]
 
-By default, data files will be read-from/written-to the
-data directory "data", a subdirectory to the program
-directory
-
 Options:
     -h, --help          Show this help and exit.
     -d, --debug         Run with printing debug info.
@@ -637,16 +643,15 @@ Options:
                         Command: 'showstyles'.
                         Default is set by your system
 
-
 Commands:
-    showstyles          Show a list of styles avail-
-                        able on your system and exit.
-                        For usage details see manual.
-    keepFF              GMC counter only: Keeps all hexadecimal
-                        FF (Decimal 255) values as a
-                        real value and not an 'Empty'
-                        one. See manual in chapter
-                        on parsing strategy.
+    showstyles          Show a list of styles available on
+                        your system and exit. For usage details see manual.
+    keepFF              GMC counter only: Keeps all hexadecimalFF (Decimal 255)
+                        values as a real value and not an 'Empty' one. See
+                        manual in chapter on parsing strategy.
+
+By default, data files will be read-from/written-to the data directory
+"data", which is a subdirectory to the program directory
 
 To watch debug and verbose output start the program from the
 command line in a terminal. The output will print to the terminal.
@@ -933,6 +938,10 @@ counter as well as an environmental sensor for temperature, air-pressure
 
 <p><b>MiniMon Devices - CO2 Monitoring:</b>
 <br>GeigerLog supports these In-house CO2 monitoring devices (Linux only)</p>
+
+<p><b>SimulCounter Devices:</b>
+<br>A simulated Geiger counter getting its “counts” from a Poisson random
+number generator.</p>
 
 <p><br>The most recent version of GeigerLog as well as an up-to-date
 GeigerLog-Manual can be found at project GeigerLog at Sourceforge:

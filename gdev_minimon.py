@@ -16,6 +16,26 @@ http://co2meters.com/Documentation/AppNotes/AN146-RAD-0401-serial-communication.
 Software:
 https://hackaday.io/project/5301-reverse-engineering-a-low-cost-usb-co-monitor
 https://github.com/heinemml/CO2Meter/blob/master/CO2Meter.py
+
+uderv rules:
+see details also on line 300ff:
+put into folder '/etc/udev/rules.d' a file named '90-co2mini.rules' with this content:
+
+    # To activate use command:   sudo udevadm control --reload-rules
+    # then unplug and replug MiniMon
+
+    ACTION=="remove", GOTO="minimon_end"
+
+    # Use this line if you have several MiniMons.
+    # The name /dev/minimon will be attached with numbers depending on the hidraw dev it is linked to, like: /dev/minimon1, /dev/minimon2, etc
+    #SUBSYSTEMS=="usb", KERNEL=="hidraw*", ATTRS{idVendor}=="04d9", ATTRS{idProduct}=="a052", GROUP="plugdev", MODE="0660", SYMLINK+="co2mini%n", GOTO="minimon_end"
+
+    # Use this line if you have only a single MiniMon
+    # The name /dev/minimon will never change
+    SUBSYSTEMS=="usb", KERNEL=="hidraw*", ATTRS{idVendor}=="04d9", ATTRS{idProduct}=="a052", GROUP="plugdev", MODE="0660", SYMLINK+="minimon", GOTO="minimon_end"
+
+    LABEL="minimon_end"
+
 """
 
 ###############################################################################
@@ -44,13 +64,11 @@ __license__         = "GPL3"
 import fcntl
 from   gsup_utils       import *
 
-old_co2 = old_temp = old_humid = old_time = float('nan')
-
 
 def initMiniMon():
     """Start the MiniMon"""
 
-    global fp, key, values, MiniMonThread, MiniMonThreadStop
+    global fp, key, values, MiniMonThread, MiniMonThreadStop, old_alldata, old_time
 
     fncname ="initMiniMon: "
 
@@ -62,27 +80,44 @@ def initMiniMon():
     gglobs.MiniMonDeviceDetected = gglobs.MiniMonDeviceName # no difference so far
     gglobs.Devices["MiniMon"][0] = gglobs.MiniMonDeviceDetected
 
-    if gglobs.MiniMonVariables  == "auto": gglobs.MiniMonVariables = "T, X"         # X is CO2
+    if gglobs.MiniMonVariables  == "auto": gglobs.MiniMonVariables = "T, X"         # T=Temperatur, X=CO2, (H=Humidity)
     if gglobs.MiniMonDevice     == "auto": gglobs.MiniMonDevice    = "/dev/minimon" # requires udev rule
-    if gglobs.MiniMonInterval   == "auto": gglobs.MiniMonInterval  = 1              # force saving after 1 min
+    if gglobs.MiniMonInterval   == "auto": gglobs.MiniMonInterval  = 60             # force saving after  60 seconds
 
-    setLoggableVariables("MiniMon", gglobs.MiniMonVariables)
+    if not os.access(gglobs.MiniMonDevice , os.W_OK):
+        msg = "Could not find MiniMon device - is it connected and powered?"
+        edprint(msg)
+        setDebugIndent(0)
+        return msg
+
+    try:
+        fp = open(gglobs.MiniMonDevice, "a+b",  0)
+    except Exception as e:
+        msg = "Could not open MiniMon device - is it connected and powered?"
+        exceptPrint(e, msg)
+        setDebugIndent(0)
+        return msg
 
     # key needed for decryption in readMiniMonData
     key                 = [0xc4, 0xc6, 0xc0, 0x92, 0x40, 0x23, 0xdc, 0x96]
     HIDIOCSFEATURE_9    = 0xC0094806
     set_report3         = b"\x00" + bytearray(key)
 
-    fp = open(gglobs.MiniMonDevice, "a+b",  0)
     fcntl.ioctl(fp, HIDIOCSFEATURE_9, set_report3)
-    #fp.close() # Caution:  MUST NOT   close the connection!!! Why???
+    #fp.close() # Caution:  MUST NOT close the connection!!! Why???
 
-    values = {}
+    setLoggableVariables("MiniMon", gglobs.MiniMonVariables)
+
+    # set to start defaults
+    values      = {}
+    old_alldata = {"T" : float('nan'), "H" : float('nan'), "X" : float('nan')}
+    old_time    = 0
 
     MiniMonThreadStop = False
 
     MiniMonThread = threading.Thread(target = MiniMonThreadTarget)
-    MiniMonThread.daemon = True
+    #MiniMonThread.daemon = True
+    #edprint("MiniMonThread.daemon: ", MiniMonThread.daemon) # MiniMonThread.daemon: False
     MiniMonThread.start()
 
     setDebugIndent(0)
@@ -95,9 +130,89 @@ def initMiniMon():
 def MiniMonThreadTarget():
     """Thread that constantly triggers readings from the usb device."""
 
+    global values, MiniMonThreadStop
+
+    def printlostmsg():
+        global values, MiniMonThreadStop
+        # must NOT use fprint - because thread - but use print ok
+
+        msg = "Lost connection to MiniMon device; stopping MiniMon. Continue after reconnection"
+        dprint(msg, debug=True)
+        MiniMonThreadStop = True
+        values = {}
+        values["error"] = msg
+
+    fncname = "MiniMonThreadTarget: "
+
     while not MiniMonThreadStop:
-        readMiniMonData()
-        #time.sleep(max(gglobs.logcycle * 0.1, 0.03)) # zu lange???
+        start = time.time()
+
+        if os.access(gglobs.MiniMonDevice , os.R_OK):
+            #dprint(fncname + "os:  {} is readable".format(gglobs.MiniMonDevice))
+            try:
+                fpr = fp.read(8)
+                extractMiniMonData(fpr)
+
+            except Exception as e:
+                stre = str(e)
+                exceptPrint("readMiniMonData: " + stre, "Failure in: data = list(fp.read(8))")
+                if "[Errno 5]" in stre: # [Errno 5] = input/output error
+                    printlostmsg()
+
+        else:
+            edprint(fncname + "os:  {} is NOT readable".format(gglobs.MiniMonDevice))
+            printlostmsg()
+
+        minsleep = 0.05
+        maxsleep = 3
+        tsleep   = gglobs.logcycle * 0.5 # sleep for half a logcycle
+        tsleep   = max(tsleep, minsleep) # but at least 50 ms = 0.1 sec * 0.5
+        tsleep   = min(tsleep, maxsleep) # sleep no longer than 3 sec
+        time.sleep(tsleep)
+
+
+def extractMiniMonData(fpr):
+    """
+    Function that reads one record from the device, decodes it, validates the
+    checksum and, if valid, overwrites 'values' with the new data.
+    """
+
+    global values, MiniMonThreadStop
+
+    fncname = "readMiniMonData: "
+
+    data  = list(fpr)
+    #print(fncname + "original  data: {}  hexlist: {}".format(decList(data), hexList(data)))
+
+    if data[4] != 0x0d:
+        # see: https://github.com/heinemml/CO2Meter/issues/4
+        # newer devices don't encrypt the data, if byte 4 != 0x0d assume
+        # encrypted data
+        # could result in wrong data sometimes?!
+        data = decrypt(key, data)
+
+    # must be decrypted first
+    checksum = sum(data[:3]) & 0xff
+    #print(fncname + "decrypted data: {}  hexlist: {}  checksum: {}  {}".format(decList(data), hexList(data), hex(checksum), checksum == data[3]))
+
+    # at this stage data[4]==13 or there is an error
+    if data[4] != 0x0d:
+        edprint(fncname + "Byte[4] error: {}".format(hexList(data)))
+
+    # verify checksum
+    elif checksum != data[3]:
+        edprint(fncname + "Checksum error: {}   checksum: {}".format(hexList(data), hex(checksum)))
+
+    # ok, good data
+    else:
+        op = data[0]
+        if op in [0x50, 0x42, 0x41]:              # co2=0x50==80, temp=0x42==66, humid=0x41==65
+            val         = data[1] << 8 | data[2]
+            values[op]  = val
+            #~print(fncname + f"op: {op:3d}, val: {val:5d}   values: {sortDict(values)}")
+
+        #if op == 0x50: playWav()
+        pass
 
 
 def terminateMiniMon():
@@ -106,7 +221,7 @@ def terminateMiniMon():
     global MiniMonThread, MiniMonThreadStop
 
     fncname ="terminateMiniMon: "
-    dprint(fncname + "Terminating MiniMon")
+    dprint(fncname)
     if not gglobs.MiniMonConnection: return fncname + "No MiniMon connection"
 
     setDebugIndent(1)
@@ -124,7 +239,8 @@ def terminateMiniMon():
     dprint(fncname + "thread-status: is alive: {}, waiting took: {:0.3f} ms".format(MiniMonThread.is_alive(), 1000 * (time.time() - start)))
 
     gglobs.MiniMonConnection = False
-    dprint(fncname + "is stopped")
+    #dprint(fncname + "is stopped")
+    setDebugIndent(0)
 
 
 def getMiniMonInfo(extended = False):
@@ -147,7 +263,7 @@ def printMiniMonInfo(extended=False):
 
     setBusyCursor()
 
-    txt = "MiniMon Device Info"
+    txt = "MiniMon Device"
     if extended:  txt += " Extended"
     fprint(header(txt))
     fprint("Configured Connection:", gglobs.MiniMonDevice)
@@ -159,92 +275,58 @@ def printMiniMonInfo(extended=False):
 def getMiniMonValues(varlist):
     """Read all data; return empty dict when not available"""
 
-    global values, old_co2, old_temp, old_humid, old_time
+    global values, old_alldata, old_time
 
     fncname = "getMiniMonValues: "
-    alldata = {}
+    alldata = {"T" : float('nan'), "H" : float('nan'), "X" : float('nan')}
 
-    # correct humidity may be 0x41 not 0x44!
-    co2 = temp = humid = float('nan')
-    if 0x50 in values: co2   = values[0x50]                             # 0x50 = 80
-    if 0x42 in values: temp  = round(values[0x42] / 16.0 - 273.15, 2)   # 0x42 = 66
-    if 0x41 in values: humid = round(values[0x41] / 100.0        , 2)   # 0x41 = 65 #!not 0x44!
-    #~print(f"CO2: {co2:0.0f} ppm,  T: {temp:0.2f} °C, H: {humid:0.1f} %")
+    new_time = time.time()
 
-    # make record only when at least one value has changed
-    # problem: humid and old_humid are always NAN, thus (old_humid != humid) is
-    # always True, and everything would be saved. So, must check for NAN!
-    # do it on any new value or interval expired
-    if (not np.isnan(co2)   and old_co2   != co2)   or \
-       (not np.isnan(temp)  and old_temp  != temp)  or \
-       (not np.isnan(humid) and old_humid != humid) or \
-       (time.time() - old_time) > gglobs.MiniMonInterval * 60:
+    if "error" in values:
+        playWav("err")
+        efprint(values["error"])
+        values = {}
 
-            old_time = time.time()
-            for vname in varlist:
-                if   vname in ("T"):
-                # Temperature
-                    t             = temp
-                    t             = scaleVarValues(vname, t, gglobs.ValueScale[vname])
-                    alldata.update(  {vname: t})
-                    old_temp      = temp
+    else:
+        for vname in varlist:
+            if   vname in ("T"):
+            # Temperature
+                if 0x42 in values:
+                    temp  = round(values[0x42] / 16.0 - 273.15, 2)   # 0x42 = 66
+                    temp  = scaleVarValues(vname, temp, gglobs.ValueScale[vname])
+                    alldata.update(  {vname: temp})
 
-                elif vname in ("H"):
-                # Humidity
-                    t             = humid
-                    t             = scaleVarValues(vname, t, gglobs.ValueScale[vname])
-                    alldata.update(  {vname: t})
-                    old_humid     = humid
+            elif vname in ("H"):
+            # Humidity
+                if 0x41 in values:
+                    humid = round(values[0x41] / 100.0        , 2)   # 0x41 = 65 # !not 0x44! as in original code
+                    humid = scaleVarValues(vname, humid, gglobs.ValueScale[vname])
+                    alldata.update(  {vname: humid})
 
-                elif vname in ("X"):
-                # CO2
-                    x             = co2
-                    x             = scaleVarValues(vname, x, gglobs.ValueScale[vname])
-                    alldata.update(  {vname: x})
-                    old_co2       = co2
+            elif vname in ("X"):
+            # CO2
+                if 0x50 in values:
+                    co2   = values[0x50]                             # 0x50 = 80
+                    co2   = scaleVarValues(vname, co2, gglobs.ValueScale[vname])
+                    alldata.update(  {vname: co2})
+
+    if (new_time - old_time) >= gglobs.MiniMonInterval:
+        # forced saving; even if no values have changed
+        old_time = new_time
+
+    else:
+        # do not save if all values are NAN or same as last reading
+        if (np.isnan(alldata["T"]) or old_alldata["T"] == alldata["T"]) and \
+           (np.isnan(alldata["H"]) or old_alldata["H"] == alldata["H"]) and \
+           (np.isnan(alldata["X"]) or old_alldata["X"] == alldata["X"]):
+                alldata = {}
+        else:
+                old_alldata = alldata
+                old_time    = new_time
 
     printLoggedValues(fncname, varlist, alldata)
 
     return alldata
-
-
-def readMiniMonData():
-    """
-    Function that reads one record from the device, decodes it, validates the
-    checksum and, if valid, overwrites 'values' with the new data.
-    """
-
-    global values
-
-    fncname = "readMiniMonData: "
-
-    try:
-        #start = time.time()
-        data   = list(fp.read(8))
-
-        if data[4] != 0x0d:
-            # see: https://github.com/heinemml/CO2Meter/issues/4
-            # newer devices don't encrypt the data, if byte 4 != 0x0d assume
-            # encrypted data
-            # could result in wrong data sometimes?!
-            data = decrypt(key, data)
-
-        if data[4] != 0x0d or (sum(data[:3]) & 0xff) != data[3]:
-            edprint(fncname + "Checksum error: ", hexList(data))
-
-        else:
-            op          = data[0]
-            val         = data[1] << 8 | data[2]
-            values[op]  = val
-            #print(fncname + f"op: {op:3d}, val: {val:5d}   values: {sortDict(values)}")
-
-            #if op == 0x50: playWav()
-            #if op == 0x50: print("beep")
-            #if op == 0x50: print(f"-- CO2 read: {(time.time() - start)*1000:0.3f} ms")
-            #else:          print(f"-- Any read: {(time.time() - start)*1000:0.3f} ms") # 0.02 .... 2000 ms!
-
-    except Exception as e:
-        edprint(fncname + "Exception: e: ", e)
 
 
 def decrypt(key,  data):

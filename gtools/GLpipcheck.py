@@ -26,32 +26,19 @@ __author__          = "ullix"
 __copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
 __credits__         = [""]
 __license__         = "GPL3"
+__version__         = "1.1"
+
 
 """
 optional for pip:
 to force installation limited to certain versions:
    pip install SomeProject >=1,<2
 
-Using pip as an imported module:  (not recommended, see at bottom of:
-https://pip.pypa.io/en/stable/user_guide/
+To view all available packages, this is NO LONGER working!
+    python -m pip install pip==
 
-... if you decide that you do want to run pip from within your program. The most
-... reliable approach, and the one that is fully supported, is to run pip in a
-... subprocess. This is easily done using the standard subprocess module
-
-from pip._internal import main as pipmain
-
-def install(package):
-    # test for presence of 'main' (older versions) or use pip._internal.main()
-    if hasattr(pip, 'main'):
-        pip.main(['install', package])
-    else:
-        pip._internal.main(['install', package])
-
-pipmain(["list"])
-<package name> = e.g. pip, pyserial, ...
-pipmain(["show", <package name>])
-pipmain(["install","--upgrade", <package name>])
+Workaraound:
+    python -m pip --use-deprecated=legacy-resolver install pip==
 """
 
 
@@ -62,96 +49,63 @@ def removeSpaces(text):
     """no more than single space allowed"""
 
     while True:
-        text2 = text.replace("  ", " ")
-        if len(text2) < len(text):
-            text = text2
-        else:
-            return text2
+        text2 = text.replace("  ", " ")           # replace 2 space with 1 space
+        if len(text2) < len(text): text = text2
+        else:                      return text2
 
 
-def showPipList():
-    """Executes 'pip list' and prints all"""
+def showPipList(piplist):
+    """prints all from 'pip list'output"""
 
     print("Listing of all Pip-found packages:")
 
-    nreqs = piplist.decode('UTF-8').split("\n")
-    for nr in nreqs:
-        print("  ", nr)
+    for pl in piplist:  print("  ", pl)
 
 
-def showInstalledPackages():
+def showPackages(ptype):    # ptype = "OPTIONAL" or "REQUIRED"
     """call pip list and find packages required by GeigerLog and their version"""
 
-    print("\nGeigerLog required packages and their currently installed versions:")
+    print("\nGeigerLog {} packages and their version status".format(ptype))
 
-    nreqs = piplist.decode('UTF-8').strip().split("\n")
-    #print ("nreqs:", nreqs)
+    if ptype == "REQUIRED":  installs = req_installs
+    else:                    installs = opt_installs
 
-    print("               Package            Version")
-    for nr in nreqs:
-        snr = removeSpaces(nr).split(" ", 1)
-        #print("snr: ", snr)
-
-        p = snr[0].strip()
-        v = snr[1].strip()
-        #print("nr: >{}< >{}<".format(p, v))
-
-        if p in installs:
-            print("   installed:  {:18s} {:20s}".format(p, v))
-            installs[p][2] = True
+    pf = "   {:18s} {:16s}  {:10s} {}"
+    for ins in installs:
+        #print("ins: ", ins)
+        if ins in pipdict:
+            print(pf.format(ins, pipdict[ins], "OK",      installs[ins][1]))
         else:
-            pass
-            #~print("installed but not needed: {:28s} {:20s}".format(p, v))
+            print(pf.format(ins, ""          , "MISSING", installs[ins][1]))
 
 
-def showMissingPackages():
-    """Packages needed by GeigerLog but not installed"""
-
-    print("\nGeigerLog required packages missing:")
-    counter = 0
-    for pkg in installs:
-        #print("         pkg:  {:28s}".format(pkg), pkg)
-        if installs[pkg][2] == False:       # False or True is set by showInstalledPackages
-            print("   missing:    {:18s}".format(pkg))
-            counter += 1
-        else:
-            pass
-            #print("         found:    {:28s}".format(pkg))
-
-    if counter == 0: print("   None")
-
-
-def showVersionFromPipOutdatedList():
+def showVersionFromPipOutdatedList(ptype): # ptype = "OPTIONAL" or "REQUIRED"
     """Call 'pip list --outdated' """
 
-    print("\nGeigerLog required packages having Upgrades available:")
+    """
+    Example output of call 'pip list --outdated':
+    Package Version Latest Type
+    ------- ------- ------ -----
+    cffi    1.14.2  1.14.4 wheel
+    idna    2.10    3.1    wheel
+    """
 
-    reqs  = subprocess.check_output([sys.executable, '-m', 'pip', 'list', '--outdated'])
-    nreqs = reqs.decode('UTF-8').strip().split("\n")    # e.g.:  'bottle             0.12.7   0.12.17  wheel',
-    #print("nreqs:", len(nreqs), nreqs)
+    msg = "\nGeigerLog {} packages having upgrades available:".format(ptype)
 
-    counter = 0
-    print("               Package            Version     Latest      Type")
-    for nr in nreqs:
-        if len(nr) == 0: continue
-        #print("nr: ", len(nr), nr)
+    if ptype == "REQUIRED":  installs = req_installs
+    else:                    installs = opt_installs
 
-        snr = removeSpaces(nr).split(" ", 3)
-        #print(snr)
+    pf       = "   {:18s} {:16s}  {:10s} {}"
 
-        p = snr[0].strip()
-        v = snr[1].strip()
-        w = snr[2].strip()
-        x = snr[3].strip()
-        #~print("nr: >{}< >{}< >{}<".format(p, v, w))
-
-        if p in installs:
-            print("   installed:  {:18s} {:11s} {:11s} {:20s}".format(p, v, w, x))
+    counter  = 0
+    ins      = "Package"
+    print(msg)
+    print(pf.format(ins, pipODdict[ins][0], pipODdict[ins][1], pipODdict[ins][2]))
+    for ins in installs:
+        #print("ins: ", ins)
+        if ins in pipODdict:
+            print(pf.format(ins, pipODdict[ins][0], pipODdict[ins][1], pipODdict[ins][2]))
             counter += 1
-        else:
-            pass
-            #~print("installed but not needed: {:28s} {:20s}".format(p,v))
-
     if counter == 0: print("   None")
 
 
@@ -159,54 +113,96 @@ def showVersionFromPipOutdatedList():
 
 def main():
     """
-    # October 9, 2020:
-    GeigerLog required packages and their currently installed versions:
-                   Package            Version
-       installed:  matplotlib         3.3.2
-       installed:  numpy              1.19.2
-       installed:  paho-mqtt          1.5.1
-       installed:  pip                20.2.3
-       installed:  pip-check          2.6
-       installed:  PyQt5              5.15.1
-       installed:  PyQt5-sip          12.8.1
-       installed:  pyserial           3.4
-       installed:  scipy              1.5.2
-       installed:  setuptools         50.3.0
-       installed:  sounddevice        0.4.1
-       installed:  SoundFile          0.10.3.post1
+    # February 2021:
+        GeigerLog REQUIRED packages and their version status
+           pip                21.0.1            OK
+           setuptools         53.0.0            OK
+           PyQt5              5.15.2            OK
+           PyQt5-sip          12.8.1            OK
+           numpy              1.20.0            OK
+           scipy              1.6.0             OK
+           matplotlib         3.3.4             OK
+           sounddevice        0.4.1             OK
+           SoundFile          0.10.3.post1      OK
+
+        GeigerLog OPTIONAL packages and their version status
+           pyserial           3.5               OK         REQUIRED for GMC, GS, I2C Series
+           paho-mqtt          1.5.1             OK         REQUIRED for RadMon Series
+           LabJackPython      2.0.0             OK         REQUIRED for LabJack Series
+           pip-check          2.6               OK         recommended Pip tool
+
+        GeigerLog REQUIRED packages having upgrades available:
+           Package            Version           Latest     Type
+           None
+
+        GeigerLog OPTIONAL packages having upgrades available:
+           Package            Version           Latest     Type
+           LabJackPython      2.0.0             2.0.4      wheel
     """
 
-    global installs, piplist
+    global req_installs, opt_installs, pipdict, pipODdict
 
     print("\n---------------------- GLpipcheck.py ---------------------------")
     print("Python Executable: ", sys.executable)
     print("Python Version:    ", sys.version.replace('\n', " "))
     print()
 
-    installs = {
-                "pip"           : ["latest"     , "pypi", False],
-                "setuptools"    : ["latest"     , "pypi", False],
-                "PyQt5"         : ["latest"     , "pypi", False],
-                "PyQt5-sip"     : ["latest"     , "pypi", False],
-                "numpy"         : ["latest"     , "pypi", False],
-                "scipy"         : ["latest"     , "pypi", False],
-                "matplotlib"    : ["latest"     , "pypi", False],
-                "pyserial"      : ["latest"     , "pypi", False],
-                "paho-mqtt"     : ["latest"     , "pypi", False],
-                "sounddevice"   : ["latest"     , "pypi", False],
-                "SoundFile"     : ["latest"     , "pypi", False],
-                "pip-check"     : ["latest"     , "pypi", False],
+    req_installs = {
+                "pip"           : ["latest"     , "", False],
+                "setuptools"    : ["latest"     , "", False],
+                "PyQt5"         : ["latest"     , "", False],
+                "PyQt5-Qt"      : ["latest"     , "", False],
+                "PyQt5-sip"     : ["latest"     , "", False],
+                "numpy"         : ["latest"     , "", False],
+                "scipy"         : ["latest"     , "", False],
+                "matplotlib"    : ["latest"     , "", False],
+                "sounddevice"   : ["latest"     , "", False],
+                "SoundFile"     : ["latest"     , "", False],
+                }
+
+    opt_installs = {
+                "pyserial"      : ["latest"     , "REQUIRED for GMC, GS, I2C Series", False],
+                "paho-mqtt"     : ["latest"     , "REQUIRED for RadMon Series"      , False],
+                "LabJackPython" : ["latest"     , "REQUIRED for LabJack Series"     , False],
+                "pip-check"     : ["latest"     , "recommended Pip tool"            , False],
                 }
 
     # create the 'pip list'
     piplist = subprocess.check_output([sys.executable, '-m', 'pip', 'list'])
+    piplist = piplist.decode('UTF-8').strip().split("\n")
+    #print("piplist: \n", piplist)
+    showPipList(piplist)
 
-    showPipList()
-    showInstalledPackages()
-    showMissingPackages()
-    showVersionFromPipOutdatedList()
+    pipdict = {}
+    for pl in piplist:
+        snr = removeSpaces(pl).split(" ", 1)
+        #print("snr: ", snr)
+        pipdict.update({snr[0].strip(): snr[1].strip()})
+    showPackages("REQUIRED")
+    showPackages("OPTIONAL")
+
+
+     # create the 'pip list --outdated'
+    pipODlist = subprocess.check_output([sys.executable, '-m', 'pip', 'list', '--outdated'])
+    pipODlist = pipODlist.decode('UTF-8').strip().split("\n")
+    #print("pipODlist:", len(pipODlist), pipODlist)
+
+    pipODdict = {}
+    for pl in pipODlist:
+        snr = removeSpaces(pl).split(" ", 4)
+        #print("snr: ", snr)
+        pipODdict.update({snr[0].strip(): [snr[1].strip(), snr[2].strip(), snr[3].strip()]})
+    showVersionFromPipOutdatedList("REQUIRED")
+    showVersionFromPipOutdatedList("OPTIONAL")
+
+    ###############
+
     print()
-    print("HOWTO: To install and/or update package 'anypackage' use:\n   python3 -m pip install -U anypackage")
+    print("HOWTO: " + "-" * 80)
+    print("To install and/or update package 'anypackage' use:\n      python3 -m pip install -U anypackage")
+    print("To remove package 'anypackage' use:\n      python3 -m pip uninstall anypackage")
+    print("To install version 1.2.3 of package 'anypackage' use:\n      python3 -m pip install anypackage==1.2.3")
+    print("To find all available versions of package 'anypackage' use:\n      python3 -m pip --use-deprecated=legacy-resolver install anypackage==")
     print()
 
 

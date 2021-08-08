@@ -103,9 +103,9 @@ def makeGMC_History(sourceHist):
 
         start = time.time()
         #testing
-        vprint("makeGMC_History: gglobs.GMCmemory, page: ", gglobs.GMCmemory, " ", page)
+        vprint("makeGMC_History: gglobs.GMC_memory, page: ", gglobs.GMC_memory, " ", page)
         ########
-        for address in range(0, gglobs.GMCmemory, page): # prepare to read all memory
+        for address in range(0, gglobs.GMC_memory, page): # prepare to read all memory
             time.sleep(0.1) # fails occasionally to read all data when
                             # sleep is only 0.1; still not ok at 0.2 sec
                             # wieder auf 0.1, da GQ Dataviewer deutlich scneller ist
@@ -117,7 +117,6 @@ def makeGMC_History(sourceHist):
             QApplication.processEvents()
             QApplication.processEvents()
             rec, error, errmessage = gdev_gmc.getGMC_SPIR(address, page)
-            #~rec, error, errmessage = getGMC_SPIR(address, page)   # depends on import options
             if error in (0, 1):
                 hist += rec
                 if error == 1: fprint("Reading error:", "Recovery succeeded")
@@ -141,7 +140,7 @@ def makeGMC_History(sourceHist):
 
         stop = time.time()
         dtime = (stop - start)
-        timing = "Total time: {:0.1f} sec, Total Bytes: {:d}, Bytes per sec: {:0.0f}".format(dtime, len(hist), len(hist) / dtime)
+        timing = "Total time: {:0.1f} sec, Total Bytes: {:d} --> {:0.1f} kBytes/s".format(dtime, len(hist), len(hist) / dtime / 1000)
         dprint(timing)
         fprint(timing)
 
@@ -192,7 +191,7 @@ def printHistDetails(hist=False):
 
         hist    = gsup_sql.DB_readBinblob(gglobs.hisConn)
         if hist == None:
-            fprint("No binary data found in this database", error=True)
+            efprint("No binary data found in this database")
             return
 
     histlen     = len(hist)                  # Total length; could be any length e.g. when read from file
@@ -414,8 +413,8 @@ def parseHIST(hist):
 
                 else:
                     # workaround for the mess created by GQ
-                    # gglobs.GMClocationBug: default: "GMC-500+Re 1.18", "GMC-500+Re 1.21"
-                    if gglobs.GMCDeviceDetected in gglobs.GMClocationBug:
+                    # gglobs.GMC_locationBug: default: "GMC-500+Re 1.18", "GMC-500+Re 1.21"
+                    if gglobs.GMCDeviceDetected in gglobs.GMC_locationBug:
                         histMess = {"ASCII" : 4,
                                     "Triple": 2,
                                     "Quad"  : 3,
@@ -525,8 +524,8 @@ def parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomm
     elif tubeSelected == 1: pointer = 5
     elif tubeSelected == 2: pointer = 7
     else:
-        fprint("ERROR: detected tubeSelected={}, but only 0,1,2 is permitted".format(tubeSelected), error=true, debug=True, errsound=True)
-        pointer  = 3#2
+        efprint("ERROR: detected tubeSelected={}, but only 0,1,2 is permitted".format(tubeSelected), debug=True)
+        pointer  = 3
         cpxValid = -1
 
     if CPSmode: # CPS mode
@@ -564,7 +563,7 @@ def saveHistBinaryData():
 
     hist    = gsup_sql.DB_readBinblob(gglobs.hisConn)
     if hist == None:
-        fprint("No binary data found in this database", error=True)
+        efprint("No binary data found in this database")
         return
 
     newpath = gglobs.hisDBPath + ".bin"

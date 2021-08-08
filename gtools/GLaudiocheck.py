@@ -10,7 +10,7 @@ GLaudiocheck.py - check the Audio signal by plotting live microphone signals
 
 import argparse
 import queue
-import sys
+import sys, time
 
 from matplotlib.animation import FuncAnimation
 import matplotlib.pyplot as plt
@@ -53,6 +53,9 @@ args = parser.parse_args(remaining)
 if any(c < 1 for c in args.channels):
     parser.error('argument CHANNEL: must be >= 1')
 mapping = [c - 1 for c in args.channels]  # Channel numbers start with 1
+
+print("mapping: ", mapping) # mapping = [0]
+
 q = queue.Queue()
 
 
@@ -70,11 +73,13 @@ def update_plot(frame):
     Typically, audio callbacks happen more frequently than plot updates,
     therefore the queue tends to contain multiple blocks of audio data.
     """
-
+    start = time.time()
+    fncname = "update_plot: "
     global plotdata
     while True:
         try:
             data = q.get_nowait()
+            #print("data: ", data)
         except queue.Empty:
             break
         shift = len(data)
@@ -82,19 +87,23 @@ def update_plot(frame):
         plotdata[-shift:, :] = data
     for column, line in enumerate(lines):
         line.set_ydata(plotdata[:, column])
+
+    #print(fncname + "dur: {:0.3f} ms".format(time.time() - start))
+
     return lines
 
 
 try:
+    print("Audio Devices found on system:\n{}".format(sd.query_devices()))
+
     #############################################################
     # Best values for GeigerLog Audio, comment-out for defaults
-    args.samplerate = 44100
-    args.window     = 20000
+    #~args.samplerate = 44100
+    args.samplerate = None  # will mostly become 44100
+    args.window     = 10000
     args.downsample = 1
     args.channels   = 1,
     args.interval   = 10
-
-    print("Audio Devices found on system:\n{}".format(sd.query_devices()))
     #############################################################
 
     if args.samplerate is None:
@@ -114,10 +123,15 @@ try:
     ax.tick_params(bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
     fig.tight_layout(pad=0)
 
+    start = time.time()
     stream = sd.InputStream(device=args.device, channels=max(args.channels), samplerate=args.samplerate, callback=audio_callback)
+    print(" sd.InputStream(device=args.device, channels=max(args.channels), samplerate=args.samplerate, callback=audio_callback)", end=" ")
+    print( args.device, max(args.channels), args.samplerate, audio_callback)
     ani = FuncAnimation(fig, update_plot, interval=args.interval, blit=True)
+
     with stream:
-        plt.show()
+        plt.show()  # blocking
+
 
 except Exception as e:
     parser.exit(type(e).__name__ + ': ' + str(e))

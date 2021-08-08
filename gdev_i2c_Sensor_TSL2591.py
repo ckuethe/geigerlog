@@ -120,7 +120,7 @@ class SensorTSL2591:
             #fprint("Found Sensor TSL2591")
             pass
         else:
-            fprint("Did NOT find Sensor TSL2591", error=True)
+            efprint("Did NOT find Sensor TSL2591")
             return False
 
     # Get package identification (PID)
@@ -134,7 +134,7 @@ class SensorTSL2591:
             #fprint("Package Identification 0b{:02b} confirmed".format(pid))
             pass
         else:
-            fprint("Package Identification 0b{:02b} not as expected".format(pid), error=True)
+            efprint("Package Identification 0b{:02b} not as expected".format(pid))
 
     # System Reset
         # Control Register (0x01)

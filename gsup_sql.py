@@ -87,36 +87,39 @@ def DB_GetFilepathFromDB(DB_Connection):
     return path
 
 
-def DB_closeDatabase(DB_Connection):
+def DB_closeDatabase(DBtype):
     """Close the database.
     Note: any changes not committed will be lost!
     """
     fncname = "DB_closeDatabase: "
-
-    vprint(fncname + "Closing database: ", DB_Connection)
+    vprint(fncname + "Closing database: '{}'".format(DBtype))
     setDebugIndent(1)
 
+    if      DBtype == "Log": DB_Connection = gglobs.logConn
+    else:                    DB_Connection = gglobs.hisConn
+
     if DB_Connection == None:
-        wprint(fncname + "Database cannot be closed as it is not open")
+        wprint(fncname + "Database is not open")
     else:
         try:
             DB_Connection.close()
             wprint(fncname +  "Closing done")
         except Exception as e:
             srcinfo = fncname + "Exception: connection is: {}".format(DB_Connection)
-            exceptPrint(e, sys.exc_info(), srcinfo)
+            exceptPrint(e, srcinfo)
 
     setDebugIndent(0)
 
 
-def DB_deleteDatabase(DB_Connection, DB_FilePath):
+def DB_deleteDatabase(DBtype, DB_FilePath):
     """Try to close database at DB_Connection, then delete database file at DB_FilePath"""
+    """DBtype = "Log" or "His" """
 
     fncname = "DB_deleteDatabase: "
+    dprint(fncname + "Deleting {} DB file: '{}'".format(DBtype, DB_FilePath))
 
-    dprint(fncname + "Deleting DB at file", DB_FilePath)
+    DB_closeDatabase  (DBtype)            # try to close DB
 
-    DB_closeDatabase  (DB_Connection)     # try to close DB
     try:    os.remove (DB_FilePath)       # try to remove DB file
     except: pass
 
@@ -125,7 +128,6 @@ def DB_openDatabase(DB_Connection, DB_FilePath):
     """Open the database"""
 
     fncname = "DB_openDatabase: "
-
     dprint(fncname + "DBpath: '{}'".format(DB_FilePath))
     setDebugIndent(1)
 
@@ -182,7 +184,7 @@ def DB_commit(DB_Connection):
         DB_Connection.commit()
     except Exception as e:
         srcinfo = "DB_commit: commit"
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
 
 
 def DB_createStructure(DB_Connection):
@@ -202,7 +204,7 @@ def DB_createStructure(DB_Connection):
         except Exception as e:
             if not ("already exists" in str(e)):
                 srcinfo = fncname
-                exceptPrint(e, sys.exc_info(), srcinfo)
+                exceptPrint(e, srcinfo)
     dprint(fncname + "complete")
 
     DB_commit(DB_Connection)
@@ -215,13 +217,13 @@ def DB_insertData(DB_Connection, datalist):
     fncname = "DB_insertData: "
 
     sql = sqlInsertData
-    wprint(fncname + "SQL:", sql, ", Data: ", datalist[0:10])
+    #wprint(fncname + "SQL:", sql, ", Data: ", datalist[0:10])
 
     try:
         DB_Connection.executemany(sql, datalist)
     except Exception as e:
         srcinfo = fncname + "Exception:" + sql
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
 
     DB_commit(DB_Connection)
 
@@ -233,13 +235,13 @@ def DB_insertParse(DB_Connection, datalist):
     fncname = "DB_insertParse: "
 
     sql = sqlInsertParse
-    wprint(fncname + "SQL:", sql, ", Data: ", datalist[0:10])
+    #wprint(fncname + "SQL:", sql, ", Data: ", datalist[0:10])
 
     try:
         DB_Connection.executemany(sql, datalist)
     except Exception as e:
         srcinfo = fncname + "Exception: " + sql
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
 
     DB_commit(DB_Connection)
 
@@ -251,13 +253,13 @@ def DB_insertComments(DB_Connection, datalist):
     fncname = "DB_insertComments: "
 
     sql = sqlInsertComments
-    wprint(fncname + "SQL:", sql, ", Data: ", datalist[0:10])
+    #wprint(fncname + "SQL:", sql, ", Data: ", datalist[0:10])
 
     try:
         DB_Connection.executemany(sql, datalist)
     except Exception as e:
         srcinfo = fncname + "Exception: " + sql
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
 
     DB_commit(DB_Connection)
 
@@ -268,13 +270,13 @@ def DB_insertBin(DB_Connection, binblob):
     fncname = "DB_insertBin: "
 
     sql = sqlInsertBin
-    wprint(fncname + "SQL:", sql, ", Data: ", binblob[0:10])
+    #wprint(fncname + "SQL:", sql, ", Data: ", binblob[0:10])
 
     try:
         DB_Connection.execute(sql, (binblob,))
     except Exception as e:
         srcinfo = fncname + "Exception: " + sql
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
 
     DB_commit(DB_Connection)
 
@@ -285,13 +287,13 @@ def DB_insertDevice(DB_Connection, ddatetime, dname):
     fncname = "DB_insertDevice: "
 
     sql = sqlInsertDevice
-    wprint(fncname + "SQL:", sql, ", Data: ", ddatetime, dname)
+    #wprint(fncname + "SQL:", sql, ", Data: ", ddatetime, dname)
 
     try:
         DB_Connection.execute(sql, (ddatetime, dname))
     except Exception as e:
         srcinfo = fncname + "Exception: " + sql
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
 
     DB_commit(DB_Connection)
 
@@ -419,7 +421,7 @@ def DB_insertLogcycle(DB_Connection, value):
         DB_Connection.execute(sql, (value,))
     except Exception as e:
         srcinfo = fncname + "Exception: " + sql
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
 
     DB_commit(DB_Connection)
 
@@ -436,7 +438,7 @@ def DB_updateLogcycle(DB_Connection, value):
         DB_Connection.execute(sql, (value,))
     except Exception as e:
         srcinfo = fncname + "Exception: " + sql
-        exceptPrint(e, sys.exc_info(), srcinfo)
+        exceptPrint(e, srcinfo)
 
     DB_commit(DB_Connection)
 
@@ -456,7 +458,7 @@ def createFFmapFromDB():
     hist    = DB_readBinblob(gglobs.hisConn)
     #print("createFFmapFromDB: hist:", hist)
     if hist == None:
-        fprint("No binary data found in this database", error=True)
+        efprint("No binary data found in this database")
         return
 
     setBusyCursor()
@@ -492,6 +494,7 @@ def createFFmapFromDB():
 
     setNormalCursor()
 
+### flag!!!!!!!!!!!!!!!!!!!11
 
 def createParseFromDB(lmax=12, full=True):
     """Read the data from the database data table include comments and parse comments """
@@ -504,7 +507,7 @@ def createParseFromDB(lmax=12, full=True):
     fprint("from: {}\n".format(gglobs.hisDBPath))
 
     if not DB_readParse(gglobs.hisConn):
-        fprint("No Parse Comments data found in this database", error=True)
+        efprint("No Parse Comments data found in this database")
         return
     else:
         print("createParseFromDB: parse records were found")
@@ -547,7 +550,7 @@ def createParseFromDB(lmax=12, full=True):
 
     res     = gglobs.hisConn.execute(sql)
     data    = res.fetchall()
-    #~print("createParseFromDB: sql:", sql, "\ndata:", len(data), "data:\n", data)
+    print("createParseFromDB: sql:", sql, "\ndata:", len(data), "data:\n", data)
 
     ruler  = "## Index,            DateTime,    CPM,    CPS, CPM1st, CPS1st, CPM2nd, CPS2nd, ParseInfo"
     fprint(ruler)
@@ -595,7 +598,7 @@ def createLstFromDB(*args, lmax=12, full=True):
     hist    = DB_readBinblob(gglobs.hisConn)
     #print("createLstFromDB: hist:", hist)
     if hist == None:
-        fprint("No binary data found in this database", error=True)
+        efprint("No binary data found in this database")
         return
 
     setBusyCursor()
@@ -863,8 +866,6 @@ def getShowCompactDataSql(varchckd):
     return sql, ruler
 
 
-
-#~def getDataFromDatabase(self):
 def getDataFromDatabase():
     """
     read the data from database
@@ -913,7 +914,7 @@ def getDataFromDatabase():
         res     = gglobs.currentConn.execute(sql)
         rows    = res.fetchall()
         nrows   = len(rows)
-        vprint(fncname +"{:8.2f}ms sql call, " .format((time.time() - start3) * 1000.))
+        vprint(fncname +"{:8.2f}ms sql call, " .format((time.time() - start3) * 1000))
     #    self.toolPrintArrayInfo("rows", rows)
     except Exception as e:
         edprint(fncname + "get the db rows: Exception executing SQL: ", e, debug=True)
@@ -930,7 +931,7 @@ def getDataFromDatabase():
     #  [737058.5992103536 17 0 ... None None None]
     start4 = time.time()
     np_rows = np.asarray(rows)
-    vprint(fncname + "{:8.2f}ms convert db rows to np.asarray" .format((time.time() - start4) * 1000.))
+    vprint(fncname + "{:8.2f}ms convert db rows to np.asarray" .format((time.time() - start4) * 1000))
 #    self.toolPrintArrayInfo("np_rows", np_rows)
 
 #   create dataarray value by value, check for being "floatable"
@@ -965,10 +966,10 @@ def getDataFromDatabase():
         else:
             #print("i:", i, a, "has only nan data")
             localvarchecked [a] = False
-    vprint(fncname + "{:8.2f}ms for nan checking, " .format((time.time() - start6) * 1000.))
+    vprint(fncname + "{:8.2f}ms for nan checking, " .format((time.time() - start6) * 1000))
 
 # Clean up
-    dprint(fncname + "{:8.2f}ms total for {} records with {} values each".format((time.time() - start) * 1000., nrows, ncols))
+    dprint(fncname + "{:8.2f}ms total for {} records with {} values each".format((time.time() - start) * 1000, nrows, ncols))
 
     setDebugIndent(0)
 
@@ -1109,7 +1110,7 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
 
     fncname = "DB_convertCSVtoDB: "
 
-    dprint(fncname + "CSV_FilePath: ", CSV_FilePath, ", DB_Connection: ", DB_Connection)
+    dprint(fncname + "CSV_FilePath: ", CSV_FilePath)
     setDebugIndent(1)
 
     hilimit    = 30   # highest number of lines to print
@@ -1387,6 +1388,7 @@ Column0,             Column1,  Column2,  Column3,  Column4,  Column5,  Column6, 
 """
 - CSV file columns MUST be separated by comma
 - A DateTime column MUST exist
+- The DateTime column format MUST be "YYYY-MM-DD hh:mm:ss"\n  like: "2020-03-27 01:23:45"
 - It is the order of the columns, which matters
 - Set columns to 'None' to ignore
 - Columns may be used multiple times

@@ -36,15 +36,18 @@ __license__         = "GPL3"
 
 import sys                      # system functions
 
-# Test for proper Python version; Python version >= v3.5 is required.
-# Check must be done before importing from gsup_utils.
+# Test for proper Python version
+# Check must be done before importing from gsup_utils, as some imports fail on
+# older version.
 #   Python 3.5 reached the end of its life on September 13th, 2020.
 #   Please upgrade your Python as Python 3.5 is no longer maintained.
 #   pip 21.0 will drop support for Python 3.5 in January 2021.
+# Python 3.5 does NOT support ordered dicts, resulting in major problems!
+#
 svi            = sys.version_info
 currentVersion = "{}.{}.{}".format(svi[0], svi[1], svi[2])
 msg            = ""
-if svi < (3, 6):
+if svi < (3, 6):    # Python version >= v3.6 is required.
     msg += """
         This version of GeigerLog requires Python in version 3.6 or later!<br>
         Your Python version is: {}.<br>""".format(currentVersion)
@@ -97,10 +100,8 @@ def main():
     gglobs.configPath       = getConfigPath ()
     gglobs.fileDialogDir    = getDataPath   ()
 
-    #
-    # Make sure that data directory exists; create it if needed
+# data directory: Make sure it exists; create it if needed
     # exit if it cannot be made or is not writable
-    #
     if os.access(gglobs.dataPath , os.F_OK): # test for file exists
         # dir exists, ok
         if not os.access(gglobs.dataPath , os.W_OK):
@@ -111,31 +112,30 @@ def main():
         # dir does not exist; make it
         try:
             os.mkdir(gglobs.dataPath )
-        except:
+        except Exception as e:
             # dir cannot be made
             print("ERROR: main: Could not make data directory '{}'".format(gglobs.dataDirectory))
             return 1
 
-    # Make sure the gres directory exists and is readable
+# gres directory: Make sure it exists and is readable
     if os.access(gglobs.gresPath , os.F_OK):
         # dir exists, ok
         if not os.access(gglobs.dataPath , os.R_OK):
             # dir exists, but is not readable
-            print("ERROR: main: GeigerLog resource directory {} is not readable. Please, correct".format(gglobs.gresPath))
+            print("ERROR: main: GeigerLog resource directory {} exists but is not readable".format(gglobs.gresPath))
             return 1
     else:
         print("ERROR: main: GeigerLog resource directory {} does not exist. You may have to reinstall GeigerLog".format(gglobs.gresPath))
         return 1
 
-    #
-    # parse command line options
-    #
+# parse command line options
     # sys.argv[0] is progname
     try:
         opts, args = getopt.getopt(sys.argv[1:], "hdvwRVPs:", ["help", "debug", "verbose", "werbose", "Redirect", "Version", "Portlist", "style=", "hidpi="])
-    except getopt.GetoptError as errmessage :
+    except getopt.GetoptError as e :
         # print info like "option -a not recognized", then exit
-        dprint("ERROR: '{}', use './geigerlog -h' for help".format(errmessage) , debug=True)
+        msg = "For Help use: './geigerlog -h'"
+        exceptPrint(e, msg)
         return 1
 
     # processing the options
@@ -214,9 +214,10 @@ def main():
 
         if arg == "gmc":        gglobs.GMCActivation    = True
         if arg == "audio":      gglobs.AudioActivation  = True
+        if arg == "osterei":    gglobs.AudioOei         = True
         if arg == "radmon":     gglobs.RMActivation     = True
         if arg == "ambio":      gglobs.AmbioActivation  = True
-        if arg == "gscout":     gglobs.GSActivation     = True
+        if arg == "scout":      gglobs.GSActivation     = True
         if arg == "i2c":        gglobs.I2CActivation    = True
         if arg == "labjack":    gglobs.LJActivation     = True
         if arg == "raspi":      gglobs.RaspiActivation  = True
@@ -230,29 +231,44 @@ def main():
     executeTPUT(action = 'set')
 
 # Signal handlers
-    #dprint("SIGINT handler before:    SIGINT: {}, getsignal(SIGINT): {}".format(signal.SIGINT, signal.getsignal(signal.SIGINT)))
-    signal.signal(signal.SIGINT, signal.SIG_DFL) # to allow shut down with ctrl-c when IN THE TERMINAL
-    dprint("{:28s}: SIGINT: {}, getsignal(SIGINT): {}".format("SIGINT handler activated", signal.SIGINT, signal.getsignal(signal.SIGINT)))
+    # Attention on Windows:
+    # see: https://docs.microsoft.com/en-us/previous-versions/xdkz3x12(v=vs.140)
+    # SIGINT :  CTRL+C signal, but: "SIGINT is not supported for any Win32 application."
+    # SIGTSTP:  CTRL-Z signal, NOT supported on Windows!!!
     #
-    # defining the own signal handler does not work properly
-    # but using the default above does not shut down the threaded loop of RadMon MQQT
-    # Signal handlers
-    # CTRL-C : properly closes all files and devices and shuts down the program
-    #dprint("initRadMon: before: SIGINT: {}, getsignal(SIGINT): {}".format(signal.SIGINT, signal.getsignal(signal.SIGINT)))
-    #   signal.signal(signal.SIGINT,  signal_handler)   # to handle CTRL-C
-    #   signal.signal(signal.SIGTSTP, signal_handler)   # to handle CTRL-Z
-    #dprint("after:  SIGINT: {}, getsignal(SIGINT): {}".format(signal.SIGINT, signal.getsignal(signal.SIGINT)))
-    #
-    # test for what the signals are connected to
-    #for i in range(0, 65): # fails with i>64
-    #    try:
-    #        print(": i: , signal.getsignal(i):", i, signal.getsignal(i))
-    #        print(": i: {}, signal.getsignal(i): {}".format(i, signal.getsignal(i)))
-    #    except:         print(": i: , signal.getsignal(i):", i, "Failed")
+    #~print("signal.SIG_DFL: {:2d}  ".format(signal.SIG_DFL), signal.SIG_DFL) # 0
+    #~print("signal.SIGINT:  {:2d}  ".format(signal.SIGINT),  signal.SIGINT ) # 2
+    #~print("signal.SIGTERM: {:2d}  ".format(signal.SIGTERM), signal.SIGTERM) # 15
+    #~print("signal.SIGTSTP: {:2d}  ".format(signal.SIGTSTP), signal.SIGTSTP) # 20
+
+    #~print("SIGINT  handler before:    SIGINT : {:2d}, getsignal(SIGINT) : {}".format(signal.SIGINT,  signal.getsignal(signal.SIGINT )))
+    #~print("SIGTSTP handler before:    SIGTSTP: {:2d}, getsignal(SIGTSTP): {}".format(signal.SIGTSTP, signal.getsignal(signal.SIGTSTP)))
+    try:
+        signal.signal(signal.SIGINT,  signal.SIG_DFL) # to allow shut down with ctrl-c when IN THE TERMINAL
+        dprint("{:28s}: SIGINT : {:2d}, getsignal(SIGINT) : {}".format("SIGNAL SIGINT  set default", signal.SIGINT,  signal.getsignal(signal.SIGINT)))
+    except Exception as e:
+        exceptPrint(e, "SIGNAL SIGINT setting failed on platform: '{}'".format(platform.platform()))
+
+    if "LINUX" in platform.platform().upper():
+        try:
+            signal.signal(signal.SIGTSTP, signal.SIG_IGN) # CTRL-Z signal will be ignored
+            dprint("{:28s}: SIGTSTP: {:2d}, getsignal(SIGTSTP): {}".format("SIGNAL SIGTSTP set ignored", signal.SIGTSTP, signal.getsignal(signal.SIGTSTP)))
+        except Exception as e:
+            exceptPrint(e, "SIGNAL SIGTSTP setting failed on platform: '{}'".format(platform.platform()))
+    #~print("SIGINT  handler after :    SIGINT:  {:2d}, getsignal(SIGINT) : {}".format(signal.SIGINT, signal.getsignal(signal.SIGINT)))
+    #~print("SIGTSTP handler after :    SIGTSTP: {:2d}, getsignal(SIGTSTP): {}".format(signal.SIGTSTP, signal.getsignal(signal.SIGTSTP)))
+
+    # test what the signals are connected to
+    #~for i in range(0, 95): # fails with i=0 and i>64
+        #~try:
+            #~print(": i: {:3d}, signal.getsignal(i): {}".format(i, signal.getsignal(i)))
+        #~except ValueError as e:
+            #~print(": i: {:3d}, signal.getsignal(i): {}   ValueError".format(i, e))
+        #~except Exception as e:
+            #~print(": i: {:3d}, signal.getsignal(i): {}   Exception".format(i, e))
 
 # Command line
     dprint("{:28s}: sys.argv: {}".format("Command line", sys.argv))
-    #~dprint("{:28s}: options: {}, commands: {}".format("   recognized", opts, args))
     dprint("{:28s}: options: {}, commands: {}".format("Options, Commands", opts, args))
 
 # Platform, machine

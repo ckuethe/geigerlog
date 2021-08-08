@@ -44,12 +44,16 @@ if gglobs.GMCActivation:                                # GMC counter
 if gglobs.AudioActivation:      import gdev_audio       # AudioCounter
 if gglobs.RMActivation:         import gdev_radmon      # RadMon - then imports "paho.mqtt.client as mqtt"
 if gglobs.AmbioActivation:      import gdev_ambiomon    # AmbioMon
-if gglobs.GSActivation:         import gdev_gscout      # GammaScout
+if gglobs.GSActivation:         import gdev_scout      # GammaScout
 if gglobs.I2CActivation:        import gdev_i2c         # I2C  - then imports dongles and sensor modules
 if gglobs.LJActivation:         import gdev_labjack     # LabJack - then trys to import the LabJack modules
 if gglobs.SimulActivation:      import gdev_simul       # SimulCounter
 if gglobs.RaspiActivation:      import gdev_raspi       # Raspi
 if gglobs.MiniMonActivation:    import gdev_minimon     # MiniMon
+
+if gglobs.GMCActivation or gglobs.GSActivation or gglobs.I2CActivation: # GMC, GS, I2C
+    import serial                       # serial port (module has name: 'pyserial'!)
+    import serial.tools.list_ports      # allows listing of serial ports
 
 
 class ggeiger(QMainWindow):
@@ -79,6 +83,11 @@ class ggeiger(QMainWindow):
 
                 gglobs.fontstd = self.fontstd
         """
+
+        self.fatfont = QFontDatabase.systemFont(QFontDatabase.FixedFont) #
+        self.fatfont.setWeight(99)            # options: 0 (thin) ... 99 (very thick); 60:ok, 65:too fat
+        self.fatfont.setPointSize(12)
+
         #print("Platform: ", platform.platform())
         if "WINDOWS" in platform.platform().upper():
             dprint("WINDOWS: Setting QFontDatabase.FixedFont")
@@ -170,11 +179,11 @@ class ggeiger(QMainWindow):
         addMenuTip(PlotHisAction, 'Plot the complete History file')
         PlotHisAction.triggered.connect(lambda: self.plotGraph('His'))
 
-        editScalingAction = QAction('View and Edit Current Scaling', self)
+        editScalingAction = QAction('View and Edit Current Scaling ...', self)
         addMenuTip(editScalingAction, 'View and edit the current value- and graph-scaling settings')
         editScalingAction.triggered.connect(lambda: self.editScaling())
 
-        PlotScatterAction = QAction('Show Scatterplot from Plot Data', self)
+        PlotScatterAction = QAction('Show Scatterplot from Plot Data ...', self)
         addMenuTip(PlotScatterAction, 'Show an X-Y Scatter plot with optional polynomial fit, using data currently selected in the plot')
         PlotScatterAction.triggered.connect(lambda: gsup_tools.selectScatterPlotVars())
 
@@ -198,13 +207,19 @@ class ggeiger(QMainWindow):
         addMenuTip(PlotFFTAction, "Shows the FFT Spectra & an Autocorrelation of the data of the selected variable")
         PlotFFTAction.triggered.connect(lambda: gstat_fft.plotFFT())
 
+#searchNotePad
+        SearchNPAction = QAction("Search NotePad ...", self)
+        SearchNPAction.setShortcut('Ctrl+F')
+        addMenuTip(SearchNPAction, "Search NotePad for occurence of a text")
+        SearchNPAction.triggered.connect(self.searchNotePad)
+
 #saveNotePad
         SaveNPAction = QAction("Save NotePad to File", self)
         addMenuTip(SaveNPAction, "Save Content of NotePad as text file named <current filename>.notes")
         SaveNPAction.triggered.connect(self.saveNotePad)
 
 #printNotePad
-        PrintNPAction = QAction("Print NotePad", self)
+        PrintNPAction = QAction("Print NotePad ...", self)
         addMenuTip(PrintNPAction, "Print Content of NotePad to Printer or  PDF-File")
         PrintNPAction.triggered.connect(self.printNotePad)
 
@@ -232,6 +247,7 @@ class ggeiger(QMainWindow):
         fileMenu.addAction(PlotFFTAction)
 
         fileMenu.addSeparator()
+        fileMenu.addAction(SearchNPAction)
         fileMenu.addAction(SaveNPAction)
         fileMenu.addAction(PrintNPAction)
 
@@ -256,9 +272,9 @@ class ggeiger(QMainWindow):
         addMenuTip(self.DeviceDisconnectAction, 'Disconnect the computer from the devices')
         self.DeviceDisconnectAction.triggered.connect(lambda : self.switchConnections("OFF"))
 
-        self.DeviceCalibAction = QAction('Set Calibrations for Geiger Tubes', self, enabled = True)
-        addMenuTip(self.DeviceCalibAction, 'Set calibrations for all Geiger tubes temporarily')
-        self.DeviceCalibAction.triggered.connect(self.setCalibrationFactors)
+        self.DeviceCalibAction = QAction('Set Sensitivities for Geiger Tubes ...', self, enabled = True)
+        addMenuTip(self.DeviceCalibAction, 'Set sensitivities for all Geiger tubes temporarily')
+        self.DeviceCalibAction.triggered.connect(self.setTubeSensitivities)
 
         self.DeviceMappingAction = QAction('Show Device Mappings', self, enabled = True)
         addMenuTip(self.DeviceMappingAction, 'Show the mapping of variables of the activated devices')
@@ -284,19 +300,19 @@ class ggeiger(QMainWindow):
 
             self.GMCInfoAction = QAction('Show Info', self, enabled=True)
             addMenuTip(self.GMCInfoAction, 'Show basic info on GMC device')
-            self.GMCInfoAction.triggered.connect(lambda: gdev_gmc.printGMC_DevInfo(extended = False))
+            self.GMCInfoAction.triggered.connect(lambda: gdev_gmc.fprintGMC_DeviceInfo(extended = False))
 
             self.GMCInfoActionExt = QAction('Show Extended Info', self, enabled=False)
             addMenuTip(self.GMCInfoActionExt, 'Show extended info on GMC device')
-            self.GMCInfoActionExt.triggered.connect(lambda: gdev_gmc.printGMC_DevInfo(extended = True))
+            self.GMCInfoActionExt.triggered.connect(lambda: gdev_gmc.fprintGMC_DeviceInfo(extended = True))
 
-            self.GMCConfigEditAction = QAction("Set GMC Configuration", self, enabled=False)
+            self.GMCConfigEditAction = QAction("Set GMC Configuration ...", self, enabled=False)
             addMenuTip(self.GMCConfigEditAction, 'View, Edit and Set the GMC device configuration')
             self.GMCConfigEditAction.triggered.connect(lambda: gdev_gmc.editGMC_Configuration())
 
             self.GMCConfigAction = QAction('Show Configuration Memory', self, enabled=False)
             addMenuTip(self.GMCConfigAction, 'Show the GMC device configuration memory as binary in human readable format')
-            self.GMCConfigAction.triggered.connect(gdev_gmc.printGMC_DevConfig)
+            self.GMCConfigAction.triggered.connect(gdev_gmc.printGMC_ConfigMemory)
 
             self.GMCONAction = QAction('Switch Power ON', self, enabled=False)
             addMenuTip(self.GMCONAction, 'Switch the GMC device power to ON')
@@ -322,7 +338,7 @@ class ggeiger(QMainWindow):
             addMenuTip(self.GMCSpeakerOFFAction, 'Switch the GMC device speaker OFF')
             self.GMCSpeakerOFFAction.triggered.connect(lambda: gdev_gmc.switchGMC_DeviceSpeaker("OFF"))
 
-            self.GMCSavingStateAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, ''))), 'Set History Saving Mode', self, enabled=False)
+            self.GMCSavingStateAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, ''))), 'Set History Saving Mode ...', self, enabled=False)
             addMenuTip(self.GMCSavingStateAction, 'Set History Saving Mode of GMC device to OFF, CPS, CPM, and CPM hourly average')
             self.GMCSavingStateAction.triggered.connect(gdev_gmc.setGMC_HistSaveMode)
 
@@ -330,11 +346,11 @@ class ggeiger(QMainWindow):
             addMenuTip(self.GMCSetTimeAction, 'Set the Date + Time of the GMC device to the computer time')
             self.GMCSetTimeAction.triggered.connect(gdev_gmc.setGMC_DateTime)
 
-            self.GMCREBOOTAction = QAction('Reboot', self, enabled=False)
+            self.GMCREBOOTAction = QAction('Reboot ...', self, enabled=False)
             addMenuTip(self.GMCREBOOTAction, 'Send REBOOT command to the GMC device')
             self.GMCREBOOTAction.triggered.connect(lambda: gdev_gmc.doREBOOT())
 
-            self.GMCFACTORYRESETAction = QAction('FACTORYRESET', self, enabled=False)
+            self.GMCFACTORYRESETAction = QAction('FACTORYRESET ...', self, enabled=False)
             addMenuTip(self.GMCFACTORYRESETAction, 'Send FACTORYRESET command to the GMC device')
             self.GMCFACTORYRESETAction.triggered.connect(lambda: gdev_gmc.doFACTORYRESET(False))
 
@@ -380,34 +396,21 @@ class ggeiger(QMainWindow):
             addMenuTip(self.AudioPlotAction, 'Plot the audio pulse recordings of the AudioCounter Device')
             self.AudioPlotAction.triggered.connect(lambda: gdev_audio.reloadAudioData("Recording"))
 
+            self.AudioSignalAction = QAction("Show Live Audio Signal", self, enabled=False)
+            addMenuTip(self.AudioSignalAction, 'Show the live, raw audio signal as received by the audio input')
+            self.AudioSignalAction.triggered.connect(lambda: gdev_audio.showLiveAudioSignal())
+
+            self.AudioEiaAction = QAction("Eia", self, enabled=False)
+            self.AudioEiaAction.triggered.connect(lambda: gdev_audio.showAudioEia())
 
             deviceSubMenuAudio  = deviceMenu.addMenu("AudioCounter Series")
             deviceSubMenuAudio.setToolTipsVisible(True)
             deviceSubMenuAudio.addAction(self.AudioInfoAction)
             deviceSubMenuAudio.addAction(self.AudioInfoActionExt)
             deviceSubMenuAudio.addAction(self.AudioPlotAction)
-
-    # submenu I2CSensors
-        if gglobs.I2CActivation :
-
-            self.I2CInfoAction = QAction('Show Info', self, enabled=True)
-            addMenuTip(self.I2CInfoAction, 'Show basic info on I2C device')
-            self.I2CInfoAction.triggered.connect(lambda: gdev_i2c.printI2CDevInfo(extended = False))
-
-            self.I2CInfoActionExt = QAction('Show Extended Info', self, enabled=False)
-            addMenuTip(self.I2CInfoActionExt, 'Show extended info on I2C device')
-            self.I2CInfoActionExt.triggered.connect(lambda: gdev_i2c.printI2CDevInfo(extended = True))
-
-            self.I2CResetAction = QAction('Reset System', self, enabled=False)
-            addMenuTip(self.I2CResetAction, 'Reset the I2C ELV dongle and sensors')
-            #~self.I2CResetAction.triggered.connect(self.doI2CReset)
-            self.I2CResetAction.triggered.connect(lambda: gdev_i2c.doI2CReset())
-
-            deviceSubMenuI2C  = deviceMenu.addMenu("I2CSensors Series")
-            deviceSubMenuI2C.setToolTipsVisible(True)
-            deviceSubMenuI2C.addAction(self.I2CInfoAction)
-            deviceSubMenuI2C.addAction(self.I2CInfoActionExt)
-            deviceSubMenuI2C.addAction(self.I2CResetAction)
+            #deviceSubMenuAudio.addAction(self.AudioSignalAction)
+            if gglobs.AudioOei:
+                deviceSubMenuAudio.addAction(self.AudioEiaAction)
 
     # submenu RadMon
         if gglobs.RMActivation  :
@@ -430,19 +433,19 @@ class ggeiger(QMainWindow):
 
             self.AmbioInfoAction = QAction('Show Info', self, enabled=True)
             addMenuTip(self.AmbioInfoAction, 'Show basic info on AmbioMon device')
-            self.AmbioInfoAction.triggered.connect(lambda: gdev_ambiomon.printAmbioDevInfo(extended=False))
+            self.AmbioInfoAction.triggered.connect(lambda: gdev_ambiomon.printAmbioInfo(extended=False))
 
             self.AmbioInfoActionExt = QAction('Show Extended Info', self, enabled=False)
             addMenuTip(self.AmbioInfoActionExt, 'Show extended info on AmbioMon device')
-            self.AmbioInfoActionExt.triggered.connect(lambda: gdev_ambiomon.printAmbioDevInfo(extended = True))
+            self.AmbioInfoActionExt.triggered.connect(lambda: gdev_ambiomon.printAmbioInfo(extended = True))
 
-            self.AMsetServerIP = QAction('Set AmbioMon Device IP', self, enabled=True)
+            self.AMsetServerIP = QAction('Set AmbioMon Device IP ...', self, enabled=True)
             addMenuTip(self.AMsetServerIP, 'Set the IP address or Domain Name of the AmbioMon device')
-            self.AMsetServerIP.triggered.connect(gdev_ambiomon.AMsetDeviceIP)
+            self.AMsetServerIP.triggered.connect(gdev_ambiomon.setAmbioServerIP)
 
-            self.AmbioDataModeAction = QAction('Select AmbioMon Data Type Mode', self, enabled=False)
+            self.AmbioDataModeAction = QAction('Select AmbioMon Data Type Mode ...', self, enabled=False)
             addMenuTip(self.AmbioDataModeAction, "Select what type of data the AmbioMon device sends during logging: 'LAST' for last available data value, or 'AVG' for last 1 minute average of values")
-            self.AmbioDataModeAction.triggered.connect(gdev_ambiomon.AMsetLogDatatype)
+            self.AmbioDataModeAction.triggered.connect(gdev_ambiomon.setAmbioLogDatatype)
 
             deviceSubMenuAmbio  = deviceMenu.addMenu("AmbioMon Series")
             deviceSubMenuAmbio.setToolTipsVisible(True)
@@ -450,6 +453,48 @@ class ggeiger(QMainWindow):
             deviceSubMenuAmbio.addAction(self.AmbioInfoActionExt)
             deviceSubMenuAmbio.addAction(self.AMsetServerIP)
             deviceSubMenuAmbio.addAction(self.AmbioDataModeAction)
+
+
+    # submenu Gamma-Scout counter
+        if gglobs.GSActivation  :
+
+            self.GSInfoAction = QAction('Show Info', self, enabled=True)
+            addMenuTip(self.GSInfoAction, 'Show basic info on GS device')
+            self.GSInfoAction.triggered.connect(lambda: gdev_scout.printGSDevInfo(extended = False))
+
+            self.GSInfoActionExt = QAction('Show Extended Info', self, enabled=False)
+            addMenuTip(self.GSInfoActionExt, 'Show extended info on GS device')
+            self.GSInfoActionExt.triggered.connect(lambda: gdev_scout.printGSDevInfo(extended = True))
+
+            self.GSResetAction = QAction('Set to Normal Mode', self, enabled=False)
+            addMenuTip(self.GSResetAction, 'Set the Gamma-Scout counter to its Normal Mode')
+            self.GSResetAction.triggered.connect(lambda: gdev_scout.GSsetMode("Normal"))
+
+            self.GSSetPCModeAction = QAction('Set to PC Mode', self, enabled=False)
+            addMenuTip(self.GSSetPCModeAction, 'Set the Gamma-Scout counter to its PC Mode')
+            self.GSSetPCModeAction.triggered.connect(lambda: gdev_scout.GSsetMode("PC"))
+
+            self.GSDateTimeAction = QAction('Set Date+Time', self, enabled=False)
+            addMenuTip(self.GSDateTimeAction, 'Set the Gamma-Scout counter clock to the computer time')
+            self.GSDateTimeAction.triggered.connect(lambda: gdev_scout.setGSDateTime())
+
+            self.GSSetOnlineAction = QAction('Set to Online Mode ...', self, enabled=False)
+            addMenuTip(self.GSSetOnlineAction, "Set the Gamma-Scout counter to its Online Mode\nAvailable only for 'Online' models")
+            self.GSSetOnlineAction.triggered.connect(lambda: gdev_scout.GSsetMode("Online"))
+
+            self.GSRebootAction = QAction('Reboot', self, enabled=False)
+            addMenuTip(self.GSRebootAction, "Do a Gamma-Scout reboot as warm-start\nAvailable only for 'Online' models")
+            self.GSRebootAction.triggered.connect(lambda: gdev_scout.GSreboot())
+
+            deviceSubMenuGS  = deviceMenu.addMenu("Gamma-Scout Series")
+            deviceSubMenuGS.setToolTipsVisible(True)
+            deviceSubMenuGS.addAction(self.GSInfoAction)
+            deviceSubMenuGS.addAction(self.GSInfoActionExt)
+            deviceSubMenuGS.addAction(self.GSDateTimeAction)
+            deviceSubMenuGS.addAction(self.GSResetAction)
+            deviceSubMenuGS.addAction(self.GSSetPCModeAction)
+            deviceSubMenuGS.addAction(self.GSSetOnlineAction)
+            deviceSubMenuGS.addAction(self.GSRebootAction)
 
     # submenu LabJack
         if gglobs.LJActivation  :
@@ -467,32 +512,26 @@ class ggeiger(QMainWindow):
             deviceSubMenuLJ.addAction(self.LJInfoAction)
             deviceSubMenuLJ.addAction(self.LJInfoActionExt)
 
-    # submenu Gamma-Scout counter
-        if gglobs.GSActivation  :
+    # submenu I2CSensors
+        if gglobs.I2CActivation :
 
-            self.GSInfoAction = QAction('Show Info', self, enabled=True)
-            addMenuTip(self.GSInfoAction, 'Show basic info on GS device')
-            self.GSInfoAction.triggered.connect(lambda: gdev_gscout.printGSDevInfo(extended = False))
+            self.I2CInfoAction = QAction('Show Info', self, enabled=True)
+            addMenuTip(self.I2CInfoAction, 'Show basic info on I2C device')
+            self.I2CInfoAction.triggered.connect(lambda: gdev_i2c.printI2CDevInfo(extended = False))
 
-            self.GSInfoActionExt = QAction('Show Extended Info', self, enabled=False)
-            addMenuTip(self.GSInfoActionExt, 'Show extended info on GS device')
-            self.GSInfoActionExt.triggered.connect(lambda: gdev_gscout.printGSDevInfo(extended = True))
+            self.I2CInfoActionExt = QAction('Show Extended Info', self, enabled=False)
+            addMenuTip(self.I2CInfoActionExt, 'Show extended info on I2C device')
+            self.I2CInfoActionExt.triggered.connect(lambda: gdev_i2c.printI2CDevInfo(extended = True))
 
-            self.GSResetAction = QAction('Set to Normal Mode', self, enabled=False)
-            addMenuTip(self.GSResetAction, 'Set the Gamma-Scout counter to its Normal Mode')
-            self.GSResetAction.triggered.connect(lambda: gdev_gscout.setGSMode("Normal"))
+            self.I2CResetAction = QAction('Reset System', self, enabled=False)
+            addMenuTip(self.I2CResetAction, 'Reset the I2C ELV dongle and sensors')
+            self.I2CResetAction.triggered.connect(lambda: gdev_i2c.resetI2C())
 
-            self.GSSetPCModeAction = QAction('Set to PC Mode', self, enabled=False)
-            addMenuTip(self.GSSetPCModeAction, 'Set the Gamma-Scout counter to its PC Mode')
-            self.GSSetPCModeAction.triggered.connect(lambda: gdev_gscout.setGSMode("PC"))
-
-            deviceSubMenuGS  = deviceMenu.addMenu("Gamma-Scout Series")
-            deviceSubMenuGS.setToolTipsVisible(True)
-            deviceSubMenuGS.addAction(self.GSInfoAction)
-            deviceSubMenuGS.addAction(self.GSInfoActionExt)
-            deviceSubMenuGS.addAction(self.GSResetAction)
-            deviceSubMenuGS.addAction(self.GSSetPCModeAction)
-
+            deviceSubMenuI2C  = deviceMenu.addMenu("I2CSensors Series")
+            deviceSubMenuI2C.setToolTipsVisible(True)
+            deviceSubMenuI2C.addAction(self.I2CInfoAction)
+            deviceSubMenuI2C.addAction(self.I2CInfoActionExt)
+            deviceSubMenuI2C.addAction(self.I2CResetAction)
 
     # submenu Raspi
         if gglobs.RaspiActivation  :
@@ -511,27 +550,6 @@ class ggeiger(QMainWindow):
             deviceSubMenuRaspi.addAction(self.RaspiInfoActionExt)
 
 
-    # submenu SimulCounter
-        if gglobs.SimulActivation :
-
-            self.SimulInfoAction = QAction('Show Info', self, enabled=True)
-            addMenuTip(self.SimulInfoAction, 'Show basic info on SimulCounter device')
-            self.SimulInfoAction.triggered.connect(lambda: gdev_simul.fprintSimulDevInfo(extended = False))
-
-            #~self.SimulInfoActionExt = QAction('Show Extended Info', self, enabled=False)
-            #~addMenuTip(self.SimulInfoActionExt, 'Show extended info on SimulCounter device')
-            #~self.SimulInfoActionExt.triggered.connect(lambda: gdev_simul.fprintSimulDevInfo(extended = True))
-
-            self.SimulSettings = QAction("Set Properties", self, enabled=False)
-            addMenuTip(self.SimulSettings, 'Set SimulCounter Parameters for Meand and Prediction Limit')
-            self.SimulSettings.triggered.connect(gdev_simul.getSimulProperties)
-
-            deviceSubMenuSimul  = deviceMenu.addMenu("SimulCounter Series")
-            deviceSubMenuSimul.setToolTipsVisible(True)
-            deviceSubMenuSimul.addAction(self.SimulInfoAction)
-            deviceSubMenuSimul.addAction(self.SimulSettings)
-
-
     # submenu MiniMon
         if gglobs.MiniMonActivation :
 
@@ -546,6 +564,27 @@ class ggeiger(QMainWindow):
             deviceSubMenuMiniMon  = deviceMenu.addMenu("MiniMon Series")
             deviceSubMenuMiniMon.setToolTipsVisible(True)
             deviceSubMenuMiniMon.addAction(self.MiniMonInfoAction)
+
+
+    # submenu SimulCounter
+        if gglobs.SimulActivation :
+
+            self.SimulInfoAction = QAction('Show Info', self, enabled=True)
+            addMenuTip(self.SimulInfoAction, 'Show basic info on SimulCounter device')
+            self.SimulInfoAction.triggered.connect(lambda: gdev_simul.fprintSimulCounterInfo(extended = False))
+
+            #~self.SimulInfoActionExt = QAction('Show Extended Info', self, enabled=False)
+            #~addMenuTip(self.SimulInfoActionExt, 'Show extended info on SimulCounter device')
+            #~self.SimulInfoActionExt.triggered.connect(lambda: gdev_simul.fprintSimulCounterInfo(extended = True))
+
+            self.SimulSettings = QAction("Set Properties ...", self, enabled=False)
+            addMenuTip(self.SimulSettings, 'Set SimulCounter Parameters for Meand and Prediction Limit')
+            self.SimulSettings.triggered.connect(gdev_simul.getSimulProperties)
+
+            deviceSubMenuSimul  = deviceMenu.addMenu("SimulCounter Series")
+            deviceSubMenuSimul.setToolTipsVisible(True)
+            deviceSubMenuSimul.addAction(self.SimulInfoAction)
+            deviceSubMenuSimul.addAction(self.SimulSettings)
 
 
     # widgets for device in toolbar
@@ -571,7 +610,7 @@ class ggeiger(QMainWindow):
         self.dbtnGMC.setToolTip("GMC Device - Turns green once a connection is made - click for info")
         self.dbtnGMC.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnGMC.setAutoFillBackground(True) # This is important!! Why???
-        self.dbtnGMC.clicked.connect(lambda: gdev_gmc.printGMC_DevInfo(extended=False))
+        self.dbtnGMC.clicked.connect(lambda: gdev_gmc.fprintGMC_DeviceInfo(extended=False))
 
         self.connectTextAudio = 'Audio'
         self.dbtnAudio =  QPushButton(self.connectTextAudio)
@@ -595,7 +634,7 @@ class ggeiger(QMainWindow):
         self.dbtnAmbio.setToolTip("AmbioMon Device - Turns green once a connection is made - click for info")
         self.dbtnAmbio.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnAmbio.setAutoFillBackground(True) # 'This is important!!'  Why???
-        self.dbtnAmbio.clicked.connect(lambda: gdev_ambiomon.printAmbioDevInfo())
+        self.dbtnAmbio.clicked.connect(lambda: gdev_ambiomon.printAmbioInfo())
 
         self.connectTextGS = 'GS'
         self.dbtnGS =  QPushButton(self.connectTextGS)
@@ -603,7 +642,7 @@ class ggeiger(QMainWindow):
         self.dbtnGS.setToolTip("GS Device - Turns green once a connection is made - click for info")
         self.dbtnGS.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnGS.setAutoFillBackground(True) # 'This is important!!'  Why???
-        self.dbtnGS.clicked.connect(lambda: gdev_gscout.printGSDevInfo())
+        self.dbtnGS.clicked.connect(lambda: gdev_scout.printGSDevInfo())
 
         self.connectTextI2C = 'I2C'
         self.dbtnI2C =  QPushButton(self.connectTextI2C)
@@ -635,7 +674,7 @@ class ggeiger(QMainWindow):
         self.dbtnSimul.setToolTip("SimulCounter Device - Turns green once a connection is made - click for info")
         self.dbtnSimul.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnSimul.setAutoFillBackground(True) # 'This is important!!'  Why???
-        self.dbtnSimul.clicked.connect(lambda: gdev_simul.fprintSimulDevInfo())
+        self.dbtnSimul.clicked.connect(lambda: gdev_simul.fprintSimulCounterInfo())
 
         self.connectTextMiniMon = 'MiniM'
         self.dbtnMiniMon = QPushButton(self.connectTextMiniMon)
@@ -669,29 +708,29 @@ class ggeiger(QMainWindow):
         if gglobs.GSActivation  :
             toolbar.addWidget(self.dbtnGS)              # Gamma-Scout device display
 
-        if gglobs.I2CActivation  :
-            toolbar.addWidget(self.dbtnI2C)             # I2C device display
-
         if gglobs.LJActivation  :
             toolbar.addWidget(self.dbtnLJ)              # LabJack device display
+
+        if gglobs.I2CActivation  :
+            toolbar.addWidget(self.dbtnI2C)             # I2C device display
 
         if gglobs.RaspiActivation  :
             toolbar.addWidget(self.dbtnRaspi)           # Raspi device display
 
-        if gglobs.SimulActivation  :
-            toolbar.addWidget(self.dbtnSimul)           # Simul device display
-
         if gglobs.MiniMonActivation  :
             toolbar.addWidget(self.dbtnMiniMon)         # MiniMon device display
 
+        if gglobs.SimulActivation  :
+            toolbar.addWidget(self.dbtnSimul)           # Simul device display
+
 
 #Log Menu
-        self.logLoadFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_log_get.png'))), 'Get Log or Create New One', self)
+        self.logLoadFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_log_get.png'))), 'Get Log or Create New One ...', self)
         self.logLoadFileAction.setShortcut('Ctrl+L')
         addMenuTip(self.logLoadFileAction, 'Load database for logging or create new one, and plot')
         self.logLoadFileAction.triggered.connect(lambda: self.getLogFile(source="Database"))
 
-        self.logLoadCSVAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_log_get_CSV.png'))), 'Get Log from CSV File', self)
+        self.logLoadCSVAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_log_get_CSV.png'))), 'Get Log from CSV File ...', self)
         addMenuTip(self.logLoadCSVAction, 'Load existing *.log or other CSV file, convert to database, and plot')
         self.logLoadCSVAction.triggered.connect(lambda: self.getLogFile(source="CSV File"))
 
@@ -703,8 +742,8 @@ class ggeiger(QMainWindow):
         addMenuTip(self.stoploggingAction, 'Stop logging from devices')
         self.stoploggingAction.triggered.connect(self.stopLogging)
 
-        self.addCommentAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, ''))), 'Add Comment to Log', self, enabled=False)
-        self.addCommentAction.setShortcut('Ctrl+A')
+        self.addCommentAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, ''))), 'Add Comment to Log ...', self, enabled=False)
+        #self.addCommentAction.setShortcut('Ctrl+A')
         addMenuTip(self.addCommentAction, 'Add a comment to the current log')
         self.addCommentAction.triggered.connect(lambda: self.addComment("Log"))
 
@@ -728,13 +767,10 @@ class ggeiger(QMainWindow):
         addMenuTip(self.logSnapAction, 'Get a new log record immediately')
         self.logSnapAction.triggered.connect(gsup_tools.snapLogValue)
 
-        self.setLogTimingAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_log_options.png'))), 'Set Log Cycle', self, enabled=True)
+        self.setLogTimingAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_log_options.png'))), 'Set Log Cycle ...', self, enabled=True)
         addMenuTip(self.setLogTimingAction, 'Set Log Cycle in seconds')
         self.setLogTimingAction.triggered.connect(self.setLogCycle)
 
-        #~self.logSaveCSVAction = QAction('Save Log Data into *.log file (CSV)', self)
-        #~addMenuTip(self.logSaveCSVAction, "Save all records from current log into a CSV file with extension 'log'")
-        #~self.logSaveCSVAction.triggered.connect(lambda: gsup_sql.saveData("Log", full= True))
         self.logSaveCSVAction = QAction('Save Log Data into CSV file', self)
         addMenuTip(self.logSaveCSVAction, "Save all records from current log into a CSV file with extension 'csv'")
         self.logSaveCSVAction.triggered.connect(lambda: gsup_sql.saveData("Log", full= True))
@@ -773,18 +809,18 @@ class ggeiger(QMainWindow):
 
 #History Menu
         # load from DB
-        self.loadHistDBAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_DB_active.svg.png'))), 'Get History from Database', self)
+        self.loadHistDBAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_DB_active.svg.png'))), 'Get History from Database ...', self)
         self.loadHistDBAction.setShortcut('Ctrl+H')
         addMenuTip(self.loadHistDBAction, 'Load history data from database and plot')
         self.loadHistDBAction.triggered.connect(lambda: self.getHistory("Database"))
 
         # load from CSV file
-        self.loadHistHisAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_CSV.svg.png'))), 'Get History from CSV File', self)
+        self.loadHistHisAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_CSV.svg.png'))), 'Get History from CSV File ...', self)
         addMenuTip(self.loadHistHisAction, 'Load existing *.his or other CSV file, convert to database file, and plot')
         self.loadHistHisAction.triggered.connect(lambda: self.getHistory("Parsed File"))
 
         # add comment
-        self.addHistCommentAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, ''))), 'Add Comment to History', self, enabled=False)
+        self.addHistCommentAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, ''))), 'Add Comment to History ...', self, enabled=False)
         addMenuTip(self.addHistCommentAction, 'Add a comment to the current history')
         self.addHistCommentAction.triggered.connect(lambda: self.addComment("His"))
 
@@ -803,12 +839,12 @@ class ggeiger(QMainWindow):
     # valid for GMC only
         if gglobs.GMCActivation:
             # get his from device
-            self.histGMCDeviceAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Device ', self, enabled=False)
+            self.histGMCDeviceAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Device ...', self, enabled=False)
             addMenuTip(self.histGMCDeviceAction, 'Load history data from any GMC device, create database, and plot')
             self.histGMCDeviceAction.triggered.connect(lambda: self.getHistory("Device"))
 
             # get his from bin file
-            self.loadHistBinAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_bin_active.png'))), 'Get History from GMC Binary File', self)
+            self.loadHistBinAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_bin_active.png'))), 'Get History from GMC Binary File ...', self)
             addMenuTip(self.loadHistBinAction, 'Load history data from a GMC format binary file and plot')
             self.loadHistBinAction.triggered.connect(lambda: self.getHistory("Binary File"))
 
@@ -856,21 +892,21 @@ class ggeiger(QMainWindow):
 
     # valid for Gamma-Scout only
         if gglobs.GSActivation:
-            self.histGSDeviceAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Device ', self, enabled=False)
+            self.histGSDeviceAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Device ...', self, enabled=False)
             addMenuTip(self.histGSDeviceAction, 'Load history data from any Gamma-Scout device, create database, and plot')
             self.histGSDeviceAction.triggered.connect(lambda: self.getHistory("GSDevice"))
 
-            self.histGSDatFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Gamma-Scout Dat File ', self)
+            self.histGSDatFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Gamma-Scout Dat File ...', self)
             addMenuTip(self.histGSDatFileAction, 'Load history data from a Gamma-Scout dat file, create database, and plot')
             self.histGSDatFileAction.triggered.connect(lambda: self.getHistory("GSDatFile"))
 
             self.showHistDatDataAction = QAction('Show History Dat Data', self)
             addMenuTip(self.showHistDatDataAction, 'Show the history data in Gamma-Scout like *.dat file')
-            self.showHistDatDataAction.triggered.connect(lambda: gdev_gscout.GSshowDatData())
+            self.showHistDatDataAction.triggered.connect(lambda: gdev_scout.GSshowDatData())
 
             self.showHistDatDataSaveAction = QAction('Save History Data to Dat File', self)
             addMenuTip(self.showHistDatDataSaveAction, 'Save the history data as Gamma-Scout *.dat format')
-            self.showHistDatDataSaveAction.triggered.connect(lambda: gdev_gscout.GSsaveHistDatData())
+            self.showHistDatDataSaveAction.triggered.connect(lambda: gdev_scout.GSsaveDatDataToDatFile())
 
             historySubMenuGS = historyMenu.addMenu("Gamma Scout Series")
             historySubMenuGS.setToolTipsVisible(True)
@@ -887,19 +923,19 @@ class ggeiger(QMainWindow):
 
     # valid for Ambiomon only
         if gglobs.AmbioActivation:
-            self.histAMDeviceCAMAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History Binary CAM data from Device ', self, enabled=False)
+            self.histAMDeviceCAMAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History Binary CAM data from Device', self, enabled=False)
             addMenuTip(self.histAMDeviceCAMAction, 'Load Counter & Ambient history data from AmbioMon device, create database, and plot')
             self.histAMDeviceCAMAction.triggered.connect(lambda: self.getHistory("AMDeviceCAM"))
 
-            self.histAMDeviceCPSAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History Binary CPS data from Device ', self, enabled=False)
+            self.histAMDeviceCPSAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History Binary CPS data from Device', self, enabled=False)
             addMenuTip(self.histAMDeviceCPSAction, 'Load Counts Per Second history data from AmbioMon device, create database, and plot')
             self.histAMDeviceCPSAction.triggered.connect(lambda: self.getHistory("AMDeviceCPS"))
 
-            self.histAMCAMFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History Binary CAM data from File ', self)
+            self.histAMCAMFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History Binary CAM data from File ...', self)
             addMenuTip(self.histAMCAMFileAction, 'Load history data from an AmbioMon CAM file, create database, and plot')
             self.histAMCAMFileAction.triggered.connect(lambda: self.getHistory("AMFileCAM"))
 
-            self.histAMCPSFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History Binary CPS data from File ', self)
+            self.histAMCPSFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History Binary CPS data from File ...', self)
             addMenuTip(self.histAMCPSFileAction, 'Load history data from an AmbioMon CPS file, create database, and plot')
             self.histAMCPSFileAction.triggered.connect(lambda: self.getHistory("AMFileCPS"))
 
@@ -954,11 +990,7 @@ class ggeiger(QMainWindow):
         addMenuTip(self.showHistParseExcerttAction, "Show first and last few records of history Data including extended Parse Comments")
         self.showHistParseExcerttAction.triggered.connect(lambda: self.showData("HisParse", full=False))
 
-        #~# save his data
-        #~self.histSaveCSVAction = QAction('Save History Data into *.his file (CSV)', self)
-        #~addMenuTip(self.histSaveCSVAction, "Save all records from current history into a CSV file with extension 'his'")
-        #~self.histSaveCSVAction.triggered.connect(lambda: gsup_sql.saveData("His", full=True))
-        # save his data
+        # save his data to csv file
         self.histSaveCSVAction = QAction('Save History Data into CSV file', self)
         addMenuTip(self.histSaveCSVAction, "Save all records from current history into a CSV file with extension 'csv'")
         self.histSaveCSVAction.triggered.connect(lambda: gsup_sql.saveData("His", full=True))
@@ -981,10 +1013,9 @@ class ggeiger(QMainWindow):
 
 # Web menu
         # menu entry and toolbar button for Map access
-        self.WebAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_map.png'))), 'Update Radiation World Maps', self, enabled=False)
+        self.WebAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_map.png'))), 'Update Radiation World Maps ...', self, enabled=False)
         addMenuTip(self.WebAction, 'Update Radiation World Maps using average of data shown in the plot')
-        #~self.WebAction.triggered.connect(gsup_tools.pushToWeb)
-        self.WebAction.triggered.connect(lambda: gdev_gmc.pushGMC_ToWeb())
+        self.WebAction.triggered.connect(lambda: gsup_tools.pushToWeb())
 
         webMenu = self.menubar.addMenu('&Web')
         webMenu.setToolTipsVisible(True)
@@ -1016,7 +1047,7 @@ class ggeiger(QMainWindow):
         addMenuTip(self.helpOccupationalRadiationAction, 'Occupational Radiation Limits in USA and Germany')
         self.helpOccupationalRadiationAction.triggered.connect(self.helpOccupationalRadiation)
 
-        self.DeviceSetUSBportAction = QAction('Show && Select USB Port and Baudrate', self)
+        self.DeviceSetUSBportAction = QAction('Show && Select USB Port and Baudrate ...', self)
         self.DeviceSetUSBportAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_help_USB.svg.png'))))
         addMenuTip(self.DeviceSetUSBportAction, 'Show all available USB-to-Serial Ports and allow selection of port and baudrate for each device')
         self.DeviceSetUSBportAction.triggered.connect(self.helpSetPort)
@@ -1056,7 +1087,7 @@ class ggeiger(QMainWindow):
         if not gglobs.I2CActivation: self.I2CDevicePortDiscoveryAction.setEnabled(False)
         if not gglobs.GSActivation:  self.GSDevicePortDiscoveryAction. setEnabled(False)
 
-        helpSubMenu = helpMenu.addMenu("Autodiscover USB Port for Device: ")
+        helpSubMenu = helpMenu.addMenu("Autodiscover USB Port for Device")
         helpSubMenu.setToolTipsVisible(True)
         helpSubMenu.addAction(self.GMCDevicePortDiscoveryAction)
         helpSubMenu.addAction(self.I2CDevicePortDiscoveryAction)
@@ -1065,7 +1096,6 @@ class ggeiger(QMainWindow):
         helpMenu.addSeparator()
         #helpMenu.addAction(self.helpAboutQTAction)
         helpMenu.addAction(self.helpAboutAction)
-
         #helpMenu.triggered[QAction].connect(self.processtrigger)
 
         toolbar = self.addToolBar('Help')
@@ -1101,11 +1131,20 @@ class ggeiger(QMainWindow):
             if gglobs.GMCActivation:
                 develGammaAction.triggered.connect(lambda: gdev_gmc.editGMC_Configuration())
 
-            develBingAction = QAction("Bing", self)
-            develBingAction.triggered.connect(lambda: playWav(stype = "ok"))
+            develBingAction = QAction("Bip", self)
+            develBingAction.triggered.connect(lambda: playWav(wtype = "ok"))
 
             develBurpAction = QAction("Burp", self)
-            develBurpAction.triggered.connect(lambda: playWav(stype = "burp"))
+            develBurpAction.triggered.connect(lambda: playWav(wtype = "burp"))
+
+            develClickAction = QAction("Click", self)
+            develClickAction.triggered.connect(lambda: playClick())
+
+            develCounterAction = QAction("Counter", self)
+            develCounterAction.triggered.connect(lambda: playCounter())
+
+            develSineAction = QAction("Sine", self)
+            develSineAction.triggered.connect(lambda: playSine())
 
             SaveRepairLogAction = QAction('Repair DateTime and Save Data into *.log file (CSV)', self)
             addMenuTip(SaveRepairLogAction, "Repair all records from current log and save into a CSV file with extension 'log'")
@@ -1114,6 +1153,10 @@ class ggeiger(QMainWindow):
             SaveRepairHisAction = QAction('Repair DateTime and Save Data into *.his file (CSV)', self)
             addMenuTip(SaveRepairHisAction, "Repair all records from current log and save into a CSV file with extension 'his'")
             SaveRepairHisAction.triggered.connect(lambda: gsup_sql.saveRepairData("His", full= True))
+
+            develAudioAction = QAction("Show Audio Signal", self)
+            develAudioAction.triggered.connect(lambda: gdev_audio.showLiveAudioSignal())
+
 
             develMenu = self.menubar.addMenu('D&evel')
             develMenu.setToolTipsVisible(True)
@@ -1129,8 +1172,12 @@ class ggeiger(QMainWindow):
             develMenu.addAction(develGammaAction)
             develMenu.addAction(develBingAction)
             develMenu.addAction(develBurpAction)
+            develMenu.addAction(develSineAction)
+            develMenu.addAction(develClickAction)
+            develMenu.addAction(develCounterAction)
             develMenu.addAction(SaveRepairLogAction)
             develMenu.addAction(SaveRepairHisAction)
+            develMenu.addAction(develAudioAction)
 
 
 # add navigation toolbar as last toolbar
@@ -1141,7 +1188,8 @@ class ggeiger(QMainWindow):
 
     # labels and entry fields
         dltitle  = QLabel("Data")
-        dltitle.setFont(QFont("system", weight=QFont.Bold))
+        #dltitle.setFont(QFont("system", weight=QFont.Bold))
+        dltitle.setFont(self.fatfont)
 
         dlcf     = QLabel("Database Files")
         dlcf.setAlignment(Qt.AlignCenter)
@@ -1246,7 +1294,8 @@ class ggeiger(QMainWindow):
         ewidth = 75
 
         ltitle  = QLabel("Graph")
-        ltitle.setFont(QFont("system", weight=QFont.Bold))
+        #~ltitle.setFont(QFont("system", weight=QFont.Bold))
+        ltitle.setFont(self.fatfont)
 
         lmin    = QLabel("Min")
         lmin.setAlignment(Qt.AlignCenter)
@@ -1294,10 +1343,10 @@ class ggeiger(QMainWindow):
         self.xmax.setToolTip('The maximum (right) limit of the time to be shown. Enter manuallly or by right-mouse-click on the graph')
 
         self.xunit = QComboBox()
-        self.xunit.addItems(["Time", "auto", "second", "minute", "hour", "day"])
+        self.xunit.addItems(["Time", "auto", "second", "minute", "hour", "day", "week", "month"])
         self.xunit.setMaximumWidth(ewidth)
         self.xunit.currentIndexChanged.connect(self.changedGraphTimeUnit)
-        self.xunit.setToolTip('The time axis to be shown as Time-of-Day (Time) or time since first record in seconds, minutes, hours, days; auto selects most appropriate period')
+        self.xunit.setToolTip('The time axis to be shown as Time-of-Day (Time) or time since first record in seconds, minutes, hours, days, weeks, months;\nauto selects most appropriate period')
 
         # The drop-down selector for selected variable
         self.select = QComboBox()
@@ -1416,20 +1465,22 @@ class ggeiger(QMainWindow):
         layoutH = QHBoxLayout()
         layoutH.addWidget(btnOFF)
         layoutH.addWidget(btnON)
-        for i, vname in enumerate(gglobs.varsBook):
+        for vname in gglobs.varsBook:
             layoutH.addWidget(self.varDisplayCheckbox[vname])
 
+    # color select button
         self.btnColorText = "Color of selected variable; click to change it. Current color:  "
-        self.btnColor   = ClickLabel('Color')
-        self.btnColor   .setAlignment(Qt.AlignCenter)
-        self.btnColor   .setMaximumWidth(50)
-        self.btnColor   .setStyleSheet("QLabel { border: 1px solid silver;  border-radius: 3px; }")
+        self.btnColor     = ClickLabel('Color')
+        self.btnColor       .setAlignment(Qt.AlignCenter)
+        self.btnColor       .setMaximumWidth(50)
+        self.btnColor       .setStyleSheet("QLabel { border: 1px solid silver;  border-radius: 3px; }")
         addMenuTip(self.btnColor, self.btnColorText + "None")
 
     #layout the GraphOptions
         graphOptions=QGridLayout()
         graphOptions.setContentsMargins(5,5,5,5) #spacing around the graph options
 
+        # stepping order
         # to define the order of stepping through by tab-key
         # row 1 .. 3, col 1+2 is put in front
         row = 1
@@ -1454,8 +1505,8 @@ class ggeiger(QMainWindow):
 
         row = 1
         graphOptions.addWidget(lcounts,         row, 0)
-        # see above
-        # see above
+        # see stepping order
+        # see stepping order
         graphOptions.addWidget(btnClear,        row, 3)
         graphOptions.addWidget(self.yunit,      row, 4)
         # col 5 is empty (vert line)
@@ -1465,8 +1516,8 @@ class ggeiger(QMainWindow):
 
         row = 2
         graphOptions.addWidget(ly2,             row, 0)
-        # see above
-        # see above
+        # see stepping order
+        # see stepping order
         graphOptions.addWidget(btnApplyGraph,   row, 3, 2, 1)
         graphOptions.addWidget(self.y2unit,     row, 4)
         # col 5 is empty (vert line)
@@ -1476,8 +1527,8 @@ class ggeiger(QMainWindow):
 
         row = 3
         graphOptions.addWidget(ltime,           row, 0)
-        # see above
-        # see above
+        # see stepping order
+        # see stepping order
         graphOptions.addWidget(self.xunit,      row, 4)
         # col 5 is empty (vert line)
         graphOptions.addWidget(self.labelVar,   row, 6, 1, 2)
@@ -1614,20 +1665,22 @@ class ggeiger(QMainWindow):
 
         if     gglobs.GMCActivation     or \
                gglobs.AudioActivation   or \
-               gglobs.I2CActivation     or \
                gglobs.RMActivation      or \
                gglobs.AmbioActivation   or \
-               gglobs.LJActivation      or \
                gglobs.GSActivation      or \
+               gglobs.I2CActivation     or \
+               gglobs.LJActivation      or \
                gglobs.SimulActivation   or \
                gglobs.MiniMonActivation :
 
             isAnyDeviceActive = True
         else:
             isAnyDeviceActive = False
-            efprint("ALERT: You have not activated any device!")
-            qefprint("<br>Neither Logging nor History downloads from device are possible,")
-            qefprint("but you can work on Log and History data loaded from file.")
+            self.fprintWarningMessage("WARNING: You have not activated any device!")
+            # ~ efprint("WARNING: You have not activated any device!")
+            # ~ fprint("<br>Neither Logging nor History downloads from device are possible, but")
+            # ~ fprint("you can work on Log and History data loaded from file.")
+            # ~ fprint("\nDevices are activated in the configuration file 'geigerlog.cfg'.")
 
         # Devel - start GeigerLog with command 'devel' e.g.: 'geigerlog -dv devel'
         # on devel  : make some extra commands available in devel menu
@@ -1654,6 +1707,12 @@ class ggeiger(QMainWindow):
 #
 #========== BEGIN Class Functions =============================================
 
+    def fprintWarningMessage(self, message):
+        efprint(header("WARNING: You have not activated any device!"))
+        fprint("<br>Neither Logging nor History downloads from device are possible, but")
+        fprint("you can work on Log and History data loaded from file.")
+        fprint("\nDevices are activated in the configuration file 'geigerlog.cfg'.")
+
     def startupProblems(self, message, closeGL = True):
         """alert on problems like wrong Python version, configuration file
         missing, configuration file incorrect"""
@@ -1675,6 +1734,30 @@ class ggeiger(QMainWindow):
             sys.exit(1)
 
 
+    def searchNotePad(self):
+        """Save Content of NotePad to file"""
+
+        fncname = "searchNotePad: "
+
+        qid = QInputDialog()
+        stxt, ok = qid.getText(None, 'Search NotePad', 'Search Text:' + ' '*35, text=gglobs.notePadSearchText)
+        if not ok: return
+
+        gglobs.notePadSearchText = stxt
+        #rint(fncname + "stxt = '{}'".format(stxt), type(stxt))
+
+        flag = QTextDocument.FindBackward            # flag to search backwards
+        found = self.notePad.find(stxt, flag)
+        if found:  return
+        else: # not found
+            # set cursor to end and try again
+            self.notePad.moveCursor(QTextCursor.End)
+            found = self.notePad.find(stxt, flag)
+            if found: return
+
+        self.showStatusMessage("Search NotePad Content: Text '{}' not found".format(stxt))
+
+
     def saveNotePad(self):
         """Save Content of NotePad to file"""
 
@@ -1686,12 +1769,9 @@ class ggeiger(QMainWindow):
         fprint(header("Saving NotePad Content"))
         fprint("to File: {}\n".format(newFile))
 
-        nptxt = self.notePad.toPlainText()  # Saving in Plain Text format; all is b&W,
-                                            # colors are not preserved
+        nptxt = self.notePad.toPlainText()  # Saving as Plain Text; all is b&W, no colors
+        #nptxt = self.notePad.toHtml()      # Saving in HTML Format; preserves color
         #print("nptxt:", nptxt)
-
-        #htxt = self.notePad.toHtml()       # Saving in HTML Format; preserves color
-        #print("htxt:", htxt)
 
         with open(newFile, 'a') as f:
             f.write(nptxt)
@@ -1701,6 +1781,7 @@ class ggeiger(QMainWindow):
     def closeEvent(self, event):
         """is called via self.close! Allow to Exit unless Logging is active"""
 
+        fncname = "closeEvent: "
         # event: QEvent.Close = 19 : Widget was closed
         dprint("closeEvent: event type: {}".format(event.type()))
         setDebugIndent(1)
@@ -1708,23 +1789,36 @@ class ggeiger(QMainWindow):
         if gglobs.logging :
             event.ignore()
             self.showStatusMessage("Cannot exit when logging! Stop logging first")
-            dprint("closeEvent: ignored; Cannot exit when logging! Stop logging first")
+            dprint(fncname + "ignored; Cannot exit when logging! Stop logging first")
+
         else:
-            event.accept()                   # allow closing the window
-            dprint("closeEvent: accepted")
+            event.accept()                           # allow closing the window
+            dprint(fncname + "accepted")
 
             # terminate the devices
             if gglobs.GMCConnection     : gdev_gmc      .terminateGMC()
+            if gglobs.AudioConnection   : gdev_audio    .terminateAudioCounter()
             if gglobs.RMConnection      : gdev_radmon   .terminateRadMon()
             if gglobs.AmbioConnection   : gdev_ambiomon .terminateAmbioMon()
-            if gglobs.LJConnection      : gdev_labjack  .terminateLabJack() # LJ might not be loaded
-            if gglobs.AudioConnection   : gdev_audio    .terminateAudioCounter()
+            if gglobs.GSConnection      : gdev_scout   .terminateGammaScout()
             if gglobs.I2CConnection     : gdev_i2c      .terminateI2C()
+            if gglobs.LJConnection      : gdev_labjack  .terminateLabJack()
+            if gglobs.RaspiConnection   : gdev_raspi    .terminateRaspi()
             if gglobs.SimulConnection   : gdev_simul    .terminateSimulCounter()
+            if gglobs.MiniMonConnection : gdev_minimon  .terminateMiniMon()
 
             # close the databases for Log and His
-            gsup_sql.DB_closeDatabase(gglobs.logConn)
-            gsup_sql.DB_closeDatabase(gglobs.hisConn)
+            gsup_sql.DB_closeDatabase("Log")
+            gsup_sql.DB_closeDatabase("His")
+
+            dprint(fncname + "exiting now")
+
+            # The standard way to exit is sys.exit(n)
+            # os._exit calls the C function _exit() which does an immediate program
+            # termination. Note the statement "can never return".
+            # sys.exit() is identical to raise SystemExit(). It raises a Python
+            # exception which may be caught by the caller.
+            sys.exit(0) # otherwise sub windows won't close
 
         setDebugIndent(0)
 
@@ -1744,7 +1838,6 @@ class ggeiger(QMainWindow):
 
         oldIndex = self.select.currentIndex()
 
-        #~text    = gglobs.vardict[value][0]
         text    = gglobs.varsBook[value][0]
         index   = self.select.findText(text)
         #print("changedGraphDisplayCheckboxes: var:{}, longname:{}, index:{}".format(value, text, index))
@@ -1859,84 +1952,100 @@ class ggeiger(QMainWindow):
 
         if np.all(gglobs.logTime) == None: return
 
-        oldXunit = gglobs.XunitCurrent
-        #print "oldXunit", oldXunit
+        gsup_plot.changeTimeUnitofPlot(self.xunit.currentText())
 
-        # convert all entries to days since start
-        if   oldXunit == "Time":
-            if gglobs.Xleft  != None: gglobs.Xleft = gglobs.Xleft - gglobs.logTimeFirst
-            if gglobs.Xright != None: gglobs.Xright = gglobs.Xright - gglobs.logTimeFirst
+        #~oldXunit = gglobs.XunitCurrent
+        #~#print("changedGraphTimeUnit: oldXunit: ", oldXunit)
 
-        elif oldXunit == "day": # no changes all in days
-            if gglobs.Xleft  != None: gglobs.Xleft = gglobs.Xleft
-            if gglobs.Xright != None: gglobs.Xright = gglobs.Xright
+        #~# convert all entries to days since start
+        #~if   oldXunit == "Time":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  - gglobs.logTimeFirst
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright - gglobs.logTimeFirst
 
-        elif oldXunit == "hour":
-            if gglobs.Xleft  != None: gglobs.Xleft = gglobs.Xleft / 24.
-            if gglobs.Xright != None: gglobs.Xright = gglobs.Xright / 24.
+        #~elif oldXunit == "month":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  * 30.42 # 365 / 12 = 30.4167
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright * 30.42 # 365 / 12 = 30.4167
 
-        elif oldXunit == "minute":
-            if gglobs.Xleft  != None: gglobs.Xleft = gglobs.Xleft / 1440.
-            if gglobs.Xright != None: gglobs.Xright = gglobs.Xright / 1440.
+        #~elif oldXunit == "week":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  * 7
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright * 7
 
-        elif oldXunit == "second":
-            if gglobs.Xleft  != None: gglobs.Xleft = gglobs.Xleft / 86400.
-            if gglobs.Xright != None: gglobs.Xright = gglobs.Xright / 86400.
+        #~elif oldXunit == "day": # no changes all in days
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright
 
-        gglobs.XunitCurrent = str(self.xunit.currentText())
-        newXunit            = gglobs.XunitCurrent
+        #~elif oldXunit == "hour":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  / 24.
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright / 24.
 
-        if newXunit == "auto":
-            l = gglobs.logTime.max() - gglobs.logTime.min()
-            #print "l=", l
-            if   l > 3:          Xunit = "day"
-            elif l * 24. > 3:    Xunit = "hour"
-            elif l * 1440. > 3:  Xunit = "minute"
-            else:                Xunit = "second"
+        #~elif oldXunit == "minute":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  / 1440.
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright / 1440.
 
-            newXunit = Xunit
+        #~elif oldXunit == "second":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  / 86400.
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright / 86400.
 
-        gglobs.XunitCurrent = newXunit
-        gglobs.Xunit        = newXunit
-        #print "newXunit", newXunit
+        #~#gglobs.XunitCurrent = str(self.xunit.currentText())
+        #~#print("changedGraphTimeUnit: gglobs.XunitCurrent: ", gglobs.XunitCurrent)
+        #~#newXunit            = gglobs.XunitCurrent
+        #~newXunit            = self.xunit.currentText()
+        #~if newXunit == "auto":
+            #~l = gglobs.logTime.max() - gglobs.logTime.min()
+            #~#print "l=", l
+            #~if   l         > 3:  Xunit = "day"
+            #~elif l * 24.   > 3:  Xunit = "hour"
+            #~elif l * 1440. > 3:  Xunit = "minute"
+            #~else:                Xunit = "second"
 
-        if newXunit == "Time":
-            if gglobs.Xleft  != None: gglobs.Xleft =  (str(mpld.num2date((gglobs.Xleft  + gglobs.logTimeFirst))))[:19]
-            if gglobs.Xright != None: gglobs.Xright = (str(mpld.num2date((gglobs.Xright + gglobs.logTimeFirst))))[:19]
+            #~newXunit = Xunit
 
-        elif newXunit == "day": # no changes all in days
-            if gglobs.Xleft  != None: gglobs.Xleft = gglobs.Xleft
-            if gglobs.Xright != None: gglobs.Xright = gglobs.Xright
+        #~gglobs.XunitCurrent = newXunit
+        #~#print("changedGraphTimeUnit: gglobs.XunitCurrent: ", gglobs.XunitCurrent)
+        #~gglobs.Xunit        = newXunit
+        #~#print( "newXunit", newXunit)
 
-        elif newXunit == "hour":
-            if gglobs.Xleft  != None: gglobs.Xleft = gglobs.Xleft * 24.
-            if gglobs.Xright != None: gglobs.Xright = gglobs.Xright * 24.
+        #~if newXunit == "Time":
+            #~if gglobs.Xleft  != None: gglobs.Xleft =  (str(mpld.num2date((gglobs.Xleft  + gglobs.logTimeFirst))))[:19]
+            #~if gglobs.Xright != None: gglobs.Xright = (str(mpld.num2date((gglobs.Xright + gglobs.logTimeFirst))))[:19]
 
-        elif newXunit == "minute":
-            if gglobs.Xleft  != None: gglobs.Xleft = gglobs.Xleft * 1440.
-            if gglobs.Xright != None: gglobs.Xright = gglobs.Xright * 1440.
+        #~elif newXunit == "month":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  / 30.42 # 365 / 12 = 30.4167
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright / 30.42 # 365 / 12 = 30.4167
 
-        elif newXunit == "second":
-            if gglobs.Xleft  != None: gglobs.Xleft = gglobs.Xleft * 86400.
-            if gglobs.Xright != None: gglobs.Xright = gglobs.Xright * 86400.
+        #~elif newXunit == "week":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  / 7
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright / 7
 
-        if gglobs.Xleft == None:
-            self.xmin.setText("")
-        else:
-            try:
-                xl = "{:1.8f}".format(float(gglobs.Xleft))
-            except:
-                xl = gglobs.Xleft
-            self.xmin.setText(xl)
+        #~elif newXunit == "day": # no changes all in days
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright
 
-        if gglobs.Xright == None:
-            self.xmax.setText("")
-        else:
-            try:
-                xr = "{:1.8f}".format(float(gglobs.Xright))
-            except:
-                xr = gglobs.Xright
-            self.xmax.setText(xr)
+        #~elif newXunit == "hour":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  * 24.
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright * 24.
+
+        #~elif newXunit == "minute":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  * 1440.
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright * 1440.
+
+        #~elif newXunit == "second":
+            #~if gglobs.Xleft  != None: gglobs.Xleft  = gglobs.Xleft  * 86400.
+            #~if gglobs.Xright != None: gglobs.Xright = gglobs.Xright * 86400.
+
+        #~if gglobs.Xleft == None:
+            #~self.xmin.setText("")
+        #~else:
+            #~try:    xl = "{:1.8f}".format(float(gglobs.Xleft))
+            #~except: xl = gglobs.Xleft
+            #~self.xmin.setText(xl)
+
+        #~if gglobs.Xright == None:
+            #~self.xmax.setText("")
+        #~else:
+            #~try:    xr = "{:1.8f}".format(float(gglobs.Xright))
+            #~except: xr = gglobs.Xright
+            #~self.xmax.setText(xr)
 
         self.applyGraphOptions()
 
@@ -2046,10 +2155,8 @@ class ggeiger(QMainWindow):
         self.mavbox.                 setChecked(gglobs.mavChecked)
 
         gglobs.mav                 = gglobs.mav_initial
-        #self.mav.                    setText(str(gglobs.mav_initial))
         self.mav.                    setText("{:0.0f}".format(gglobs.mav_initial))
 
-        #~gglobs.varStyle            = gglobs.varStyleDefault.copy() # reset colors and linetype
         gglobs.varsBook            = gglobs.varsDefault.copy() # reset colors and linetype
 
         gglobs.allowGraphUpdate    = True
@@ -2064,6 +2171,8 @@ class ggeiger(QMainWindow):
 
         if gglobs.currentConn == None: return
 
+        fncname = "applyGraphOptions: "
+
         #replace comma with dot, strip outer whitespace
         xmin  = (str(self.xmin.text()).replace(",", ".")).strip()
         xmax  = (str(self.xmax.text()).replace(",", ".")).strip()
@@ -2073,14 +2182,17 @@ class ggeiger(QMainWindow):
         ymax  = (str(self.ymax.text()).replace(",", ".")).strip()
         yunit = str(self.yunit.currentText())
 
-        y2min  = (str(self.y2min.text()).replace(",", ".")).strip()
-        y2max  = (str(self.y2max.text()).replace(",", ".")).strip()
+        y2min = (str(self.y2min.text()).replace(",", ".")).strip()
+        y2max = (str(self.y2max.text()).replace(",", ".")).strip()
 
         mav   = (str(self.mav.text()).replace(",", ".") ).strip()
 
-    #    print( "X  xmin, xmax, xunit:", xmin, xmax, xunit)
-    #    print( "Y: ymin, ymax, yunit, mav", ymin, ymax, yunit, mav)
+        #~print(fncname + "X : xmin:'{}', xmax:'{}', xunit:'{}', gglobs.Xunit:'{}'".format(xmin, xmax, xunit, gglobs.Xunit))
+        #~print(fncname + "Y : ymin:'{}', ymax:'{}', yunit:'{}', gglobs.Yunit:'{}'".format(ymin, ymax, yunit, gglobs.Yunit))
+        #~print(fncname + "Y2: ymin:'{}', ymax:'{}'                      ".format(y2min, y2max))
+        #~print(fncname + "mav:'{}'".format(mav))
 
+    # x
         if  xmin == "":
             gglobs.Xleft  = None
         else:
@@ -2113,7 +2225,7 @@ class ggeiger(QMainWindow):
                     gglobs.Xright    = None
                     efprint("Did not recognize Time Max")
 
-        #print( "Xleft ", gglobs.Xleft,  ",  Xright", gglobs.Xright)
+        #print(fncname + "Xleft ", gglobs.Xleft,  ",  Xright", gglobs.Xright)
 
         if gglobs.Xleft != None and gglobs.Xright != None:
             if gglobs.Xleft >= gglobs.Xright:
@@ -2122,15 +2234,12 @@ class ggeiger(QMainWindow):
 
         gglobs.Xunit     = xunit
 
-        try:
-            gglobs.Ymin      = float(ymin)
-        except:
-            gglobs.Ymin      = None
+    # y
+        try:    gglobs.Ymin      = float(ymin)
+        except: gglobs.Ymin      = None
 
-        try:
-            gglobs.Ymax      = float(ymax)
-        except:
-            gglobs.Ymax      = None
+        try:    gglobs.Ymax      = float(ymax)
+        except: gglobs.Ymax      = None
 
         if gglobs.Ymin != None and gglobs.Ymax != None:
             if gglobs.Ymin >= gglobs.Ymax:
@@ -2139,32 +2248,29 @@ class ggeiger(QMainWindow):
 
         gglobs.Yunit     = yunit
 
-        try:
-            gglobs.Y2min      = float(y2min)
-        except:
-            gglobs.Y2min      = None
+    # y2
+        try:    gglobs.Y2min      = float(y2min)
+        except: gglobs.Y2min      = None
 
-        try:
-            gglobs.Y2max      = float(y2max)
-        except:
-            gglobs.Y2max      = None
+        try:    gglobs.Y2max      = float(y2max)
+        except: gglobs.Y2max      = None
 
         if gglobs.Y2min != None and gglobs.Y2max != None:
             if gglobs.Y2min >= gglobs.Y2max:
-                efprint("Wrong numbers: Count Rate min must be less than Count Rate max")
+                efprint("Wrong numbers: Ambient min must be less than Ambient max")
                 return
 
-        try:
-            gglobs.mav     = float(mav)
-        except:
-            gglobs.mav     = gglobs.mav_initial
+    # mav
+        try:    gglobs.mav     = float(mav)
+        except: gglobs.mav     = gglobs.mav_initial
 
-        #~colorName = gglobs.varStyle[getNameSelectedVar()][0]
+    # color
         colorName = gglobs.varsBook[getNameSelectedVar()][3]
-        self.btnColor.setText("") # self.btnColor.setText(colorName)
+        self.btnColor.setText("")
         self.btnColor.setStyleSheet("QLabel { border: 1px solid silver;  border-radius: 3px; background-color: %s ; }" % (colorName))
         addMenuTip(self.btnColor, self.btnColorText + colorName)
 
+    # replot
         gsup_plot.makePlot()
         self.updateDisplayVariableValue()
 
@@ -2241,24 +2347,27 @@ class ggeiger(QMainWindow):
         # gglobs.y1_limit = ax1.get_ylim    defined in gsup_plot.py
         # gglobs.y2_limit = ax2.get_ylim
 
-        try: # results in non-breaqking error messages when no data are displayed
+        #print("updatecursorposition: event: ", event, ", event.inaxes: ", event.inaxes, end="   ")
+
+        try: # results in non-breaking error messages when no data are displayed
             if event.inaxes:
-                x = event.xdata
+                x  = event.xdata
                 y2 = event.ydata
-                #print x,y
+                #print("updatecursorposition: ", x, y2)
                 y1 = (y2 - gglobs.y2_limit[0]) / (gglobs.y2_limit[1] - gglobs.y2_limit[0]) * (gglobs.y1_limit[1] - gglobs.y1_limit[0]) + gglobs.y1_limit[0]
 
                 if gglobs.Xunit == "Time":
                     tod = (str(mpld.num2date(x)))[:19]          # time of day
-                    t   = gsup_plot.getTsr(gglobs.logTimeFirst, x)
+                    t   = gsup_plot.getTimeSinceFirstRecord(gglobs.logTimeFirst, x)
 
                 else:
-                    tod = gsup_plot.getToD(gglobs.logTimeFirst, x, gglobs.XunitCurrent)
+                    tod = gsup_plot.getTimeOfDay(gglobs.logTimeFirst, x, gglobs.XunitCurrent)
                     t   = "{:0.3f} {}s".format(x, gglobs.XunitCurrent)
 
                 message = "Time since 1st record: {}, Time: {}, Counter: {:0.3f}, Ambient: {:0.3f}".format(t, tod, y1, y2)
                 self.showStatusMessage(message, timing=0, error=False) # message remains until overwritten by next
         except:
+            #print("event not inaxes")
             pass
 
 
@@ -2327,7 +2436,7 @@ class ggeiger(QMainWindow):
         elif source == "Device":    # a GMC device
             if gglobs.logging:
                 fprint(header("Get History from GMC Device"))
-                fprint("Cannot load History when logging. Stop Logging first", error=True)
+                efprint("Cannot load History when logging. Stop Logging first")
                 return
 
             # may use existing or new .hisdb file, but must be allowed to overwrite this file
@@ -2403,6 +2512,8 @@ class ggeiger(QMainWindow):
         dlg.setWindowIcon   (self.iconGeigerLog)
         dlg.setDirectory    (gglobs.fileDialogDir)
 
+        dlg.setFixedSize(950, 550)
+
         # Execute dialog
         if dlg.exec_() == QDialog.Accepted:  pass     # QDialog Accepted
         else:                                return   # QDialog Rejected
@@ -2454,14 +2565,12 @@ class ggeiger(QMainWindow):
 
             elif source == "GSDatFile":
                 gglobs.datFilePath = fname
-                #~ gglobs.hisDBPath   = fname_base + ".hisdb"
                 gglobs.hisDBPath   = fname + ".hisdb"
                 if not isFileReadable (gglobs.datFilePath):  break
                 if not isFileWriteable(gglobs.hisDBPath):    break
 
             elif source in ("AMFileCAM", "AMFileCPS"):
                 gglobs.AMFilePath = fname
-                #~ gglobs.hisDBPath   = fname_base + ".hisdb"
                 gglobs.hisDBPath   = fname + ".hisdb"
                 if not isFileReadable (gglobs.AMFilePath):   break
                 if not isFileWriteable(gglobs.hisDBPath):    break
@@ -2509,8 +2618,7 @@ class ggeiger(QMainWindow):
                 or  gglobs.datFilePath != None \
                 or  gglobs.hisDBPath   != None and source in ("Device", "GSDevice", "AMDeviceCAM", "AMDeviceCPS") :
 
-                #gglobs.hisConn = gsup_sql.DB_deleteDatabase(gglobs.hisConn, gglobs.hisDBPath)
-                gsup_sql.DB_deleteDatabase(gglobs.hisConn, gglobs.hisDBPath)
+                gsup_sql.DB_deleteDatabase("His", gglobs.hisDBPath)
 
             # Open the database
             gglobs.hisConn = gsup_sql.DB_openDatabase  (gglobs.hisConn, gglobs.hisDBPath)
@@ -2534,38 +2642,35 @@ class ggeiger(QMainWindow):
             if source in ("Device", "Binary File"):
                 error, message = gdev_gmc_hist.makeGMC_History(source)
                 if error == -1:                                # a severe error
-                    fprint(message, error=True)
+                    efprint(message)
                     break
 
             # Make Hist for source = Gamma Scout device or Gamma Scout *.dat File
             elif source in ("GSDevice", "GSDatFile"):
-                error, message = gdev_gscout.GSmakeHistory(source, gglobs.GSDeviceName)
+                error, message = gdev_scout.GSmakeHistory(source)
                 if error == -1:                                # a severe error
-                    fprint(message, error=True)
+                    efprint(message)
                     break
 
             # Make Hist for source = AmbioMon device
             elif source in ("AMDeviceCAM", "AMDeviceCPS"):
-                error, message = gdev_ambiomon.AMmakeHistory(source, gglobs.AmbioDeviceName)
+                error, message = gdev_ambiomon.makeAmbioHistory(source, gglobs.AmbioDeviceName)
                 if error == -1:                                # a severe error
-                    fprint(message, error=True)
+                    efprint(message)
                     break
 
             # Make Hist for source = AmbioMon binary file
             elif source in ("AMFileCAM", "AMFileCPS"):
-                error, message = gdev_ambiomon.AMmakeHistory(source, gglobs.AmbioDeviceName)
+                error, message = gdev_ambiomon.makeAmbioHistory(source, gglobs.AmbioDeviceName)
                 if error == -1:                                # a severe error
-                    fprint(message, error=True)
+                    efprint(message)
                     break
 
-
-#keep       gglobs.hisDBData                       = self.getDataFromFile() # old stuff keep !!!!
-            #~gglobs.hisDBData, gglobs.varcheckedHis = self.getDataFromDatabase() # also creates varchecked
             gglobs.hisDBData, gglobs.varcheckedHis = gsup_sql.getDataFromDatabase() # also creates varchecked
 
             self.plotGraph("His")
             self.checkLoggingState()
-            QApplication.processEvents() # to make Normal Cursor appear only after graph shown
+            Qt_update() # to make Normal Cursor appear only after graph shown
             break
 
         self.setNormalCursor()
@@ -2577,6 +2682,9 @@ class ggeiger(QMainWindow):
         """Set logcycle"""
 
         fncname = "setLogCycle: "
+
+        if gglobs.devel:
+            fprint("Cycle Dur: Get, Plot, Total:", "{:3.0f}, {:3.0f}, {:3.0f} [ms]".format(gglobs.LogGetValDur, gglobs.LogPlotDur, gglobs.LogTotalDur))
 
         dprint(fncname)
         setDebugIndent(1)
@@ -2696,18 +2804,18 @@ class ggeiger(QMainWindow):
             # A logfile is not loaded
             # should never happen as the start button should be inactive
             if gglobs.logDBPath == None:
-                efprint("ALERT: Cannot log; Logfile is not loaded")
+                efprint("WARNING: Cannot log; Logfile is not loaded")
                 break
 
-            # Logfile is read-only, not writeable
+            # Logfile is either read-only, not writeable, or had been removed
             if not os.access(gglobs.logDBPath, os.W_OK):
-                efprint("ALERT: Cannot log; Logfile is read-only, not available for writing!")
+                efprint("WARNING: Cannot log; Logfile is not available for writing!")
                 break
 
             # No loggable variables
             if gglobs.activeVariables == 0:
-                fprint("ALERT: No variables for logging available; Logging is not possible!", error=True)
-                fprint("Please check configuration if this is unexpected !", error=True)
+                efprint("WARNING: No variables for logging available; Logging is not possible!")
+                qefprint("Please check configuration if this is unexpected !")
                 break
 
             # all clear, go for it
@@ -2716,12 +2824,22 @@ class ggeiger(QMainWindow):
             gglobs.currentDBPath = gglobs.logDBPath
 
             # make output like:
-            # #DEVICES, 2021-01-01 19:05:08, Connected: GMC-500+Re 2.24( CPM1st CPS1st CPS2nd );
-            # #LOGGING, 2021-01-01 19:05:08, Start: Cycle: 1.0 sec
+            #~#DEVICES, 2021-02-04 11:48:35, Connected: GMC         : CPM CPS
+            #~#DEVICES, 2021-02-04 11:48:35, Connected: Audio       : CPM3rd CPS3rd
+            #~#DEVICES, 2021-02-04 11:48:35, Connected: RadMon      : CPM2nd T P H X
+            #~#DEVICES, 2021-02-04 11:48:35, Connected: AmbioMon    : CPM CPS CPM1st CPS1st CPM2nd CPS2nd CPM3rd CPS3rd T P H X
+            #~#DEVICES, 2021-02-04 11:48:35, Connected: Gamma-Scout : CPM2nd
+            #~#DEVICES, 2021-02-04 11:48:35, Connected: LabJack     : T H X
+            #~#DEVICES, 2021-02-04 11:48:35, Connected: Simul       : CPM CPS CPM1st CPS1st CPM2nd CPS2nd CPM3rd CPS3rd T H X
+            #~#DEVICES, 2021-02-04 11:48:35, Connected: MiniMon     : T H X
+            #~#LOGGING, 2021-02-04 11:48:35, Start: Cycle: 1.0 sec
             comments  = []
-            cinfo     = "Connected: {}"          .format(gglobs.textDevVars)
-            printcom  = "#DEVICES, {}, {}\n"     .format(stime(), cinfo)
-            comments.append(["DEVICES", "NOW", "localtime", cinfo])
+            printcom  = ""
+            for a in gglobs.textDevVars:
+                if gglobs.textDevVars[a] != None:
+                    cinfo     = "Connected: {:11s} : {}" .format(a, gglobs.textDevVars[a])
+                    printcom += "#DEVICES, {}, {}\n"     .format(stime(), cinfo)
+                    comments.append(["DEVICES", "NOW", "localtime", cinfo])
 
             cinfo     = "Start: Cycle: {} sec"   .format(gglobs.logcycle)
             printcom += "#LOGGING, {}, {}"       .format(stime(), cinfo)
@@ -2738,16 +2856,16 @@ class ggeiger(QMainWindow):
             # but should be displayed. Make sure all old and all new vars can be displayed
             for vname in gglobs.varsDefault:
                 gglobs.varcheckedLog[vname] = True if    gglobs.varcheckedLog[vname] \
-                                                      or gglobs.loggableVars[vname] \
+                                                      or gglobs.loggableVars[vname]  \
                                               else False
 
         # STARTING
-            self.timer.start(int(gglobs.logcycle * 1000.0)) # timer time is in ms; logcycle in sec
+            self.timer.start(int(gglobs.logcycle * 1000)) # timer time is in ms; logcycle in sec
             dprint("startLogging: Logging now; Timer is started with cycle {} sec.".format(gglobs.logcycle))
 
             self.checkLoggingState()
-            self.plotGraph("Log")               # initialize graph settings; getLogValues calls makePlot directly
-            gsup_tools.getLogValues()                  # make first call now; timer fires only AFTER 1st period!
+            self.plotGraph("Log")     # initialize graph settings; getLogValues calls makePlot directly
+            gsup_tools.getLogValues() # make first call now; timer fires only AFTER 1st period!
 
             break
 
@@ -2759,7 +2877,8 @@ class ggeiger(QMainWindow):
 
         if not gglobs.logging: return
 
-        dprint("stopLogging:")
+        fncname = "stopLogging: "
+        dprint(fncname)
         setDebugIndent(1)
 
         fprint(header("Stop Logging"))
@@ -2778,7 +2897,7 @@ class ggeiger(QMainWindow):
         self.labelVar.setStyleSheet('color:darkgray;')
         self.updateDisplayVariableValue()
 
-        dprint("stopLogging: Logging is stopped")
+        dprint(fncname + "Logging is stopped")
         setDebugIndent(0)
 
 
@@ -2799,10 +2918,9 @@ class ggeiger(QMainWindow):
             if gglobs.currentConn is None:
                 self.showStatusMessage("No File available")
                 return
-            elif gglobs.currentConn == gglobs.logConn:
-                dataType = "Log"
-            else:
-                dataType = "His"
+
+            elif gglobs.currentConn == gglobs.logConn:  dataType = "Log"
+            else:                                       dataType = "His"
 
         info        = ("Enter your comment to the {} file: " + " "*100).format(dataType)
 
@@ -2902,13 +3020,13 @@ class ggeiger(QMainWindow):
         varText   = " --- "
         statusTip = ""
 
-        if gglobs.calibration1st == "auto":  scale1st = 1 / gglobs.DefaultCalib1st
+        if gglobs.calibration1st == "auto":  scale1st = 1 / gglobs.DefaultSens1st
         else:                                scale1st = 1 / gglobs.calibration1st
 
-        if gglobs.calibration2nd == "auto":  scale2nd = 1 / gglobs.DefaultCalib2nd
+        if gglobs.calibration2nd == "auto":  scale2nd = 1 / gglobs.DefaultSens2nd
         else:                                scale2nd = 1 / gglobs.calibration2nd
 
-        if gglobs.calibration3rd == "auto":  scale3rd = 1 / gglobs.DefaultCalib3rd
+        if gglobs.calibration3rd == "auto":  scale3rd = 1 / gglobs.DefaultSens3rd
         else:                                scale3rd = 1 / gglobs.calibration3rd
 
         #~print("scale1st:", scale1st)
@@ -3091,7 +3209,7 @@ class ggeiger(QMainWindow):
 
         gglobs.logDBPath   = os.path.join(gglobs.dataPath, "default.logdb")
 
-        gsup_sql.DB_deleteDatabase(gglobs.logConn, gglobs.logDBPath)
+        gsup_sql.DB_deleteDatabase("Log", gglobs.logDBPath)
 
         self.getLogFile(defaultLogDBPath = gglobs.logDBPath) # get default.logdb
 
@@ -3143,10 +3261,12 @@ class ggeiger(QMainWindow):
             dlg.setWindowIcon(self.iconGeigerLog)
             dlg.setDirectory(gglobs.fileDialogDir)
 
+            dlg.setFixedSize(950, 550)
+
             # Execute dialog
             if dlg.exec_() == QDialog.Accepted:  pass     # QDialog Accepted
             else:                                return   # QDialog Rejected
-            ### end filedialog -  a file was selected
+    ### end filedialog -  a file was selected
 
             gglobs.fileDialogDir = dlg.directory().path()
             #print("dlg.directory().path():", dlg.directory().path())
@@ -3213,7 +3333,8 @@ class ggeiger(QMainWindow):
         if gglobs.logFilePath != None:
             fprint("Created from file {}".format(gglobs.logFilePath))
             # delete old database
-            gsup_sql.DB_deleteDatabase(gglobs.logConn, gglobs.logDBPath)
+            #~gsup_sql.DB_deleteDatabase(gglobs.logConn, gglobs.logDBPath)
+            gsup_sql.DB_deleteDatabase("Log", gglobs.logDBPath)
 
             # open new database
             gglobs.logConn      = gsup_sql.DB_openDatabase(gglobs.logConn, gglobs.logDBPath)
@@ -3257,11 +3378,10 @@ class ggeiger(QMainWindow):
 
                 # DB File does exist but can read only
                 elif os.access(gglobs.logDBPath, os.R_OK):
-                    fprint("LogFile opened - ALERT: available ONLY FOR READING", error=True)
+                    efprint("LogFile opened - WARNING: available ONLY FOR READING")
 
                 gglobs.logConn    = gsup_sql.DB_openDatabase  (gglobs.logConn, gglobs.logDBPath)
 
-# keep! gglobs.logDBData                       = self.getDataFromFile()       # via numpy
         gglobs.logDBData, gglobs.varcheckedLog = gsup_sql.getDataFromDatabase()
         gglobs.lastValues                      = None
 
@@ -3351,7 +3471,7 @@ class ggeiger(QMainWindow):
             printstring = ""
             gglobs.stopPrinting = False
             for a in data:
-                #print("showLogData a[1]:", a[1])
+                #print("showLogData a: ", a)
                 if counter == batch:
                     fprint(printstring[:-1])
                     fprint(ruler)
@@ -3506,31 +3626,31 @@ class ggeiger(QMainWindow):
         if dialog.exec():  mydoc.print(dialog.printer())
 
 
-    def setCalibrationFactors(self):
-        """Set calibrations for all tubes temporarily"""
+    def setTubeSensitivities(self):
+        """Set tube sensitivities for all tubes temporarily"""
 
         #
         # setting the scaling factor (needed if no device connected)
         #
-        if gglobs.calibration1st == "auto":    scale1st = gglobs.DefaultCalib1st
+        if gglobs.calibration1st == "auto":    scale1st = gglobs.DefaultSens1st
         else:                                  scale1st = gglobs.calibration1st
 
-        if gglobs.calibration2nd == "auto":    scale2nd = gglobs.DefaultCalib2nd
+        if gglobs.calibration2nd == "auto":    scale2nd = gglobs.DefaultSens2nd
         else:                                  scale2nd = gglobs.calibration2nd
 
-        if gglobs.calibration3rd == "auto":    scale3rd = gglobs.DefaultCalib3rd
+        if gglobs.calibration3rd == "auto":    scale3rd = gglobs.DefaultSens3rd
         else:                                  scale3rd = gglobs.calibration3rd
 
-        dprint("setCalibrationFactors:")
+        dprint("setTubeSensitivities:")
         setDebugIndent(1)
 
         # Comment
-        c = """Allows to set the Calibrations for all tubes
+        c = """Allows to set the sensitivities for all tubes
 temporarily for this program run.
 
 For a permanent change edit the GeigerLog
 configuration file geigerlog.cfg.\n
-Numbers are in units of CPM/(µSv/h).\n"""
+Sensititivities are in units of CPM/(µSv/h).\n"""
         lcomment        = QLabel(c)
 
     # 1st tube
@@ -3570,7 +3690,8 @@ Numbers are in units of CPM/(µSv/h).\n"""
         d = QDialog() # set parent empty to popup in center of screen
         d.setWindowIcon(self.iconGeigerLog)
         d.setFont(self.fontstd)
-        d.setWindowTitle("Set Temporary Calibrations")
+        d.setWindowTitle("Set Temporary Sensitivities")
+
         #d.setWindowModality(Qt.ApplicationModal)   #all of them block other actions???
         #d.setWindowModality(Qt.NonModal)
         #d.setWindowModality(Qt.WindowModal)
@@ -3590,11 +3711,11 @@ Numbers are in units of CPM/(µSv/h).\n"""
         #print("reval:", retval)
         if retval == 99:
             # CANCEL
-            dprint("setCalibrationFactors: CANCEL clicked, Calibrations unchanged")
+            dprint("setTubeSensitivities: CANCEL clicked, Sensitivities unchanged")
 
         else:
             # OK
-            fprint(header("Set Calibrations"))
+            fprint(header("Set Sensitivities"))
             try:        ftube1st = float(etube1st.text().replace(",", "."))
             except:     ftube1st = 0
             try:        ftube2nd = float(etube2nd.text().replace(",", "."))
@@ -3638,7 +3759,7 @@ Numbers are in units of CPM/(µSv/h).\n"""
         for vname in gglobs.varsDefault:
             if gglobs.varMap[vname] > 1:
                 if mapflag == False:    # print only on first occurence
-                    efprint("ALERT: Mapping problem of Variables")
+                    efprint("WARNING: Mapping problem of Variables")
                 qefprint("Variable {}".format(vname), "is mapped to more than one device")
                 mapflag = True
 
@@ -3661,9 +3782,9 @@ Numbers are in units of CPM/(µSv/h).\n"""
                 fprint(dline.format(*checks))
 
         if mapflag:
-            qefprint("Measurements are made on devices from top to bottom, and for each from left to right.")
-            qefprint("If double-mapping of variables occurs, then the last measured variable will overwrite")
-            qefprint("the previous one, almost always resulting in useless data.")
+            qefprint("Measurements are made on devices from top to bottom, and for each according to configuration.")
+            qefprint("If double-mapping of variables occurs, then the last measured variable will overwrite the")
+            qefprint("previous one, almost always resulting in useless data.")
             playWav("error")
         else:
             fprint("Mapping is valid")
@@ -3729,7 +3850,8 @@ Numbers are in units of CPM/(µSv/h).\n"""
             self.toggleDeviceConnectionAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_plug_closed.png')))) # green icon
         else:
             self.toggleDeviceConnectionAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_plug_open.png'))))   # red icon
-            qefprint("<br>ALERT: No devices are connected")
+            #qefprint("<br>WARNING: No devices are connected")
+            self.fprintWarningMessage("<br>WARNING: No devices are connected")
 
         wprint(fncname, "Connection Status: " )
         wprint("- gglobs.GMCConnection:     ", gglobs.GMCConnection)
@@ -3746,30 +3868,30 @@ Numbers are in units of CPM/(µSv/h).\n"""
 
         # determine the mapping and active variables
         if new_connection == "ON":
-            gglobs.textDevVars     = ""
             gglobs.activeVariables = 0
             gglobs.varMap          = {}      # holds the mapping of variables
-            for vname in gglobs.varsDefault:    gglobs.varMap[vname] = 0
+            gglobs.textDevVars     = {}      # holds the mapping of devices
+            for vname in gglobs.varsDefault:  gglobs.varMap[vname] = 0
+            for devname in gglobs.Devices:    gglobs.textDevVars[devname] = None
 
             for devname in gglobs.Devices:
-                #print("switchConnections: devname:", devname)
                 if gglobs.Devices[devname][1] != None:
-                    gglobs.textDevVars              += "{} (".format(gglobs.Devices[devname][0])
+                    textDevVars = ""
                     for vname in gglobs.Devices[devname][1]:
                         #print("                  : vname:", vname)
                         gglobs.varMap[vname]        += 1
                         gglobs.activeVariables      += 1
-                        gglobs.textDevVars          += " {}".format(vname)
+                        textDevVars                 += " {}".format(vname)
                         gglobs.loggableVars[vname]   = True
-                    gglobs.textDevVars += " ); "
+                    gglobs.textDevVars[devname] = textDevVars.strip()
 
-            if gglobs.werbose:
-                wprint("- activeVariables:         ", gglobs.activeVariables)
-                wprint("- textDevVars:             ", gglobs.textDevVars if gglobs.textDevVars > "" else None)
-                wprint("- gglobs.loggableVars:     ", getOrderedVars(gglobs.loggableVars))
+            #~if gglobs.werbose:
+                #~wprint("- activeVariables:         ", gglobs.activeVariables)
+                #~wprint("- textDevVars:             ", gglobs.textDevVars)
+                #~wprint("- gglobs.loggableVars:     ", getOrderedVars(gglobs.loggableVars))
 
             if gglobs.activeVariables == 0:
-                efprint("<br>ALERT: No variables for logging available; Logging will not be possible!")
+                efprint("<br>WARNING: No variables for logging available; Logging will not be possible!")
                 qefprint ("Please check configuration if this is unexpected !")
 
             self.showDeviceMappings()
@@ -3777,14 +3899,9 @@ Numbers are in units of CPM/(µSv/h).\n"""
         self.checkLoggingState()
         self.notePad.setFocus() # to avoid having any device buttons in blue
 
-        dprint(fncname + "completed.")
-
-        # create output like:
-        # switchConnections: GMC: GMC-500+Re 2.24 ['CPM', 'CPS', 'CPS3rd'] MiniMon: MiniMon ['T', 'X']
-        msg = ""
-        for k, v in gglobs.Devices.items():
-            if v[2]: msg += "{}: {} {} ".format(k, v[0], v[1])
-        dprint(fncname + msg)
+        dprint(fncname + "completed:")
+        for a in gglobs.textDevVars:
+            if gglobs.textDevVars[a] != None: dprint("   {:11s} : {}".format(a, gglobs.textDevVars[a]))
 
         setDebugIndent(0)
         self.setNormalCursor()
@@ -3804,7 +3921,7 @@ Numbers are in units of CPM/(µSv/h).\n"""
 
         if new_connection == "ON":
             if gglobs.GMCConnection:
-                fprint(header("Connect GMC Device"), debug=True)
+                fprint(header("GMC Device"), debug=True)
                 fprint("GMC Device is already connected")
             else:
                 quickbaudrate = gdev_gmc.quickGMC_PortTest(gglobs.GMCusbport)
@@ -3812,7 +3929,7 @@ Numbers are in units of CPM/(µSv/h).\n"""
                 #print("gglobs.GMCbaudrate:", gglobs.GMCbaudrate, type(gglobs.GMCbaudrate))
                 if quickbaudrate > 0:
                     if int(gglobs.GMCbaudrate) != int(quickbaudrate):
-                        efprint(header("Connect GMC Device"))
+                        efprint(header("GMC Device"))
                         qefprint("The configured baudrate {} does not match the detected baudrate {}.".format(gglobs.GMCbaudrate, quickbaudrate))
                         qefprint("Now switching configuration temporarily to detected baudrate {}.".format(quickbaudrate))
                         qefprint("It is recommended to change the baudrate in the configuration file accordingly")
@@ -3830,9 +3947,9 @@ Numbers are in units of CPM/(µSv/h).\n"""
                     self.dbtnGMC.setStyleSheet(self.dbtnStyleSheetON)
                     self.setEnableDeviceActions(new_enable = True, device="GMC")
                     self.dbtnGMCPower.setEnabled(True)
-                    gdev_gmc.printGMC_DevInfo()
+                    gdev_gmc.fprintGMC_DeviceInfo()
 
-                    if gglobs.GMCcfg == None or len(gglobs.GMCcfg) != gglobs.GMCconfigsize:
+                    if gglobs.GMCcfg == None or len(gglobs.GMCcfg) != gglobs.GMC_configsize:
                         efprint("Could not read device configuration correctly")
                         efprint("Configuration dependent commands in menu Device are being inactivated!")
                         self.setDisableDeviceActions()
@@ -3840,15 +3957,14 @@ Numbers are in units of CPM/(µSv/h).\n"""
                     self.setGMCPowerIcon()
 
                 else:
-                    efprint(header("Connect GMC Device"))
-                    qefprint("Failure connecting with device: ", "'{}' with message:<br>{}".format(gglobs.GMCDeviceName, errmessage))
-                    self.dbtnGMC.setText(self.connectTextGMC)
-                    self.dbtnGMC.setStyleSheet(self.dbtnStyleSheetError)
-                    fprint("<br>If you know that a GMC device is connected:<br>\
+                    fprint(header("GMC Device"))
+                    efprint ("Failure connecting with device: ", "'{}' with message:<br>{}".format(gglobs.GMCDeviceName, errmessage))
+                    qefprint("<br>If you know that a GMC device is connected:<br>\
                             - Run 'Help'->'Show & Select USB Port and Baudrate', identify and select settings<br>\
                             - or: Run 'USB Autodiscovery' from menu Help and check for proper port and baudrate<br>\
-                            - Look into topic: 'Help'->'Devices` Firmware Bugs' for bugs and workarounds.", error=True, errsound=False)
-
+                            - Look into topic: 'Help'->'Devices` Firmware Bugs' for bugs and workarounds.")
+                    self.dbtnGMC.setText(self.connectTextGMC)
+                    self.dbtnGMC.setStyleSheet(self.dbtnStyleSheetError)
                 gdev_gmc.getGMC_HistSaveMode()
 
         else: # new_connection == OFF
@@ -3886,29 +4002,36 @@ Numbers are in units of CPM/(µSv/h).\n"""
             if gglobs.AudioConnection:
                 # successful connect
                 self.dbtnAudio.setStyleSheet(self.dbtnStyleSheetON)
+                self.setEnableDeviceActions(new_enable = True, device="Audio")
                 gdev_audio.printAudioDevInfo()
                 dprint(fncname + "ON: for device: {}".format(gglobs.AudioDeviceName))
-                self.AudioInfoActionExt.setEnabled(True)      # enable extended info
-                self.AudioPlotAction.setEnabled(True)         # enable audio plotting
+                self.AudioInfoActionExt .setEnabled(True)      # enable extended info
+                self.AudioPlotAction    .setEnabled(True)      # enable audio plotting
+                self.AudioSignalAction  .setEnabled(True)      # enable audio raw signal
+                self.AudioEiaAction     .setEnabled(True)      # enable audio eia action
+
             else:
                 # failure in connection
-                efprint(header("Connect AudioCounter Device"))
-                qefprint("Failure to connect with Device:", "'{}'".format(gglobs.AudioDeviceName))
+                fprint(header("AudioCounter Device"))
+                efprint("Failure to connect with Device:", "'{}'".format(gglobs.AudioDeviceName))
+                qefprint(errmsg)
                 self.dbtnGMC.setStyleSheet(self.dbtnStyleSheetError)
 
         else: # new_connection == OFF
             fprint(header("Disconnect AudioCounter Device"))
-            if gglobs.AudioConnection:
-                gdev_audio.terminateAudioCounter()
-                if not gglobs.AudioConnection:
-                    # successful dis-connect
-                    self.AudioInfoActionExt.setEnabled(False)    # disable extended info
-                    self.AudioPlotAction.setEnabled(False)       # disable audio plotting
-                    fprint("Disconnected successfully:", "'{}'".format(gglobs.AudioDeviceName), debug=True)
-                else:
-                    fprint("Disconnection Error with Device:", gglobs.AudioDeviceName)
+            if not gglobs.AudioConnection:
+                fprint("No connected Audio Device")
+                #self.dbtnAudio.setStyleSheet(self.dbtnStyleSheetOFF)
             else:
-                fprint("No connected device")
+                gdev_audio.terminateAudioCounter()
+                # successful dis-connect
+                self.AudioInfoActionExt .setEnabled(False)    # disable extended info
+                self.AudioPlotAction    .setEnabled(False)    # disable audio plotting
+                self.AudioSignalAction  .setEnabled(False)    # disable audio raw signal
+                self.AudioEiaAction     .setEnabled(False)    # disable audio eia action
+                fprint("Disconnected successfully:", "'{}'".format(gglobs.AudioDeviceName), debug=True)
+                self.setEnableDeviceActions(new_enable = False, device="Audio")
+
             self.dbtnAudio.setStyleSheet(self.dbtnStyleSheetOFF)
 
         Qt_update()
@@ -3940,8 +4063,8 @@ Numbers are in units of CPM/(µSv/h).\n"""
                 self.I2CResetAction.setEnabled(True)        # enable reset
             else:
                 # failure in connection
-                efprint(header("Connect I2C Device"))
-                qefprint("Failure connecting with device: ", "'{}' with message:<br>{}".format(gglobs.I2CDeviceName, errmsg))
+                fprint(header("I2C Device"))
+                efprint("Failure connecting with device: ", "'{}' with message:<br>{}".format(gglobs.I2CDeviceName, errmsg))
                 self.dbtnI2C.setStyleSheet(self.dbtnStyleSheetError)
 
         else: # new_connection == OFF
@@ -3963,20 +4086,6 @@ Numbers are in units of CPM/(µSv/h).\n"""
 
         self.setNormalCursor()
         setDebugIndent(0)
-
-
-    #~def doI2CReset(self):
-        #~"""Reset the ELV dongle and sensors"""
-
-        #~fprint(header("Resetting I2C System"))
-
-        #~self.setBusyCursor()
-        #~fprint("Waiting ...")
-        #~QApplication.processEvents()
-
-        #~gdev_i2c.resetI2C()
-        #~self.setNormalCursor()
-
 
 
     def switchRM_Connection(self, new_connection = "ON"):
@@ -4001,8 +4110,8 @@ Numbers are in units of CPM/(µSv/h).\n"""
                 self.RMInfoActionExt.setEnabled(True)       # enable extended info
             else:
                 # failure in connection
-                efprint(header("Connect RadMon Device"))
-                qefprint("Failure connecting with device: '{}' {}".format(gglobs.RMDeviceName, errmsg))
+                fprint(header("RadMon Device"))
+                efprint("Failure connecting with device: '{}' {}".format(gglobs.RMDeviceName, errmsg))
                 self.dbtnRM.setStyleSheet(self.dbtnStyleSheetError)
 
         else: # new_connection == OFF
@@ -4045,13 +4154,13 @@ Numbers are in units of CPM/(µSv/h).\n"""
                 # successful connect
                 self.setEnableDeviceActions(new_enable = True, device="Ambio")
                 self.dbtnAmbio.setStyleSheet(self.dbtnStyleSheetON)
-                gdev_ambiomon.printAmbioDevInfo()
+                gdev_ambiomon.printAmbioInfo()
                 dprint(fncname + "ON: for device: {}".format("AmbioMon"))
                 self.AmbioInfoActionExt.setEnabled(True)       # enable extended info
             else:
                 # failure in connection
-                efprint(header("Connect AmbioMon Device"))
-                qefprint("Failure connecting with device: '{}' {}".format(gglobs.AmbioDeviceName, errmsg))
+                fprint(header("AmbioMon Device"))
+                efprint("Failure connecting with device: '{}' {}".format(gglobs.AmbioDeviceName, errmsg))
                 self.dbtnAmbio.setStyleSheet(self.dbtnStyleSheetError)
 
         else: # new_connection == OFF
@@ -4097,8 +4206,8 @@ Numbers are in units of CPM/(µSv/h).\n"""
                 self.LJInfoActionExt.setEnabled(True)       # enable extended info
             else:
                 # failure in connection
-                efprint(header("Connect LabJack Device"))
-                qefprint("Failure connecting with device: '{}' with message:<br>{}".format(gglobs.LJDeviceName, errmsg))
+                fprint(header("LabJack Device"))
+                efprint("Failure connecting with device: '{}' with message:<br>{}".format(gglobs.LJDeviceName, errmsg))
                 self.dbtnLJ.setStyleSheet(self.dbtnStyleSheetError)
 
         else: # new_connection == OFF
@@ -4136,33 +4245,44 @@ Numbers are in units of CPM/(µSv/h).\n"""
         Qt_update()
 
         if new_connection == "ON":
-            errmsg = gdev_gscout.initGammaScout()
+            errmsg = gdev_scout.initGammaScout()
             if gglobs.GSConnection:
                 # successful connect
                 self.setEnableDeviceActions(new_enable = True, device="GS")
                 self.dbtnGS.setStyleSheet(self.dbtnStyleSheetON)
-                gdev_gscout.printGSDevInfo()
+                gdev_scout.printGSDevInfo(update = False)
                 dprint(fncname + "ON: for device: {}".format(gglobs.GSDeviceDetected))
-                self.GSInfoActionExt.setEnabled(True)      # enable extended info
-                self.GSResetAction.setEnabled(True)        # enable reset
-                self.GSSetPCModeAction.setEnabled(True)    # enable set PC Mode
+                self.GSInfoActionExt.setEnabled(True)       # enable extended info
+                self.GSResetAction.setEnabled(True)         # enable reset
+                self.GSSetPCModeAction.setEnabled(True)     # enable PC Mode
+                self.GSDateTimeAction.setEnabled(True)      # enable set DateTime
+                if gglobs.GStype == "Online":
+                    self.GSSetOnlineAction.setEnabled(True) # enable Online mode
+                    self.GSRebootAction.setEnabled(True)    # enable Reboot
+                else:
+                    self.GSSetOnlineAction.setEnabled(False)
+                    self.GSRebootAction.setEnabled(False)
+
             else:
                 # failure in connection
-                fprint(header("Connect GammaScout Device"))
+                fprint(header("GammaScout Device"))
                 efprint("Failure connecting with device ", "'{}' with message:<br>{}<br>".format(gglobs.GSDeviceName, errmsg))
                 self.dbtnGS.setStyleSheet(self.dbtnStyleSheetError)
 
         else: # new_connection == OFF
             fprint(header("Disconnect GammaScout Device"))
             if gglobs.GSConnection:
-                errmsg = gdev_gscout.terminateGammaScout(gglobs.GSDeviceName)
+                errmsg = gdev_scout.terminateGammaScout()
                 if not gglobs.GSConnection:
                     # successful dis-connect
                     self.setEnableDeviceActions(new_enable = False, device="GS")
                     self.GSInfoActionExt.setEnabled(False)    # disable extended info
                     self.GSResetAction.setEnabled(False)      # disable reset
-                    self.GSSetPCModeAction.setEnabled(False)    # disable set PC Mode
-                    fprint("Disconnected successfully:", "'{}'".format(gglobs.GSDeviceDetected), debug=True)
+                    self.GSSetPCModeAction.setEnabled(False)  # disable PC Mode
+                    self.GSDateTimeAction.setEnabled(False)   # disable set DateTime
+                    self.GSSetOnlineAction.setEnabled(False)  # disable Online Mode
+                    self.GSRebootAction.setEnabled(False)     # disable Reboot
+                    fprint("Disconnected successfully:", "'{}'".format(gglobs.GSDeviceName), debug=True)
                 else:
                     efprint("Disconnection Error with Device: {} with message:<br>{}".format(gglobs.GSDeviceName, errmsg))
             else:
@@ -4201,8 +4321,8 @@ Numbers are in units of CPM/(µSv/h).\n"""
                 self.RaspiInfoActionExt.setEnabled(True)       # enable extended info
             else:
                 # failure in connection
-                efprint(header("Connect Raspi Device"))
-                qefprint("Failure connecting with device: '{}' with message:<br>{}".format(gglobs.RaspiDeviceName, errmsg))
+                fprint(header("Raspi Device"))
+                efprint("Failure connecting with device: '{}' with message:<br>{}".format(gglobs.RaspiDeviceName, errmsg))
                 self.dbtnRaspi.setStyleSheet(self.dbtnStyleSheetError)
 
         else: # new_connection == OFF
@@ -4242,14 +4362,15 @@ Numbers are in units of CPM/(µSv/h).\n"""
             if gglobs.SimulConnection:
                 # successful connect
                 self.dbtnSimul.setStyleSheet(self.dbtnStyleSheetON)
-                gdev_simul.fprintSimulDevInfo()
+                gdev_simul.fprintSimulCounterInfo()
                 dprint(fncname + "ON: for device: {}".format(gglobs.SimulDeviceName))
                 #~self.SimulInfoActionExt.setEnabled(True)      # enable extended info
                 self.SimulSettings.setEnabled(True)       # enable settings
             else:
                 # failure in connection
-                efprint(header("Connect SimulCounter Device"))
-                qefprint("Failure to connect with Device:", "'{}'".format(gglobs.SimulDeviceName))
+                fprint(header("SimulCounter Device"))
+                efprint("Failure to connect with Device:", "'{}'".format(gglobs.SimulDeviceName))
+                qefprint(errmsg)
                 self.dbtnSimul.setStyleSheet(self.dbtnStyleSheetError)
 
         else: # new_connection == OFF
@@ -4273,7 +4394,6 @@ Numbers are in units of CPM/(µSv/h).\n"""
         setDebugIndent(0)
 
 
-
     def switchMiniMon_Connection(self, new_connection = "ON"):
         """MiniMonCounter connections"""
 
@@ -4287,7 +4407,7 @@ Numbers are in units of CPM/(µSv/h).\n"""
         self.setBusyCursor()
 
         if new_connection == "ON":
-            errmsg = gdev_minimon.initMiniMon() # so far there is never an error in audio
+            errmsg = gdev_minimon.initMiniMon()
             if gglobs.MiniMonConnection:
                 # successful connect
                 self.dbtnMiniMon.setStyleSheet(self.dbtnStyleSheetON)
@@ -4296,8 +4416,9 @@ Numbers are in units of CPM/(µSv/h).\n"""
                 #~self.MiniMonInfoActionExt.setEnabled(True)      # enable extended info
             else:
                 # failure in connection
-                efprint(header("Connect MiniMon Device"))
-                qefprint("Failure to connect with Device:", "'{}'".format(gglobs.MiniMonDeviceName))
+                fprint(header("MiniMon Device"))
+                efprint("Failure to connect with Device:", "'{}'".format(gglobs.MiniMonDeviceName))
+                qefprint(errmsg)
                 self.dbtnMiniMon.setStyleSheet(self.dbtnStyleSheetError)
 
         else: # new_connection == OFF
@@ -4414,6 +4535,14 @@ Numbers are in units of CPM/(µSv/h).\n"""
             # History
             self.histGMCDeviceAction.    setEnabled(new_enable)
 
+        # AudioCounter
+        if device == "Audio":
+            pass
+            # no need???
+            #~self.histAMDeviceCAMAction.  setEnabled(new_enable)
+            #~self.histAMDeviceCPSAction.  setEnabled(new_enable)
+            #~self.AmbioDataModeAction.    setEnabled(new_enable)
+
         # Gamma-Scout counter
         if device == "GS":
             self.histGSDeviceAction.     setEnabled(new_enable)
@@ -4493,19 +4622,16 @@ Numbers are in units of CPM/(µSv/h).\n"""
         msg = QMessageBox()
         msg.setWindowIcon(self.iconGeigerLog)
         msg.setWindowTitle("Help - Quickstart")
-        #msg.setFont(self.fontstd)
+        #msg.setFont(self.fontstd) # this will set Monospace font!
         msg.setText(gglobs.helpQuickstart)
 
         msg.setStandardButtons(QMessageBox.Ok)
         msg.setDefaultButton(QMessageBox.Ok)
         msg.setEscapeButton(QMessageBox.Ok)
         msg.setWindowModality(Qt.WindowModal)
+        msg.setMinimumWidth(800)
+        msg.setStyleSheet("QLabel{min-width:700px; font-size:12pt;}")
 
-        btn = QPushButton()         # to become invisible button
-        btn.setMinimumWidth(500)    # determines width of box
-        btn.setMaximumHeight(0)     # invisible at height zero!
-
-        msg.addButton(btn, QMessageBox.YesRole)
         msg.exec()
 
 
@@ -4515,7 +4641,7 @@ Numbers are in units of CPM/(µSv/h).\n"""
         msg = QMessageBox()
         msg.setWindowIcon(self.iconGeigerLog)
         msg.setWindowTitle("Help - Firmware Bugs")
-        #msg.setFont(self.fontstd)
+        #msg.setFont(self.fontstd) # this will set Monospace font!
         msg.setTextFormat(Qt.RichText)
         msg.setText(gglobs.helpFirmwareBugs)
 
@@ -4523,12 +4649,8 @@ Numbers are in units of CPM/(µSv/h).\n"""
         msg.setDefaultButton(QMessageBox.Ok)
         msg.setEscapeButton(QMessageBox.Ok)
         msg.setWindowModality(Qt.WindowModal)
+        msg.setStyleSheet("QLabel{min-width:700px; font-size:11pt;}")
 
-        btn = QPushButton()         # to become invisible button
-        btn.setMinimumWidth(500)    # determines width of box
-        btn.setMaximumHeight(0)     # invisible at height zero!
-
-        msg.addButton(btn, QMessageBox.YesRole)
         msg.exec()
 
 
@@ -4538,19 +4660,15 @@ Numbers are in units of CPM/(µSv/h).\n"""
         msg = QMessageBox()
         msg.setWindowIcon(self.iconGeigerLog)
         msg.setWindowTitle("Help - Radiation World Maps")
-        #msg.setFont(self.fontstd)
+        #msg.setFont(self.fontstd) # this will set Monospace font!
         msg.setText(gglobs.helpWorldMaps)
 
         msg.setStandardButtons(QMessageBox.Ok)
         msg.setDefaultButton(QMessageBox.Ok)
         msg.setEscapeButton(QMessageBox.Ok)
         msg.setWindowModality(Qt.WindowModal)
+        msg.setStyleSheet("QLabel{min-width:700px; font-size:12pt;}")
 
-        btn = QPushButton()         # to become invisible button
-        btn.setMinimumWidth(500)    # determines width of box
-        btn.setMaximumHeight(0)     # invisible at height zero!
-
-        msg.addButton(btn, QMessageBox.YesRole)
         msg.exec()
 
 
@@ -4560,19 +4678,15 @@ Numbers are in units of CPM/(µSv/h).\n"""
         msg = QMessageBox()
         msg.setWindowIcon(self.iconGeigerLog)
         msg.setWindowTitle("Help - Occupational Radiation Limits")
-        #msg.setFont(self.fontstd)
+        #msg.setFont(self.fontstd) # this will set Monospace font!
         msg.setText(gglobs.helpOccupationalRadiation)
 
         msg.setStandardButtons(QMessageBox.Ok)
         msg.setDefaultButton(QMessageBox.Ok)
         msg.setEscapeButton(QMessageBox.Ok)
         msg.setWindowModality(Qt.WindowModal)
+        msg.setStyleSheet("QLabel{min-width:700px; font-size:12pt;}")
 
-        btn = QPushButton()         # to become invisible button
-        btn.setMinimumWidth(500)    # determines width of box
-        btn.setMaximumHeight(0)     # invisible at height zero!
-
-        msg.addButton(btn, QMessageBox.YesRole)
         msg.exec()
 
 
@@ -4589,12 +4703,8 @@ Numbers are in units of CPM/(µSv/h).\n"""
         msg.setDefaultButton(QMessageBox.Ok)
         msg.setEscapeButton(QMessageBox.Ok)
         msg.setWindowModality(Qt.WindowModal)
+        msg.setStyleSheet("QLabel{min-width:800px; font-size:12pt;}")
 
-        btn = QPushButton()         # invisible button
-        btn.setMinimumWidth(500)    # determines width of box
-        btn.setMaximumHeight(0)     # invisible at height zero!
-
-        msg.addButton(btn, QMessageBox.YesRole)
         msg.exec()
 
 
@@ -4626,7 +4736,7 @@ Numbers are in units of CPM/(µSv/h).\n"""
         d.setWindowModality(Qt.WindowModal)
         #d.setMinimumWidth(1800)
         screen_available = QDesktopWidget().availableGeometry()
-        d.setMinimumHeight(min(screen_available.height(), gglobs.window_height + 180))
+        d.setMinimumHeight(min(screen_available.height(), gglobs.window_height + 220))
 
         bbox    = QDialogButtonBox()
         bbox.setStandardButtons(QDialogButtonBox.Ok)
@@ -4968,11 +5078,11 @@ Numbers are in units of CPM/(µSv/h).\n"""
         valueBox.setSizeConstraint (QLayout.SetFixedSize)
         #valueBox.setFieldGrowthPolicy (QFormLayout.AllNonFixedFieldsGrow)
         #valueBox.setFieldGrowthPolicy (QFormLayout.FieldsStayAtSizeHint)
-        valueBox.setFieldGrowthPolicy (QFormLayout.ExpandingFieldsGrow)
+        #valueBox.setFieldGrowthPolicy (QFormLayout.ExpandingFieldsGrow)
 
         #valueBox.RowWrapPolicy(QFormLayout.DontWrapRows)
         #valueBox.RowWrapPolicy(QFormLayout.WrapLongRows)
-        valueBox.RowWrapPolicy(QFormLayout.WrapAllRows)
+        #valueBox.RowWrapPolicy(QFormLayout.WrapAllRows)
 
         valueBox.addRow(QLabel("{:60s}".format("<b>ValueScaling</b> - it DOES modify the saved value!<br> ")))
         for vname in gglobs.varsDefault:

@@ -166,8 +166,10 @@ class SensorBME280:
             #fprint("Success - Found Sensor BME280")
             pass
         else:
-            fprint("Failure - Did NOT find Sensor BME280", error=True)
-            return False
+            #~efprint("Failure - Did NOT find Sensor BME280")
+            #~return False
+            response = "Failure - Did NOT find Sensor BME280"
+            return response
 
         # set ctrl-hum
         # 101 = 5 = oversampling * 16
@@ -193,7 +195,8 @@ class SensorBME280:
         # make one measurement to discard (on ISS dongle sometimes measuremnt was wrong)
         self.BME280getTPH()
 
-        return True
+        #~return True
+        return ""
 
 
     def BME280getTPH(self):
@@ -435,23 +438,23 @@ def readBME280All(cal1, cal2, cal3, pres_raw, t_raw, h_raw):
     temperature = float(((t_fine * 5) + 128) >> 8);
 
     # Refine pressure and adjust for temperature
-    var1 = t_fine / 2.0 - 64000.0
-    var2 = var1 * var1 * dig_P6 / 32768.0
-    var2 = var2 + var1 * dig_P5 * 2.0
-    var2 = var2 / 4.0 + dig_P4 * 65536.0
-    var1 = (dig_P3 * var1 * var1 / 524288.0 + dig_P2 * var1) / 524288.0
-    var1 = (1.0 + var1 / 32768.0) * dig_P1
+    var1 = t_fine / 2 - 64000
+    var2 = var1 * var1 * dig_P6 / 32768
+    var2 = var2 + var1 * dig_P5 * 2
+    var2 = var2 / 4 + dig_P4 * 65536
+    var1 = (dig_P3 * var1 * var1 / 524288 + dig_P2 * var1) / 524288
+    var1 = (1 + var1 / 32768) * dig_P1
     if var1 == 0:
         pressure=0
     else:
-        pressure = 1048576.0 - pres_raw
-        pressure = ((pressure - var2 / 4096.0) * 6250.0) / var1
-        var1 = dig_P9 * pressure * pressure / 2147483648.0
-        var2 = pressure * dig_P8 / 32768.0
-        pressure = pressure + (var1 + var2 + dig_P7) / 16.0
+        pressure = 1048576 - pres_raw
+        pressure = ((pressure - var2 / 4096.0) * 6250) / var1
+        var1 = dig_P9 * pressure * pressure / 2147483648
+        var2 = pressure * dig_P8 / 32768
+        pressure = pressure + (var1 + var2 + dig_P7) / 16
 
     # Refine humidity
-    humidity = t_fine - 76800.0
+    humidity = t_fine - 76800
     humidity = (h_raw - (dig_H4 * 64.0 + dig_H5 / 16384.0 * humidity)) * (dig_H2 / 65536.0 * (1.0 + dig_H6 / 67108864.0 * humidity * (1.0 + dig_H3 / 67108864.0 * humidity)))
     humidity = humidity * (1.0 - dig_H1 * humidity / 524288.0)
     if humidity > 100:
@@ -459,4 +462,4 @@ def readBME280All(cal1, cal2, cal3, pres_raw, t_raw, h_raw):
     elif humidity < 0:
         humidity = 0
 
-    return temperature/100.0, pressure/100.0, humidity
+    return temperature/100, pressure/100, humidity

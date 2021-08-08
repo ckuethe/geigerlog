@@ -3,7 +3,7 @@
 
 """
 gdev_simul.py - GeigerLog commands to handle the simul device, which simulates
-counts using a synthetic Poisson number generator
+                counts using a synthetic Poisson number generator
 """
 
 ###############################################################################
@@ -30,16 +30,50 @@ __license__         = "GPL3"
 
 
 from   gsup_utils       import *
+
+
+"""
+from the config file; currently not used
+
+################ NOT IN USE ###################################################
+# SimulCounter PREDICTIVE
+# Determines whether CPM is let to accumulate or a prediction is made after
+# first counts.
+#
+# Option auto defaults to 'no'
+#
+# Options:        auto | yes | no
+# Default       = auto
+#~SimulPredictive   = auto
+SimulPredictive   = no
+
+
+# SimulCounter PREDICTLIMIT
+# Sets the count limit which CPM must have reached before a first CPM-prediction
+# is given. Before CPM will be reported as NAN.
+# Statistical certainty from Std.Dev = Sqrt(N) (valid for Poisson):
+# CPM =  10:   ~30%
+# CPM =  25:    20%
+# CPM = 100:    10%
+#
+# Option auto defaults to 25
+#
+# Options:          auto | <any number >= 0 >
+# Default         = auto
+SimulPredictLimit = auto
+###############################################################################
+"""
+
+
+
 import ntplib
 
 
 def getNTPDateTime(NTPversion = 4):
-    """get time from an NTP server
-    return unix-like timestamp
-    return NAN on failure"""
+    """Call NTP server and return offset in seconds as reported by NTP"""
+    # typical offset is in the order of 10 milli second (offset = +/- 0.010
 
-    # latest NTP version is now: 4
-    # working versions are 2, 3, 4 (not 1!)
+    # latest NTP version is now: 4;     working versions are 2, 3, 4 (not 1!)
     # https://www.eecis.udel.edu/~mills/ntp/html/release.html
     #
     # ntplib: def request(self, host, version=2, port='ntp', timeout=5):
@@ -63,12 +97,12 @@ def getNTPDateTime(NTPversion = 4):
     # Time at the client when the reply arrived from the server, in NTP timestamp format.
 
     NTP_SERVERS = [ #'pool.ntp.org',
-                    'asia.pool.ntp.org',
+                    #'asia.pool.ntp.org',
                     #~'oceania.pool.ntp.org',
                     #'north-america.pool.ntp.org',
                     #~'south-america.pool.ntp.org',
                     #'europe.pool.ntp.org',
-                    #'de.pool.ntp.org',
+                    'de.pool.ntp.org',
                     #~'0.de.pool.ntp.org',
                     #~'1.de.pool.ntp.org',
                     #~'2.de.pool.ntp.org',
@@ -78,41 +112,45 @@ def getNTPDateTime(NTPversion = 4):
                   ]
 
     fncname     = "getNTPDateTime: "
-    dprint(fncname)
+    vprint(fncname)
     setDebugIndent(1)
-    orig = recv = dest = offs = gglobs.NAN
+    orig = recv = dest = offset = gglobs.NAN
 
-    for i, ntpserver in enumerate(NTP_SERVERS):
+    client = ntplib.NTPClient()
+    for ntpserver in NTP_SERVERS:
         ntps     = []
-        client   = ntplib.NTPClient()
         try:
-            #~response = client.request(ntpserver, version=NTPversion, timeout=0.5)
-            response = client.request(ntpserver, version=NTPversion, timeout=0.3)
-
-            orig = response.orig_time
-            recv = response.recv_time
-            tx   = response.tx_time
-            dest = response.dest_time
-            offs = response.offset
-            ntps.append( ["orig"     , orig - orig])
-            ntps.append( ["recv"     , recv - orig])
-            ntps.append( ["tx  "     , tx   - orig])
-            ntps.append( ["dest"     , dest - orig])
-            ntps.append( ["offset"   , offs])
-            #ntps.append( ["calc offset"   , ((recv - orig) + (tx - dest)) / 2])
-
-            if gglobs.verbose:
-                for  a in ntps:
-                    vprint("NTP Version: {}  {:20s}  {:15s}  {:10.3f} ".format(NTPversion, ntpserver, a[0], a[1]))
-                print("")
-
+            response = client.request(ntpserver, version=NTPversion, timeout=0.2)
         except Exception as e:
-            msg = fncname + "FAILED with Exception: {}".format(e)
-            edprint(msg)
+            msg = fncname + "NTPversion:{} ".format(NTPversion)
+            exceptPrint(e, msg)
+            setDebugIndent(0)
+            #return gglobs.NAN
+            continue
+
+        #print("response.orig_time: ", response.orig_time) # like: 1614266943.3662605
+
+        orig   = response.orig_time     # all times in seconds
+        recv   = response.recv_time
+        tx     = response.tx_time
+        dest   = response.dest_time
+        offset = response.offset
+
+        ntps.append( ["orig"     , orig - orig]) # always zero
+        ntps.append( ["recv"     , recv - orig])
+        ntps.append( ["tx  "     , tx   - orig])
+        ntps.append( ["dest"     , dest - orig])
+        ntps.append( ["offset"   , offset])
+        #ntps.append( ["calc offset"   , ((recv - orig) + (tx - dest)) / 2])
+
+        # vprint for each server
+        if gglobs.verbose:
+            for  a in ntps: vprint("NTP Version: {}  {:20s}  {:15s}  {:10.3f} ".format(NTPversion, ntpserver, a[0], a[1]))
+            print("")
 
     setDebugIndent(0)
 
-    return offs
+    return offset # offset in seconds
 
 
 # NTP
@@ -136,12 +174,12 @@ def initSimulCounter():
     gglobs.Devices["Simul"][0]  = gglobs.SimulDeviceDetected
 
     if gglobs.SimulMean         == "auto": gglobs.SimulMean         = 0.3                       # "background"
-    if gglobs.SimulPredictive   == "auto": gglobs.SimulPredictive   = False                     # let CPM accumulate
-    if gglobs.SimulPredictLimit == "auto": gglobs.SimulPredictLimit = 25                        # CPM prediction after this count was reached
-    if gglobs.SimulCalibration  == "auto": gglobs.SimulCalibration  = 154                       # CPM/(µSv/h), = 0.065 µSv/h/CPM
-    if gglobs.SimulVariables    == "auto": gglobs.SimulVariables    = "CPM, CPS, CPM2nd"        # CPM= non-predictive; CPM2bd, CPM3rd = predictive
+    if gglobs.SimulSensitivity  == "auto": gglobs.SimulSensitivity  = 154                       # CPM/(µSv/h), = 0.065 µSv/h/CPM
+    if gglobs.SimulVariables    == "auto": gglobs.SimulVariables    = "CPM, CPS"                # non-predictive;
+    #if gglobs.SimulPredictive   == "auto": gglobs.SimulPredictive   = False                     # let CPM accumulate
+    #if gglobs.SimulPredictLimit == "auto": gglobs.SimulPredictLimit = 25                        # CPM prediction after this count was reached
 
-    setCalibrations(gglobs.SimulVariables, gglobs.SimulCalibration)
+    setCalibrations(gglobs.SimulVariables, gglobs.SimulSensitivity)
     setLoggableVariables("Simul", gglobs.SimulVariables)
 
     gglobs.SimulConnection = True
@@ -161,11 +199,11 @@ def terminateSimulCounter():
     fncname ="terminateSimulCounter: "
     if not gglobs.SimulConnection: return fncname + "No SimulCounter connection"
 
+    dprint(fncname)
     gglobs.SimulConnection = False
-    dprint(fncname + "is stopped")
 
 
-def getSimulCounterValues(varlist):
+def xxxxxxxx___getSimulCounterValues(varlist):
     """Read all data; return empty dict when not available"""
 
     global cps_record, SimulCounterCalls
@@ -181,53 +219,53 @@ def getSimulCounterValues(varlist):
     #~print("--------size: ", size, ", simulcps:", simulcps)
     #~print("cps_record: nansum", np.nansum(cps_record), "cps_record:\n", cps_record)
 
-    #offs = getNTPDateTime()
-
     for vname in varlist:
         if   vname in ("CPM"):
         # CPM non-predictive
             cpm             = int(np.nansum(cps_record))        # must use int or blob will be stored
-            cpm             = scaleVarValues(vname, cpm, gglobs.ValueScale[vname])
+            cpm             = round(scaleVarValues(vname, cpm, gglobs.ValueScale[vname]), 2)
             alldata.update(  {vname: cpm})
 
         elif   vname in ("CPM1st"):
         # CPM1st trying the GQ Fast Estimate Time
             cpm             = np.nanmean(cps_record[-3:]) # 1ast 3
             cpm             = int(cpm * 60)
-            cpm             = scaleVarValues(vname, cpm, gglobs.ValueScale[vname])
+            cpm             = round(scaleVarValues(vname, cpm, gglobs.ValueScale[vname]), 2)
             alldata.update(  {vname: cpm})
 
         elif vname in ("T"):
-        # T as (NTP time offset in ms)
-            t             = getNTPDateTime(NTPversion=2) * 1000
-            t             = scaleVarValues(vname, t, gglobs.ValueScale[vname])
+        # old: T as (NTP time offset in ms), NTPversion=2
+        # T as (NTP time offset in ms), NTPversion=4
+            #~t             = getNTPDateTime(NTPversion=2) * 1000
+            t             = getNTPDateTime(NTPversion=4) * 1000
+            t             = round(scaleVarValues(vname, t, gglobs.ValueScale[vname]), 2)
             alldata.update(  {vname: t})
 
 
         elif vname in ("P"):
-        # X as NTP time (not very helpful)
+        # P as (NTP time offset in ms), NTPversion=3
             x             = getNTPDateTime(NTPversion=3) * 1000
-            x             = scaleVarValues(vname, x, gglobs.ValueScale[vname])
+            x             = round(scaleVarValues(vname, x, gglobs.ValueScale[vname]), 2)
             alldata.update(  {vname: x})
 
 
         elif vname in ("H"):
-        # X as NTP time (not very helpful)
+        # H as (NTP time offset in ms), NTPversion=3
             x             = getNTPDateTime(NTPversion=3) * 1000
-            x             = scaleVarValues(vname, x, gglobs.ValueScale[vname])
+            x             = round(scaleVarValues(vname, x, gglobs.ValueScale[vname]), 2)
             alldata.update(  {vname: x})
 
 
         elif vname in ("X"):
-        # X as NTP time (not very helpful)
+        # X as (NTP time offset in ms), NTPversion=4
             x             = getNTPDateTime(NTPversion=4) * 1000
-            x             = scaleVarValues(vname, x, gglobs.ValueScale[vname])
+            x             = round(scaleVarValues(vname, x, gglobs.ValueScale[vname]), 2)
             alldata.update(  {vname: x})
 
         elif vname in ("CPS", "CPS1st", "CPS2nd", "CPS3rd"):
         # CPS - predictive not relevant here
-            cps             = int(cps_record[-1])               # must use int or blob will be stored
-            cps             = scaleVarValues(vname, cps, gglobs.ValueScale[vname] )
+            cps             = int(cps_record[-1])       # must use int or blob will be stored
+            cps             = round(scaleVarValues(vname, cps, gglobs.ValueScale[vname] ))
             alldata.update(  {vname: cps})
 
         elif vname in ("CPM2nd", "CPM3rd"):
@@ -254,7 +292,7 @@ def getSimulCounterValues(varlist):
                 if abs(c1mean - c2mean) > (c1stdd + c2stdd):
                     cpm = int((c2mean * 30) / 30 * 60)
 
-            cpm             = scaleVarValues(vname, cpm, gglobs.ValueScale[vname])
+            cpm             = round(scaleVarValues(vname, cpm, gglobs.ValueScale[vname]), 2)
             alldata.update(  {vname: cpm})
             #~#if gglobs.SimulCounterCalls < 70: print("----------------gglobs.SimulCounterCalls   : ", gglobs.SimulCounterCalls,    " CPM: ", cpm)
             #if gglobs.SimulCounterCalls < 70: print("---------------- SimulCounterCalls   : ", SimulCounterCalls,    " CPM: ", cpm)
@@ -264,19 +302,60 @@ def getSimulCounterValues(varlist):
     return alldata
 
 
+
+def getSimulCounterValues(varlist):
+    """Read all data; return empty dict when not available"""
+
+    global cps_record, SimulCounterCalls
+
+    fncname = "getSimulCounterValues: "
+    alldata = {}
+
+    # take as many samples as the logcycle has sec to cover full cps
+    size               = int(max(1, gglobs.logcycle))
+    simulcps           = np.random.poisson(gglobs.SimulMean, size=size) # generates the "CPS counts"
+    cps_record         = np.append(cps_record, simulcps)[-60:]          # append, but take last 60 values only
+    SimulCounterCalls += size
+    #~print("--------size: ", size, ", simulcps:", simulcps)
+    #~print("cps_record: nansum", np.nansum(cps_record), "cps_record:\n", cps_record)
+
+    for vname in varlist:
+        if   vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd"):
+        # CPM
+            cpm             = int(np.nansum(cps_record))        # must use int or blob will be stored
+            cpm             = round(scaleVarValues(vname, cpm, gglobs.ValueScale[vname]), 2)
+            alldata.update(  {vname: cpm})
+
+        elif vname in ("CPS", "CPS1st", "CPS2nd", "CPS3rd"):
+        # CPS
+            cps             = int(cps_record[-1])               # must use int or blob will be stored
+            cps             = round(scaleVarValues(vname, cps, gglobs.ValueScale[vname] ))
+            alldata.update(  {vname: cps})
+
+        elif vname in ("T"):
+        # old: T as (NTP time offset in ms), NTPversion=2
+        # T as (NTP time offset in ms), NTPversion=4
+            #~t             = getNTPDateTime(NTPversion=2) * 1000
+            t             = getNTPDateTime(NTPversion=4) * 1000 # in milli-seconds
+            t             = round(scaleVarValues(vname, t, gglobs.ValueScale[vname]), 2)
+            alldata.update(  {vname: t})
+
+    printLoggedValues(fncname, varlist, alldata)
+
+    return alldata
+
+
 def getSimulProperties():
     """Set mean and predictive limit"""
-
-    rmself = gglobs.exgg    # access to ggeiger "remote self"
 
     fncname = "getSimulProperties: "
     dprint(fncname)
     setDebugIndent(1)
 
-    lmean = QLabel("Distribution Mean\n(0 ... 10000)")
+    lmean = QLabel("CPS Mean\n(0 ... 10000)")
     lmean.setAlignment(Qt.AlignLeft)
     mean = QLineEdit()
-    mean.setToolTip('The mean of the Poisson distribution')
+    mean.setToolTip('The mean of the Poisson distribution for the CPS variable')
     mean.setText("{:0.3g}".format(gglobs.SimulMean))
 
     lplimit = QLabel("Prediction Limit\n(not negative)")
@@ -288,21 +367,22 @@ def getSimulProperties():
     graphOptions=QGridLayout()
     graphOptions.addWidget(lmean,           0, 0)
     graphOptions.addWidget(mean,            0, 1)
-    graphOptions.addWidget(lplimit,         1, 0)
-    graphOptions.addWidget(plimit,          1, 1)
+    #~graphOptions.addWidget(lplimit,         1, 0)
+    #~graphOptions.addWidget(plimit,          1, 1)
 
-    d = QDialog(rmself) # set parent rmself to popup in center of geigerlog window
+    d = QDialog() # set parent to None to popup in center of screen
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setFont(gglobs.fontstd)
     d.setWindowTitle("SimulCounter Properties")
     d.setWindowModality(Qt.ApplicationModal)
     #d.setWindowModality(Qt.NonModal)
     #d.setWindowModality(Qt.WindowModal)
+    d.setMinimumWidth(300)
 
     bbox = QDialogButtonBox()
     bbox.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok )
-    bbox.accepted.connect(lambda: d.done(0))
-    bbox.rejected.connect(lambda: d.done(99))
+    bbox.accepted.connect(lambda: d.done(100))
+    bbox.rejected.connect(lambda: d.done(0))
 
     layoutV = QVBoxLayout(d)
     layoutV.addLayout(graphOptions)
@@ -311,12 +391,12 @@ def getSimulProperties():
     retval = d.exec_()
     #print("reval:", retval)
 
-    if retval == 99:
+    if retval == 0:
         dprint(fncname + "Cancelled, Properties unchanged")
-        fprint("\nSet Properties: Cancelled, Properties unchanged")
+        #fprint("\nSet Properties: Cancelled, Properties unchanged")
     else:
     # mean
-        mean        = mean.text().replace(",", ".")  #replace any comma with dot
+        mean        = mean.text().replace(",", ".")    #replace any comma with dot
         try:    lm  = round(abs(float(mean)), 1)
         except: lm  = gglobs.SimulMean
         if lm <= 10000: gglobs.SimulMean = lm
@@ -330,23 +410,55 @@ def getSimulProperties():
 
         dprint(fncname + "ok, new settings: ", gglobs.SimulMean, " ", gglobs.SimulPredictLimit)
 
-        fprintSimulDevInfo(extended=False)
+        fprintSimulCounterInfo(extended=False)
 
     setDebugIndent(0)
 
 
-def fprintSimulDevInfo(extended=False):
+def fprintSimulCounterInfo(extended=False):
     """prints basic info on the SimulCounter device"""
 
     setBusyCursor()
 
-    txt = "SimulCounter Device Info"
+    txt = "SimulCounter Device"
     if extended:  txt += " Extended"
     fprint(header(txt))
     fprint("Configured Connection:", "Poisson Generator")
     fprint(getSimulCounterInfo(extended=extended))
 
     setNormalCursor()
+
+
+# only when predictive is used
+#~def extendedgetSimulCounterInfo(extended = False):
+    #~"""Info on the SimulCounter"""
+
+    #~if not gglobs.SimulConnection:   return "No connected device"
+
+    #~SimulInfo = """Connected Device:             '{}'
+#~Configured Variables:         {}
+#~Geiger Tube Sensitivity:      {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
+#~Distribution Mean:            {:0.1f} CPS, = {:0.1f} CPM
+#~Predictive:                   {}
+#~Predictive Limit:             {}
+#~"""\
+                #~.format(
+                        #~gglobs.SimulDeviceName,
+                        #~gglobs.SimulVariables,
+                        #~gglobs.SimulSensitivity, 1 / gglobs.SimulSensitivity,
+                        #~gglobs.SimulMean, gglobs.SimulMean * 60,
+                        #~"Yes" if gglobs.SimulPredictive else "No",
+                        #~gglobs.SimulPredictLimit,
+                       #~)
+
+    #~if extended == True:
+        #~SimulInfo += """
+#~{}
+#~"""\
+                #~.format("None")
+        #~SimulInfo += "\n"
+
+    #~return SimulInfo
 
 
 def getSimulCounterInfo(extended = False):
@@ -356,26 +468,15 @@ def getSimulCounterInfo(extended = False):
 
     SimulInfo = """Connected Device:             '{}'
 Configured Variables:         {}
-Geiger tube calib. factor:    {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
+Geiger Tube Sensitivity:      {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
 Distribution Mean:            {:0.1f} CPS, = {:0.1f} CPM
-Predictive:                   {}
-Predictive Limit:             {}
 """\
                 .format(
                         gglobs.SimulDeviceName,
                         gglobs.SimulVariables,
-                        gglobs.SimulCalibration, 1 / gglobs.SimulCalibration,
+                        gglobs.SimulSensitivity, 1 / gglobs.SimulSensitivity,
                         gglobs.SimulMean, gglobs.SimulMean * 60,
-                        "Yes" if gglobs.SimulPredictive else "No",
-                        gglobs.SimulPredictLimit,
                        )
-
-    if extended == True:
-        SimulInfo += """
-{}
-"""\
-                .format("None")
-        SimulInfo += "\n"
 
     return SimulInfo
 

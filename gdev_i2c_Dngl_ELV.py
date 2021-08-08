@@ -30,6 +30,17 @@ __license__         = "GPL3"
 
 from   gsup_utils       import *
 
+try:
+    import serial                       # serial port (module has name: 'pyserial'!)
+    import serial.tools.list_ports      # allows listing of serial ports
+except Exception as e:
+    msg  = "gdev_i2c_Dngl_ELV.py: Module 'serial' could not be loaded\n"
+    msg += "Verify that 'pyserial' is installed using gtools/GLpipcheck.py"
+    exceptPrint(e, msg)
+    edprint("Halting GeigerLog")
+    playWav("err")
+    sys.exit()
+
 
 class ELVdongle:
     """Code for the ELV USB-I2C Dongle"""
@@ -54,17 +65,15 @@ class ELVdongle:
             gglobs.I2Cser = serial.Serial(gglobs.I2Cusbport, gglobs.I2Cbaudrate, timeout=gglobs.I2Ctimeout, write_timeout=gglobs.I2Ctimeout_write)
             dprint("ELV dongle opened at " + msg)
         except Exception as e:
-            exceptPrint(e, sys.exc_info(), "ERROR Serial port for ELV dongle could not be opened")
+            exceptPrint(e, "ERROR Serial port for ELV dongle could not be opened")
             return False, msg
 
         # stop macro with '<' and set 'y30' in order to NOT get ACK and NACK
         # and then get info by '?', all in single command
         self.ELVwriteAdmin(b'<y30?', name=self.short, info="Init Dongle")
         rec = self.ELVreadAdmin(140, name=self.short, info="").strip()
-        if rec.startswith(b"ELV"):
-            return True, ""                        # ought to be an ELV dongle
-        else:
-            return False, "Not an ELV dongle!<br>at {}".format(msg) # not an ELV dongle
+        if rec.startswith(b"ELV"):  return True, ""                                         # an ELV dongle
+        else:                       return False, "Not an ELV dongle!<br>at {}".format(msg) # not an ELV dongle
 
 
     def ELVreset(self):
@@ -107,8 +116,15 @@ class ELVdongle:
     def ELVreadAdmin (self, length = 100, name = "-", info = "no info"):
         """read from the ELV USB-I2C - only for its internal admin functions"""
 
+        fncname = "ELVreadAdmin: "
+
         rec = gglobs.I2Cser.read(length)
-        cnt = gglobs.I2Cser.in_waiting
+        try:
+            cnt = gglobs.I2Cser.in_waiting
+        except Exception as e:
+            exceptPrint(e, fncname + "I2Cser.in_waiting Exception")
+            cnt = 0
+
         if cnt > 0:
             print("ELVreadAdmin: Bytes waiting:", cnt)
             start = time.time()
@@ -168,10 +184,17 @@ class ELVdongle:
     def ELVreadData (self, length=1, name="", info="", doPrint=True):
         """ read data from the ELV USB-I2C """
 
+        fncname = "ELVreadData: "
+
         doPrint=False
 
         rec = gglobs.I2Cser.read(length * 3 + 2) # 3 chars per byte('FF ') + CR, LF
-        cnt = gglobs.I2Cser.in_waiting
+        try:
+            cnt = gglobs.I2Cser.in_waiting
+        except Exception as e:
+            exceptPrint(e, fncname + "I2Cser.in_waiting Exception")
+            cnt = 0
+
         if cnt > 0:
             print("ELVreadData Bytes waiting:", cnt)
             while True:                # read single byte until nothing is returned
@@ -199,14 +222,20 @@ class ELVdongle:
 
 
     def __getListfromRec(self, rec):
-        """ convert ASCII string from terminal to list of integer """
+        """ convert ASCII string from terminal to list of integer"""
         # rec    : b'BE 6E 9A 69 32 00 ...'
         # returns: [190, 110, 154, 105, 50, 0, ...]
 
+        print("rec: ", rec)
         rlist = []
         if len(rec) >= 3:
             for i in range(0, len(rec), 3):
-                rlist.append(int(rec[i:i+3], 16))
+                try:
+                    rlist.append(int(rec[i:i+3], 16))
+                except Exception as e:
+                    msg = "__getListfromRec: rec: {}".format(rec)
+                    exceptPrint(e, msg)
+
         else: # empty record
             pass
 
