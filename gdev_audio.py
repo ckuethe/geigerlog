@@ -24,13 +24,13 @@ gdev_audio.py - GeigerLog commands to handle the audio clicks as CPM/CPS input
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
 """
 NOTES:
-Raspi:      on Raspi sounddevice cannot be installed until libffi-dev is installed per 'sudo apt install libffi-dev'
+Manu:       on Manu sounddevice cannot be installed until libffi-dev is installed per 'sudo apt install libffi-dev'
 Windows:    on Windows: make sure the soundsettings for input and output are set for 'standard' using Windows settings
 Linux       with garbled sound and message in the terminal:
                 "ALSA lib pcm.c:7963:(snd_pcm_recover) underrun occurred"
@@ -77,27 +77,26 @@ Linux       with garbled sound and message in the terminal:
 #~sd.default.latency  = (0.3, 0.3)       --> getting some 'overflowed' !
 #~sd.default.latency  = (0.5, 0.5)       --> works, no 'overflowed' observed over >30sec !
 
-# tested on Raspi 4 with USB dongle "ID 1b3f:2008 Generalplus Technology Inc. "
+# tested on Manu 4 with USB dongle "ID 1b3f:2008 Generalplus Technology Inc. "
 # sd.default.latency  = (1.0, 1.0)       --> works, few 'overflowed' observed over >30sec !
 
 
 from   gsup_utils       import *
 
 
-def initAudioCounter():
+def initAudio():
     """Start the thread to monitor the audio pulses for clicks"""
 
     global AudioCounterThread
 
-    fncname ="initAudioCounter: "
+    fncname ="initAudio: "
 
-    dprint(fncname + "Initialzing AudioCounter")
+    dprint(fncname + "Initializing AudioCounter")
     setDebugIndent(1)
 
-    errmsg  = ""                            # what errors can be here? e.g no input device!
-    gglobs.AudioDeviceName      = "AudioCounter"
-    gglobs.AudioDeviceDetected  = gglobs.AudioDeviceName
-    gglobs.Devices["Audio"][0]  = gglobs.AudioDeviceDetected
+    errmsg  = "No Error"                            # what errors can be here? e.g no input device!
+    # gglobs.AudioDeviceName         = "Audio"
+    gglobs.Devices["Audio"][DNAME] = "Audio"
 
     if gglobs.AudioDevice       == "auto": gglobs.AudioDevice       = (None, None)      # the system's defaults
     if gglobs.AudioLatency      == "auto": gglobs.AudioLatency      = (1.0, 1.0)        # seems like a generic
@@ -107,20 +106,19 @@ def initAudioCounter():
     if gglobs.AudioSensitivity  == "auto": gglobs.AudioSensitivity  = 154               # CPM/(µSv/h), = 0.065 µSv/h/CPM
     if gglobs.AudioVariables    == "auto": gglobs.AudioVariables    = "CPM3rd, CPS3rd"
 
-    setCalibrations(gglobs.AudioVariables, gglobs.AudioSensitivity)
+    setTubeSensitivities(gglobs.AudioVariables, gglobs.AudioSensitivity)
 
     setLoggableVariables("Audio", gglobs.AudioVariables)
 
+    #Sound Driver settings
+    vprint(fncname + "Query Devices: \n",   sd.query_devices() )
+    vprint(fncname + "Query Host Apis:")
+    if gglobs.verbose:
+        for a in sd.query_hostapis(index=None):
+            vprint("   ", a)
 
-#Sound Driver settings
-
-    dprint(fncname + "Query Devices: \n",   sd.query_devices() )
-    dprint(fncname + "Query Host Apis:")
-    if gglobs.debug:
-        for a in sd.query_hostapis(index=None): print(" ", a)
-
-    # in defaults with 2 allowed values: 1st=input, 2nd=output
-    # samplerate has only one single int value
+    # samplerate has only one single int value, but others
+    # allow 2 values: 1st=input, 2nd=output
     sd.default.reset()                              # clear all settings to default
     sd.default.device       = gglobs.AudioDevice    # set the AudioDevice defaults
     sd.default.latency      = gglobs.AudioLatency   # set latency values in sec, like (1.0, 1.0)
@@ -128,11 +126,9 @@ def initAudioCounter():
     sd.default.channels     = (1, 1)                # options: 1, 2, more
     sd.default.samplerate   = 44100                 # options: 96000, 48000, 44100, 22050, 11025
 
-    print()
     try:
         defaultDevice = sd.default.device
         dprint(fncname + "Default Device (Input, Output): {}".format(defaultDevice))
-        #print(fncname + "Default Device (Input, Output): {}".format(defaultDevice))
         if defaultDevice[1] != -1 :
             sdqd = sd.query_devices(device=None, kind='output')
             vprint(fncname  + "Output Device: ")
@@ -150,7 +146,6 @@ def initAudioCounter():
     except Exception as e:
         info = fncname + "Exception in querying default devices"
         exceptPrint(e, info)
-    print()
 
     if defaultDevice[0] != -1:
         gglobs.AudioFormat      = sd.default.dtype
@@ -170,7 +165,8 @@ def initAudioCounter():
                                )
              )
 
-        gglobs.AudioConnection = True
+        # gglobs.AudioConnection = True
+        gglobs.Devices["Audio"][CONN] = True
 
         AudioCounterThread = threading.Thread(target=AudioCounterThreadTarget, args=(None,))
         gglobs.AudioThreadStop = False
@@ -185,16 +181,16 @@ def initAudioCounter():
     return errmsg
 
 
-def terminateAudioCounter():
+def terminateAudio():
     """Stop the thread to monitor the sounddev pulses for clicks"""
 
     global AudioCounterThread
 
-    fncname ="terminateAudioCounter: "
-    dprint(fncname)
-    if not gglobs.AudioConnection: return fncname + "No AudioCounter connection"
+    fncname ="terminateAudio: "
 
+    dprint(fncname)
     setDebugIndent(1)
+
     dprint(fncname + "stopping thread")
     gglobs.AudioThreadStop = True
     AudioCounterThread.join() # "This blocks the calling thread until the thread
@@ -205,9 +201,10 @@ def terminateAudioCounter():
     while AudioCounterThread.is_alive() and (time.time() - start) < 5:
         pass
 
-    dprint(fncname + "thread-status: is alive: {}, waiting took:{:0.3f}ms".format(AudioCounterThread.is_alive(), 1000 * (time.time() - start)))
-    gglobs.AudioConnection = False
+    dprint(fncname + "thread-status: is alive: {}, waiting took:{:0.1f}ms".format(AudioCounterThread.is_alive(), 1000 * (time.time() - start)))
+    gglobs.Devices["Audio"][CONN] = False
 
+    dprint(fncname + "Terminated")
     setDebugIndent(0)
 
 
@@ -299,16 +296,21 @@ def AudioCounterThreadTarget(Dummy):
     CHUNKstream.close()
 
 
-def getAudioCounterInfo(extended = False):
+def getInfoAudio(extended = False):
     """Info on settings of the sounddev thread"""
 
-    if not gglobs.AudioConnection:   return "No connected device"
+    # if not gglobs.AudioConnection:   return "No connected device"
+    # if not gglobs.Devices["Audio"][CONN] :   return "No connected device"
 
-    AudioInfo = """Connected Device:             '{}'
+    AudioInfo  = "Configured Connection:        Default Audio Input\n"
+
+    if not gglobs.Devices["Audio"][CONN]: return AudioInfo + "Device is not connected"
+
+    AudioInfo += """Connected Device:             '{}'
 Configured Variables:         {}
-Geiger Tube Sensitivity:      {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
+Configured Tube Sensitivity:  {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
 """.format(
-                        gglobs.AudioDeviceName,
+                        gglobs.Devices["Audio"][DNAME],
                         gglobs.AudioVariables,
                         gglobs.AudioSensitivity, 1 / gglobs.AudioSensitivity
                        )
@@ -363,10 +365,12 @@ def toggleAudioCounterPulseDir():
     fprint("New pulse direction setting: {}".format(direction))
 
 
-def getAudioValues(varlist):
+def getValuesAudio(varlist):
     """Read all sounddev data; return empty dict when not available"""
 
-    fncname   = "getAudioValues: "
+    start = time.time()
+
+    fncname   = "getValuesAudio: "
     alldata = {}
 
     for vname in varlist:
@@ -380,23 +384,9 @@ def getAudioValues(varlist):
             cps             = scaleVarValues(vname, cps, gglobs.ValueScale[vname] )
             alldata.update(  {vname: cps})
 
-    printLoggedValues(fncname, varlist, alldata)
+    printLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
-
-
-def printAudioDevInfo(extended=False):
-    """prints basic info on the AudioCounter device"""
-
-    setBusyCursor()
-
-    txt = "AudioCounter Device"
-    if extended:  txt += " Extended"
-    fprint(header(txt))
-    fprint("Configured Connection:", "Default Audio Input")
-    fprint(getAudioCounterInfo(extended=extended))
-
-    setNormalCursor()
 
 
 def plotAudio(dtype="Single Pulse", duration=None):
@@ -481,32 +471,25 @@ def plotAudio(dtype="Single Pulse", duration=None):
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setWindowTitle("AudioCounter Device")
     #d.setMinimumHeight(700)
-    #d.setWindowModality(Qt.ApplicationModal)
-    #d.setWindowModality(Qt.NonModal)
     d.setWindowModality(Qt.WindowModal)
 
     okButton = QPushButton("OK")
-    #okButton.setCheckable(True)
     okButton.setAutoDefault(True)
     okButton.clicked.connect(lambda:  d.done(0))
 
     singleButton = QPushButton("Single Pulse")
-    #singleButton.setCheckable(True)
     singleButton.setAutoDefault(False)
     singleButton.clicked.connect(lambda: reloadAudioData("Single Pulse"))
 
     multiButton = QPushButton("Multi Pulse")
-    #multiButton.setCheckable(True)
     multiButton.setAutoDefault(False)
     multiButton.clicked.connect(lambda: reloadAudioData("Multi Pulse"))
 
     recordButton = QPushButton("Recording")
-    #recordButton.setCheckable(True)
     recordButton.setAutoDefault(False)
     recordButton.clicked.connect(lambda: reloadAudioData("Recording"))
 
     togglePulseDirButton = QPushButton("Toggle Pulse Direction")
-    #togglePulseDirButton.setCheckable(True)
     togglePulseDirButton.setAutoDefault(False)
     togglePulseDirButton.clicked.connect(lambda: reloadAudioData("Toggle"))
 
@@ -537,7 +520,7 @@ def plotAudio(dtype="Single Pulse", duration=None):
 
     fig2.canvas.draw_idle()
     playWav("ok")
-    d.exec_()
+    d.exec()
 
 
 def reloadAudioData(dtype):
@@ -592,13 +575,10 @@ def audio_callback(indata, frames, time, status):
     global liveq
 
     fncname = "audio_callback: "
-
     #print(fncname + "np.shape(indata): ", np.shape(indata), ", frames: ", frames, ", time: ", time, ", status: ", status)
 
     if status:
         edprint(fncname + "status: ", status)
-
-    #if frames != 11025: return
 
     liveq.put(indata[:, 0])
 
@@ -722,8 +702,6 @@ def showLiveAudioSignal():
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setWindowTitle("AudioCounter Device")
     #d.setMinimumHeight(700)
-    #d.setWindowModality(Qt.ApplicationModal)
-    #d.setWindowModality(Qt.NonModal)
     d.setWindowModality(Qt.WindowModal)
 
     okButton = QPushButton("OK")
@@ -755,9 +733,9 @@ def showLiveAudioSignal():
     plt.ylabel("Amplitude [rel]", fontsize=14)
     plt.ylim(-35000, 35000)
 
+    # https://stackoverflow.com/questions/16732379/stop-start-pause-in-python-matplotlib-animation
   #~ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=True)
     ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=False)
-    # https://stackoverflow.com/questions/16732379/stop-start-pause-in-python-matplotlib-animation
 
     playWav("ok")
 
@@ -803,8 +781,6 @@ def showAudioEia():
 
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setWindowTitle("Eia")
-    #d.setWindowModality(Qt.ApplicationModal)
-    #d.setWindowModality(Qt.NonModal)
     d.setWindowModality(Qt.WindowModal)
 
     okButton = QPushButton("OK")

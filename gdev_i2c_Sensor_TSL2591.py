@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 """
-I2C module TSL2591 (Light Sensor, Visible + Infrared)
+I2C module TSL2591 ALS (Ambient-Light-Sensor) for Visible + Infrared light
 """
 
 ###############################################################################
@@ -23,7 +23,7 @@ I2C module TSL2591 (Light Sensor, Visible + Infrared)
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -35,6 +35,27 @@ from   gsup_utils       import *
 # Sensor Bluedot:
 # Herstellerreferenz: BME280 + TSL2591, ASIN: B0795WWXX8
 # Light sensor: address 0x29"
+# ATTENTION:
+# this board responds also to address 0x28, but only in scans
+# From: https://www.exp-tech.de/sensoren/licht/5226/adafruit-tsl2591-high-dynamic-range-digital-light-sensor
+# "This board/chip uses I2C 7-bit address 0x29 and 0x28 (yes BOTH!)"
+# 0x28 addr is present, but no data can be read from it!
+#
+# Gain and Integration time determine sensitivity and quality of measurement
+    # Gain, doc page 6
+    #         Name   Factor
+    # AGAIN  = Low    1
+    # AGAIN  = Med    25      1
+    # AGAIN  = High   428     17.12       1
+    # AGAIN  = Max    9876    395.04      23.07
+
+    # Integration time, doc page 13
+    # ATIME  = 100 ms
+    # ATIME  = 200 ms
+    # ATIME  = 300 ms
+    # ATIME  = 400 ms
+    # ATIME  = 500 ms
+    # ATIME  = 600 ms
 
 #activating TSL2591 on ELVdongle +++++++++++++++++++++++++++++++++++++++++++
 #ELV TSL2591 TX 14:12:43   [  9] [  9]  get ID               == b'S 52 B2 P'
@@ -60,38 +81,26 @@ from   gsup_utils       import *
 class SensorTSL2591:
     """Code for the TSL2591 sensors"""
 
-    PID         = 0x00      # acc to document, page 16
-
-    # CMD Register = 0b1 01 0 0000  = 0xA0 is: CMD + Normal operation
-    CMD         = 0xA0
-
-    # Gain and Integration time determine sensitivity and quality of measurement
-    # Gain, doc page 6
-    #         Name   Factor
-    #AGAIN  = Low    1
-    #AGAIN  = Med    25      1
-    #AGAIN  = High   428     17.12       1
-    #AGAIN  = Max    9876    395.04      23.07
-    #
-    # Integration time, doc page 13
-    #ATIME  = 100 ms
-    #ATIME  = 200 ms
-    #ATIME  = 300 ms
-    #ATIME  = 400 ms
-    #ATIME  = 500 ms
-    #ATIME  = 600 ms
-
-    integration_time = ["100ms", "200ms", "300ms", "400ms", "500ms", "600ms"]
+    name        = "TSL2591"
+    addr        = 0x29              # it has no other addr but 0x29
+    id          = 0x50              # ID 0x50 is a fixed value
+    PID         = 0x00              # acc to document, page 16
+                                    # The PID register provides an identification of the devices package.
+                                    # This register is a read-only register whose value never changes.
+                                    # PID bits 5:4 Package Identification = 00
+    CMD         = 0xA0              # CMD Register = 0b1 01 0 0000 = 0xA0 is: CMD + Normal operation
 
     #                Name:  FieldVal,  Factor
-    sensorgain  = { "Low":  (0b00,     1),
+    SensorGain  = {
+                    "Low":  (0b00,     1),
                     "Med":  (0b01,     25),
                     "High": (0b10,     428),
                     "Max":  (0b11,     9876),
                   }
 
     #                Name:  FieldVal,  ms
-    sensorint   = { "100ms":(0b000,    100),
+    SensorInteg = {                             # the signal value is increasing LINEARLY with integration time
+                    "100ms":(0b000,    100),
                     "200ms":(0b001,    200),
                     "300ms":(0b010,    300),
                     "400ms":(0b011,    400),
@@ -99,91 +108,157 @@ class SensorTSL2591:
                     "600ms":(0b101,    600),
                   }
 
-
-    def __init__(self, TSL2591):
-
-        self.dongle  = TSL2591["dngl"]    # "ELVdongle", "IOW24-DG", "ISSdongle"
-        self.addr    = TSL2591["addr"]    # 0x29
-        self.subtype = TSL2591["type"]    # Device ID: 0x50
-        self.name    = TSL2591["name"]    # TSL2591
+    lastselindex   = 1              # index to SensorGain Low, Med, High, Max; start with Med; best
+                                    # chance for success in fewest cycles
 
 
-    def TSL2591Init(self):
+    def __init__(self, addr):
+        """Init SensorTSL2591 class"""
+
+        self.addr = addr            # addr: 0x29 (it has no other, but for conistency of programming)
+
+
+    def SensorInit(self):
         """check ID, check PID, Reset, enable measurement"""
 
-    # Get Device Identification = 0x50  (= as subtype)
-        # ID Register (0x12) (Bit 7:0)
-        data    = [self.CMD + 0x12]
-        rbytes  = 1
-        answ        = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="get ID")
-        if answ[0] == self.subtype:
-            #fprint("Found Sensor TSL2591")
-            pass
-        else:
-            efprint("Did NOT find Sensor TSL2591")
-            return False
+        fncname = "SensorInit: " + self.name + ": "
+        dmsg    = "Sensor {:8s} at address 0x{:02X} with ID 0x{:02x} ".format(self.name, self.addr, self.id)
 
-    # Get package identification (PID)
+        dprint(fncname)
+        setDebugIndent(1)
+
+        # check for presence of an I2C device at I2C address
+        if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
+            # no device found
+            setDebugIndent(0)
+            return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
+        else:
+            # device found
+            gdprint("Found an I2C device at address 0x{:02X}".format(self.addr))
+
+        # Get Device ID = 0x50
+        # The ID register provides the device identification. This register is a read-only register
+        # whose value never changes.
+        # ID Register (0x12) (Bit 7:0) value: 0x50
+        tmsg      = "Get ID"
+        register  = self.CMD + 0x12
+        readbytes = 1
+        data      = []
+        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        if len(answ) == readbytes and answ[0] == self.id:
+            response = (True,  "Initialized " + dmsg)
+            gdprint("Sensor {} at address 0x{:02X} has proper ID: 0x{:02X}".format(self.name, self.addr, self.id))
+        else:
+            setDebugIndent(0)
+            return (False, "Failure - Did find an I2C device, but it has wrong ID: '{}' instead of {}".format(answ, self.id))
+
+        # Get package identification (PID)
         # PID Register (0x11) (Bit 5:4) (2 bits only!)
-        data    = [self.CMD + 0x11]
-        rbytes  = 1
-        answ        = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="PID read (Bits5:4)")
-
-        pid     = answ[0] & 0b00110000
-        if pid == self.PID:
-            #fprint("Package Identification 0b{:02b} confirmed".format(pid))
-            pass
+        # PID: Package Identification = 00 (really, just 0x00!)
+        # lohnt sich das drinzulassen?
+        tmsg      = "Get PID"
+        register  = self.CMD + 0x11
+        readbytes = 1
+        data      = []
+        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        if len(answ) > 0:
+            pid       = answ[0] & 0b00110000
+            if pid == self.PID:
+                gdprint(fncname + "Package Identification 0b{:02b} confirmed".format(pid))
+                pass
+            else:
+                efprint(fncname + "Package Identification 0b{:02b} not as expected".format(pid))
+                setDebugIndent(0)
+                return (False, "Failure - Did find sensor, but Package Identification is: '{}' and not: {}".format(pid, self.PID))
         else:
-            efprint("Package Identification 0b{:02b} not as expected".format(pid))
+            edprint(fncname + "Package Identification 0b{:02b} not as expected, answ:", answ)
+            setDebugIndent(0)
+            return (False, "Failure - Did find sensor, but Package Identification is: '{}' and not: {}".format(pid, self.PID))
 
-    # System Reset
-        # Control Register (0x01)
-        #
-        # Important: the System Reset will NOT return an ACK! (observed on both ELV and IOW)
-        #
-        data    = [self.CMD + 0x01, 0x80] # System Reset, AGAIN=00, ATIME=000
-        rbytes  = 1
-        #answ        = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="System Reset")
+        # reset to Power-Up status
+        gdprint(fncname + "Reset to Power-up Status")
+        self.SensorReset()
 
-    # Enable measurement
+        # enable measurements
+        gdprint(fncname + "Enable Measurements")
+        self.TSL2591enableMeasurements()
+
+        setDebugIndent(0)
+
+        return response
+
+
+    def TSL2591enableMeasurements(self):
+
+        # Enable measurements
         # Enable Register (0x00)
-        # Power the device on, enable measurements
-        # Bit#0 = 1: Power ON
-        # Bit#1 = 1: ALS Enable
-        # Register: 0b 0000 00 11  =0x03 :
-        data    = [self.CMD + 0x00, 0x03]
-        rbytes  = 1
-        answ        = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="Enable ALS+PON")
+        # The ENABLE register is used to power the device on/off, enable functions and interrupts.
+        # Here using only PON (Power the device on), and AEN (enable measurements)
+        # PON Bit #0:   Power ON. This field activates the internal oscillator to permit the timers and
+        #               ADC channels to operate. Writing a one activates the oscillator. Writing a zero
+        #               disables the oscillator.
+        # AEN Bit #1:   ALS Enable. This field activates ALS function. Writing a one activates the ALS.
+        #               Writing a zero disables the ALS.
+        # set Register: 0b 0000 00 11  => 0x03
+        tmsg      = "set PON+AEN"
+        register  = self.CMD + 0x00
+        readbytes = 1
+        data      = [0x03]
+        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
-        return True
 
+    def SensorGetValues(self):
+        """get Lum in Auto mode. 1st run fast with 100ms integration time, then with desired time"""
 
-    def TSL2591getLumAuto(self, integration_time="500ms"):
-        """get Lum. 1st run fast with 100ms inttime, then with desired inttime"""
+        # duration:
+        # total duration is mainly determined by integration time:
+        #   using 2 cycles with 1st=100ms followed by 2nd=200 ms ==> observed duration is very stable
+        # therfore comparing duration minus 300 ms!
+        #                                                                                                                                     avg-300 ms
+        # ISS dongle: TSL2591:  Vis:0.6000, IR:0.1963, RAW-Vis:11853, RAW-IR:3879, Gain:9876, Integ:200 ms, dur: 312 ... 318 ms (avg: 314 ms)    14 ms    1.0x
+        # ELV dongle: TSL2591:  Vis:107.58, IR: 15.34, RAW-Vis: 5379, RAW-IR: 767, Gain: 25,  Integ:200 ms, dur: 385 ... 389 ms (avg: 387 ms)    87 ms    6.2x
+        # IOW dongle: TSL2591:  Vis:183.92, IR:  29.6, RAW-Vis: 9196, RAW-IR:1480, Gain: 25,  Integ:200 ms, dur: 454 ... 456 ms (avg: 455 ms)   155 ms   11.1x
+        # FTD dongle: TSL2591:  Vis:183.92, IR:  29.6, RAW-Vis: 9196, RAW-IR:1480, Gain: 25,  Integ:200 ms, dur: 620 ... 665 ms (avg: 627 ms)   327 ms   23.4x
 
-        if integration_time in self.integration_time:
-            finalatime = integration_time
-        else:
-            finalatime = "500ms"
+        #                                                                 avg-300 ms
+        # ISS dongle: TSL2591:  100 kHz dur: 312 ... 318 ms (avg: 314 ms)    14   ms    1.0x
+        # ISS dongle: TSL2591:  400 kHz dur: 310 ... 318 ms (avg: 313.3 ms)  15.3 ms    sogar langsamer???
+
+        start = time.time()
+        fncname = "SensorGetValues: " + self.name + ": "
+        dprint(fncname)
+        setDebugIndent(1)
+
+        SensorIntegIndex = "200ms"
+        finalatime       = SensorIntegIndex
+        finalIntTime     = self.SensorInteg[SensorIntegIndex][1]
+        # gdprint(fncname + "finalatime: ", finalatime)
+        # gdprint(fncname + "finalIntTime: ", finalIntTime)
 
         selector  = ("Low",      # Factor = 1
                      "Med",      # Factor = 25
                      "High",     # Factor = 428
                      "Max",      # Factor = 9876
                     )
-        selindex  = 1            # start with Med; best chance for success in fewest cycles
-
-        again     = selector[selindex]
-        atime     = "100ms"      # make first guess fast; the use final, slow inttime
-        firstRun  = True
-        breakflag = False
+        selindex    = self.lastselindex # =1 => Factor 25, # start with Med; best chance for success in fewest cycles
+        again       = selector[selindex]
+        atime       = "100ms"      # make first guess fast; then use final, slow inttime
+        firstRun    = True
+        dataFormat  = "Vis:{:6.5g}, IR:{:6.5g}, RAW-Vis:{:5.0f}, RAW-IR:{:4.0f}, Gain:{:3.0f}, Integ:{} ms"
 
         while True:
-            #get a lum value
-            vis, ir, visraw, irraw, gainFct, inttime = self.TSL2591getLum(gain=again, intgrl=atime)
+            breakflag   = False
 
-            wprint("prelim result: Vis: {:3.3g},   IR: {:3.3g}, Gain: {:4d},   RAW: Vis: {},   IR: {}, IntTime:{}"\
-                                  .format(vis, ir, gainFct, visraw, irraw, inttime ))
+            #get a lum value
+            lumstart = time.time()
+            lumdata  = self.TSL2591getLum(gain=again, intgrl=atime)
+            duration = (time.time() - lumstart) * 1000
+            cdprint(fncname + "getLum: " + dataFormat.format(*lumdata) + ", dur:{:0.0f} ms".format(duration))
+
+            vis, ir, visraw, irraw, gainFct, inttime = lumdata  # need visraw and inttime only
+
+            if np.isnan(vis) and np.isnan(ir): break # if all nan then exit
+
 
             # lower limit for autoscale must be <= min(2600, 3800, 2800)
             # chosen is 2500
@@ -195,233 +270,196 @@ class SensorTSL2591:
             #AGAIN = Max    9876    395.04      23,07                   65000
 
             lastselindex = selindex
-            testraw = visraw * 600 / inttime
+            testraw      = visraw * finalIntTime / inttime  # estimate the value with selected final integ time
+            # cdprint(fncname + "testraw: ", testraw)
 
             if testraw > 65000:                         # too much light
-                selindex += -1                          # one step down
-                if selindex < 0: breakflag = True       # reached the bottom?
-                wprint("Autodecrease Gain 1 step")
+                selindex += -1                          # 1 step down
+                if selindex < 0:
+                    selindex = 0
+                    breakflag = True       # reached the bottom?
+                # cdprint(fncname + "AutoDEcrease Gain 1 step")
 
-            elif testraw < 152:                         # allows two step up:
-                selindex += 2                           # one step up
-                if selindex > 3: breakflag = True       # broke the ceiling?
-                wprint("Autoincrease Gain 2 steps")
+            elif testraw < 152:                         # allows 2 step up:
+                selindex += 2                           # 1 step up
+                if selindex > 3:
+                    selindex = 3
+                    breakflag = True       # broke the ceiling?
+                # cdprint(fncname + "AutoINcrease Gain 2 steps")
 
-            elif testraw < 2500:                        # allows one step up
-                selindex += 1                           # one step up
-                if selindex > 3: breakflag = True       # broke the ceiling?
-                wprint("Autoincrease Gain 1 step")
+            elif testraw < 2500:                        # allows 1 step up
+                selindex += 1                           # 1 step up
+                if selindex > 3:
+                    selindex = 3
+                    breakflag = True       # broke the ceiling?
+                # cdprint(fncname + "AutoINcrease Gain 1 step")
             else:
                 breakflag = True
 
-            if breakflag:
-                if firstRun:
-                    breakflag = False
-                else:
-                    break                               # best value possible
+            if breakflag and not firstRun:
+                break
 
+            # set for next getLum
             firstRun    = False
             again       = selector[selindex]            # set new gain
             atime       = finalatime                    # set best resolution for final run
 
-        wprint("Final result:  Vis: {:3.3g},   IR: {:3.3g}, Gain: {:4d},   RAW: Vis: {},   IR: {}, IntTime:{}"\
-                               .format(vis, ir, gainFct, visraw, irraw, inttime ))
+        self.lastselindex = selindex
 
-        return ("TSL2591", vis, ir, visraw, irraw, gainFct, inttime)
+        # The Final Auto-lumdata are the same as last prelim lumdata !
+
+        duration = (time.time() - start) * 1000
+        gdprint(fncname + "Total:  " + dataFormat.format(*lumdata) + ", dur:{:0.0f} ms".format(duration))
+
+        setDebugIndent(0)
+        return (vis, ir)
 
 
     def TSL2591getLum(self, gain = 'Low', intgrl = "100ms"):
+        """non-Auto mode"""
 
-        #print("-------------------------TSL2591getLum - Begin")
+        start    = time.time()
+        fncname  = "TSL2591getLum: "
+        response = (gglobs.NAN, ) * 6            # default
 
-        gainFV  = self.sensorgain[gain][0]   # Field Value
-        gainFct = self.sensorgain[gain][1]   # Gain Factor
+        gainFV   = self.SensorGain[gain][0]      # Field Value
+        gainFct  = self.SensorGain[gain][1]      # Gain Factor
 
-        intFV   = self.sensorint[intgrl][0]  # Field Value
-        intTime = self.sensorint[intgrl][1]  # integration time in ms
-        intFct  = intTime / 100              # Gain Factor by integration time
+        intFV    = self.SensorInteg[intgrl][0]   # Field Value
+        intTime  = self.SensorInteg[intgrl][1]   # integration time in ms
+        intFct   = intTime / 100                 # Gain Factor by integration time
+
 
         # Control Register (0x01) - Setting Gain Mode and Integration Time
-        data    = [self.CMD + 0x01, gainFV << 4 | intFV ]
-        rbytes  = 1
-        answ        = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="Gain:{}, Int:{} ms".format(gainFct, intTime))
+        tmsg      = "set gain+integ"
+        register  = self.CMD + 0x01
+        readbytes = 1
+        data      = [gainFV << 4 | intFV ]      # at start: 0x10
+        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
-        # Cycle the AEN (ALS Enable) bit in the Enable Register (truly necessary?)
+        if len(answ) != 1:
+            msg = BOLDRED + "No data or wrong data returned: answ= '{}'".format(answ)
+            rdprint(fncname + msg)
+            return response
+
+        ####################################################################################################################
+        # Cycling the AEN bit does NOT seem necessary
+        # DOCH!!! DOCH!!! DOCH!!! DOCH!!! DOCH!!! DOCH!!! DOCH!!!
+        # If left out, spikes come up in rather regular intervals!
         # Enable Register (0x00)
-        data    = [self.CMD + 0x00, 0x01]   # ALS Disable
-        rbytes  = 1
-        answ        = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="Disable AEN")
+        # Cycle the AEN (ALS Enable) bit in the Enable Register
+        # Enable Register (0x00)
+        tmsg      = "Disable AEN"
+        register  = self.CMD
+        readbytes = 1
+        data      = [0x01]  # ALS Disable, only PON is laft
+        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
         # Enable Register (0x00)
-        data    = [self.CMD + 0x00, 0x03]   # ALS Enable
-        rbytes  = 1
-        answ        = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="Enable AEN")
+        # AEN: Bit #1:  ALS Enable. This field activates ALS function. Writing a one activates the ALS.
+        #               Writing a zero disables the ALS.
+        # PON: Bit #0:  Power ON. This field activates the internal oscillator to permit the timers and
+        #               ADC channels to operate. Writing a one activates the oscillator. Writing a zero
+        #               disables the oscillator
+        tmsg      = "Enable AEN"
+        register  = self.CMD + 0x00         # PON + ALS Enable
+        readbytes = 1
+        data      = [0x03]
+        answ      = gglobs.I2CDongle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        ####################################################################################################################
 
-        start = time.time()
-        time.sleep(intTime / 1000 * 1.5  ) # sleeping for integration time is almost
-                                           # always enough to finish conversion
-                                           # added 50%
-
+        # get status
         # Read the Status register until the AVALID bit (Bit #0 in Status) is set
-        # Status Register (0x13)
-        data    = [self.CMD + 0x13]
-        rbytes  = 1
-        answ        = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="status", doPrint = True, end = "")
-        if answ[0] & 0x01:
-     #       util.ncprint("Data ready")
-            pass
-        else:
-            ecprint("Data not ready", end="")
-            ecprint(".", end="") # one dot for each call of status
-            while True:
-                if answ[0] & 0x01:
-                    ncprint("ready after {:3.2f}sec".format(time.time() - start))
-                    break
-                data    = [self.CMD + 0x13] # Status is Register (0x13)
-                rbytes  = 1
-                answ        = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="status", doPrint = False)
-                ecprint(".", end="")
+        # The Status Register provides the internal status of the device. This register is read only.
+        # AVALID Bit #0  ALS Valid. Indicates that the ADC channels have completed an integration cycle
+        # since the AEN bit was asserted.
+        tmsg         = "Status"
+        start_status = time.time()
+        time.sleep(intTime / 1000)          # sleeping for integration time; makes Status=ready on first call
+        callcounter = 1
+        while True:
+            # Status Register (0x13)
+            register  = self.CMD + 0x13
+            readbytes = 1
+            data      = []
+            answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+
+            if len(answ) == readbytes: answBit0 = answ[0] & 0x01
+            else:                      answBit0 = 0
+
+            if answBit0:
+                # edprint(fncname + "Data ready")
+                break
+            else:
+                if (time.time() - start_status) > 3 or callcounter > 3:
+                    edprint(fncname + "Notbremse - Data not ready after 3 sec or callcounter > 10!")
+                    return response         # notbremse nach 5 sec
+                time.sleep(0.005)
+                cdprint(fncname + "Data not ready in call #{}".format(callcounter))
+                callcounter += 1
+
 
         # ALS Data Register (0x14 - 0x17)
-        data   = [self.CMD + 0x14]
-        rbytes = 4
-        answ   = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="Get data", end="")
+        tmsg      = "ALS Data"
+        register  = self.CMD + 0x14
+        readbytes = 4
+        data      = []
+        answ      = gglobs.I2CDongle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
-        visraw = answ[0] | (answ[1] << 8)
-        irraw  = answ[2] | (answ[3] << 8)
+        if len(answ) == readbytes:
+            visraw = answ[0] | (answ[1] << 8)
+            irraw  = answ[2] | (answ[3] << 8)
 
-        # Results are validated for being a good approximation by this
-        # normalization over all Gain factors
-        vis    = visraw  / gainFct / intFct
-        ir     = irraw   / gainFct / intFct
+            # Results were validated for being a good approximation by this
+            # normalization over Gain and integration factors
+            vis    = visraw  / gainFct / intFct
+            ir     = irraw   / gainFct / intFct
+            response = vis, ir, visraw, irraw, gainFct, intTime # need visraw for auto function in SensorGetValues
 
-        return vis, ir, visraw, irraw, gainFct, intTime # need visraw for auto function in TSL2591getLumAuto
+        else:
+            # Error: answ too short or too long
+            edprint(fncname + "incorrect data, answ: ", answ)
+            # response = (gglobs.NAN, ) * 6
+
+        # duration = (time.time() - start) * 1000
+        # dataFormat  = "Vis:{:6.5g}, IR:{:6.5g}, RAW-Vis:{:5.0f}, RAW-IR:{:4.0f}, Gain:{:3.0f}, Integ:{} ms"
+        # gdprint(fncname + "Init:   " + dataFormat.format(*response) + ", dur:{:0.0f} ms".format(duration))
+
+        return response
 
 
-    def TSL2591getInfo(self):
+    def SensorGetInfo(self):
 
-        info = """{} (Category: {})
-- DeviceID:   0x{:02X}
-- Address:    0x{:02X}
-""".format(self.name, "Ambient Light", self.subtype, self.addr)
+        info  = "{}\n"                            .format("Ambient Light (Visible, Infrared)")
+        info += "- Address:         0x{:02X}\n"   .format(self.addr)
+        info += "- ID:              0x{:02X}\n"   .format(self.id)
+        info += "- Variables:       {}\n"         .format(", ".join("{}".format(x) for x in gglobs.Sensors["TSL2591"][5]))
 
         return info.split("\n")
 
 
-    def TSL2591Reset(self):
-        """Reset light sensor"""
+    def SensorReset(self):
+        """Reset the sensor to Power-up status"""
 
-        # System Reset
-        # Control Register (0x01)
-        # Important: the System Reset will NOT return an ACK! (observed on both ELV and IOW)
-        data    = [self.CMD + 0x01, 0x80] # System Reset, AGAIN=00, ATIME=000
-        rbytes  = 1
-        #answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="System Reset")
-        answ         = gglobs.elv.ELVaskDongle(self.addr, data, rbytes, name=self.name, info="System Reset")
+        # System reset. When asserted, the device will reset equivalent to a power-on reset.
+        # This also clears any Gain and Integ-Time setting!
+        # SRESET is self-clearing.
+        # Control Register: 0x01
+        #
+        # IMPORTANT: the System Reset will NOT return an ACK! (observed on both ELV and IOW)
+        #
+        # duration: ELV: 3.7 ms
+        #           ISS: 0.8 ms
 
+        start     = time.time()
+        fncname   = "SensorReset: "
 
-    def TSL2591runAllFunctions(self):
-        """ for TSL2591 sensor """
+        tmsg      = "Reset"
+        register  = self.CMD + 0x01     # Control call
+        readbytes = 1
+        data      = [0x80]              # System Reset, AGAIN=00, ATIME=000
+        answ      = gglobs.I2CDongle.DongleWriteRead(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
-        # not running until the "answ    = util.askDongle(..." are exchanged for
-        #                      " answ    = gglobs.elv.ELVaskDongle(..."
-        return
+        duration = 1000 * (time.time() - start)
 
-
-    # Get Device Identification = 0x50  (= as subtype)
-        # ID Register (0x12) (Bit 7:0)
-        data    = [self.CMD + 0x12]
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="get ID")
-        if answ[0] == self.subtype:
-            print("Found Sensor TSL2591")
-        else:
-            print("Did NOT find Sensor TSL2591")
-            #sys.exit()
-
-    # Get package identification (PID)
-        # PID Register (0x11) (Bit 5:4) (2 bits only!)
-        data    = [self.CMD + 0x11]
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="PID read (B5:4)")
-        pid     = answ[0] & 0b00110000
-        if pid == self.PID:
-            print("Package Identification '0b{:02b}' confirmed".format(pid), color = TGREEN)
-        else:
-            print("Package Identification '0b{:02b}' not as expected".format(pid))
-
-    # System Reset
-        # Control Register (0x01)
-        # Important: the System Reset will NOT return an ACK! (observed on both ELV and IOW)
-        data    = [self.CMD + 0x01, 0x80] # System Reset, AGAIN=00, ATIME=000
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="System Reset")
-
-    # Enable measurement
-        # Enable Register (0x00)
-        # Power the device on, enable measurements
-        # Bit#0 = 1: Power ON
-        # Bit#1 = 1: ALS Enable
-        # Register: 0b 0000 00 11  =0x03 :
-        data    = [self.CMD + 0x00, 0x03]
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="Enable ALS+PON")
-
-    # Get status
-        # Status Register (0x13)
-        data    = [self.CMD + 0x13]
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="status")
-
-    # Get data
-        # ALS Data Register (0x14 - 0x17)
-        data    = [self.CMD + 0x14]
-        rbytes  = 4
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="data")
-        print("Data:", answ)
-
-    # Set Med gain
-        # Control Register (0x01)
-        data    = [self.CMD + 0x01, 0x10]
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="Med gain")
-
-    # Set High gain
-        # Control Register (0x01)
-        data    = [self.CMD + 0x01, 0x20]
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="High gain")
-
-    # Set High gain + 300 ms integration
-        # Control Register (0x01)
-        data    = [self.CMD + 0x01, 0x22]
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="High gain+300ms")
-
-    # Set Med gain + 300 ms integration
-        # Control Register (0x01)
-        data    = [self.CMD + 0x01, 0x12]
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="Med gain+300ms")
-
-    # Set Med gain + 600 ms integration
-        # Control Register (0x01)
-        data    = [self.CMD + 0x01, 0x15]
-        rbytes  = 1
-        answ    = util.askDongle(self.dongle, self.addr, data, rbytes, name=self.name, info="Med gain+600ms")
-
-
-def ncprint(*args, color = HILITECOLOR, end = "\n"):
-    """Normal color print """
-
-    print(color, end='')
-    print(*args, end='')
-    print(NORMALCOLOR, end=end)
-
-
-def ecprint(*args, color = ERRORCOLOR, end="\n"):
-    """Error color print """
-
-    ncprint(*args, color = color, end=end)
-
-
+        return fncname + "Done in {:0.1f} ms".format(duration)

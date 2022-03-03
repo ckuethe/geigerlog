@@ -1,0 +1,15 @@
+pip         ==  21.3.1
+setuptools  ==  60.5.0
+pyqt5       ==  5.15.6
+pyqt5-sip   ==  12.9.0
+matplotlib  ==  3.5.1
+numpy       ==  1.22.1
+scipy       ==  1.7.3
+pyserial    ==  3.5
+sounddevice ==  0.4.4
+soundfile   ==  0.10.3.post1
+
+# uncomment any lines to install these modules
+# paho-mqtt   ==  1.6.1
+# pip-check   ==  2.7
+# LabJackPython == 2.0.4

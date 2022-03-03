@@ -26,7 +26,7 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -47,8 +47,8 @@ def plotFFT():
         return
 
     vindex      = gglobs.exgg.select.currentIndex()
-    vname       = list(gglobs.varsBook)[vindex]
-    vnameFull   = gglobs.varsBook[vname][0]
+    vname       = list(gglobs.varsCopy)[vindex]
+    vnameFull   = gglobs.varsCopy[vname][0]
     yunit       = vnameFull
     #print("plotFFT: vname, vnameFull: ", vname, vnameFull)
 
@@ -70,7 +70,10 @@ def plotFFT():
         gglobs.exgg.showStatusMessage("No data available")
         return
 
-    if rawt0.size < 20:
+    rawt0_nonnan   = np.count_nonzero(~np.isnan(rawt0))         # non-nan count
+    rawsigt0_nonan = np.count_nonzero(~np.isnan(rawsigt0))      # dito
+
+    if rawt0_nonnan < 20 or rawsigt0_nonan < 20:
         gglobs.exgg.showStatusMessage("Not enough data (need 20+)")
         return
 
@@ -344,8 +347,6 @@ def plotFFT():
     #d.setFont(gglobs.fontstd)
     d.setWindowTitle("FFT & Autocorrelation" )
     #d.setMinimumHeight(gglobs.window_height)
-    #d.setWindowModality(Qt.ApplicationModal)
-    #d.setWindowModality(Qt.NonModal)
     d.setWindowModality(Qt.WindowModal)
 
     bbox    = QDialogButtonBox()

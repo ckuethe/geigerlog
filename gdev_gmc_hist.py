@@ -24,7 +24,7 @@ counter device or from file and create database.
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = ["Phil Gillaspy"]
 __license__         = "GPL3"
 
@@ -38,8 +38,6 @@ from   gsup_utils       import *            # all utilities
 
 import gsup_sql                             # database handling
 import gdev_gmc                             # getGMC_SPIR, getExtrabyte are used here
-#~from gdev_gmc import getGMC_SPIR                         # only getGMC_SPIR is used here
-
 
 
 def makeGMC_History(sourceHist):
@@ -80,13 +78,18 @@ def makeGMC_History(sourceHist):
 
             # Test auf die Bin File Länge. Wenn mit GQ's DV eingelesen
             # dann sind 256 Bytes ((512 for > GMC500series) zuviel eingelesen!!
+            # Problem: wenn mit anderen Programmen eingelesen, irgendwelche
+            # Werte können resultieren, wenn die Programme bei vielen FFs abschalten.
             lenhistold = len(hist)
             #print("len(hist):", lenhistold)
-            if len(hist) > 2**20:   hist = hist[0: 2**20]
-            else:                   hist = hist[0: 2**16]
+            # if len(hist) > 2**20:   hist = hist[0: 2**20]
+            if   len(hist) == 2**20 + 512:   hist = hist[0: 2**20]
+            elif len(hist) == 2**16 + 256:   hist = hist[0: 2**16]
+            # else:                   hist = hist[0: 2**16]
 
-            dprint("Removed {} bytes from end of orginal *.bin file of {} bytes".format(lenhistold - len(hist), lenhistold))
-            fprint("Removed {} bytes from end of orginal *.bin file of {} bytes".format(lenhistold - len(hist), lenhistold))
+            msg = "Removed {} bytes from end of orginal binary file of {} bytes".format(lenhistold - len(hist), lenhistold)
+            dprint(msg)
+            fprint(msg)
 
     elif sourceHist == "Device":
         data_origin   = str_data_origin.format(stime(), gglobs.GMCDeviceDetected)
@@ -140,7 +143,7 @@ def makeGMC_History(sourceHist):
 
         stop = time.time()
         dtime = (stop - start)
-        timing = "Total time: {:0.1f} sec, Total Bytes: {:d} --> {:0.1f} kBytes/s".format(dtime, len(hist), len(hist) / dtime / 1000)
+        timing = "Total time: {:0.1f} sec, Total Bytes: {:d} --> {:0.1f} kBytes/s ({:0.2f} MBits/s)".format(dtime, len(hist), len(hist) / dtime / 1000, len(hist) / dtime / 1E6 * 8)
         dprint(timing)
         fprint(timing)
 
@@ -149,7 +152,7 @@ def makeGMC_History(sourceHist):
         extra = gdev_gmc.getGMC_ExtraByte()
     ### end if   sourceHist== #################################################
 
-    printHistDetails(hist)
+    fprintHistDetails(hist)
 
     # parse HIST data
     gglobs.HistoryDataList      = []
@@ -177,10 +180,11 @@ def makeGMC_History(sourceHist):
     return (0, "")
 
 
-def printHistDetails(hist=False):
-    """ """
+def fprintHistDetails(hist=False):
+    """prints byte count info to the NotePad, either on a hist given in the call
+    parameter, or by reading the database"""
 
-    #print("printHistDetails: hist:", hist)
+    #print("fprintHistDetails: hist:", hist)
     if hist == False:
         if gglobs.hisConn == None:
             gglobs.exgg.showStatusMessage("No data available")
@@ -196,17 +200,21 @@ def printHistDetails(hist=False):
 
     histlen     = len(hist)                  # Total length; could be any length e.g. when read from file
     histFF      = hist.count(b'\xFF')        # total count of FF bytes
+    histAA      = hist.count(b'\xAA')        # total count of AA bytes
 
     histRC      = hist.rstrip(b'\xFF')       # after right-clip FF (removal of all trailing 0xff)
     histRClen   = len(histRC)                # total byte count
     histRCFF    = histRC.count(b'\xFF')      # total count of FF in right-clipped data
 
-    fprint("Binary data total byte count:"     , "{} Bytes".format(histlen))
-    fprint("Count of data bytes:"              , "{} Bytes".format(histRClen))
-    fprint("Count of FF bytes - Total:"        , "{} Bytes".format(histFF))
-    fprint("Count of FF bytes - Trailing:"     , "{} Bytes".format(histlen - histRClen))
-    fprint("Count of FF bytes - Within data:"  , "{} Bytes".format(histRCFF))
+    fpformat = "{:40s} {} Bytes"
+    fprint(fpformat.format("Binary data total byte count:"              , histlen))
+    fprint(fpformat.format("Count of data bytes - w/o trailing 0xFF:"   , histRClen))
 
+    fprint(fpformat.format("Count of 0xAA bytes - @TimeTags:"           , histAA))
+
+    fprint(fpformat.format("Count of 0xFF bytes - Total:"               , histFF))
+    fprint(fpformat.format("Count of 0xFF bytes - Trailing:"            , histlen - histRClen))
+    fprint(fpformat.format("Count of 0xFF bytes - Within data:"         , histRCFF))
 
 
 def parseHIST(hist):

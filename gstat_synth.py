@@ -26,7 +26,7 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -41,27 +41,26 @@ def createSyntheticData():
         return " ".join("%0.2f" % e for e in d)
 
     fncname = "createSyntheticData: "
-    fprint(header("Create Synthetic Log CSV file"), debug=True)
 
-    default_meanlist = (0.3, 1, 3, 10, 30, 100, 300, 1000, 3000, 10000)
-
-    records     = 100000
-    mean        = 30
-    cycletime   = 1.0       # in seconds
+    default_meanlist    = (0.3, 1, 3, 10, 30, 100, 300, 1000, 3000, 10000)
+    records             = 100000
+    mean                = 30
+    cycletime           = 1.0       # in seconds
 
     # Dialog to input single mean value, or input 0 to use default list
     mean, okPressed = QInputDialog.getDouble(None, "Create Synthetic Log","CPS Mean: Enter desired mean value, or 0 to use this default list for CPS mean:\n{}".format(default_meanlist), 20, min=0, max=1000000, decimals=2)
+    # gdprint("mean", mean)
     if okPressed:
         if mean > 0:    meanlist = (mean,)
         else:           meanlist = default_meanlist
     else:
-        fprint("Cancelled")
         return
 
     setBusyCursor()
 
+    fprint(header("Create Synthetic Log CSV file"), debug=True)
     fprint("Create logs for mean(s):", "{}\n".format(shd(meanlist)), debug=True)
-    Qt_update()
+    Qt_update() # needed to show fprints
 
     for mean in meanlist:
     # get time
@@ -84,6 +83,7 @@ def createSyntheticData():
     # get data - select the distribution you want
         stddev      = np.sqrt(mean)
 
+        # sigt, DataSrc     = getDeltaTimePoisson(records, mean)
         sigt, DataSrc     = getWhiteNoisePoisson(records, mean)                             # White Noise from Poisson Distribution
         #sigt, DataSrc    = getWhiteNoiseNormal(records, mean, stddev)                      # White Noise from Normal Distribution
         #sigt, DataSrc    = getSinus(records, t)                                            # Sine (one or more)
@@ -113,7 +113,7 @@ def createSyntheticData():
         path = os.path.join(gglobs.dataPath, DataSrc + ".csv")
         writeFileW(path, "", linefeed = True)
         writeFileA(path, "#HEADER ," + strt0 + ", SYNTHETIC data: " + DataSrc)
-        writeFileA(path, "#LOGGING," + strt0 + ", Start: cycle {} sec, device 'SYNTHETIC'".format(cycletime))
+        writeFileA(path, "#LOGGING," + strt0 + ", Start @Cycle {} sec, device 'SYNTHETIC'".format(cycletime))
         nsigt = np.array(sigt)
         maxprints = 10
         for i in range(records):
@@ -125,34 +125,50 @@ def createSyntheticData():
             if i < maxprints or i >= (records - maxprints): print(writestring)
 
         fprint("Saved to file: {}\n".format(path), debug=True)
-        Qt_update()
 
     setNormalCursor()
+
+
+def getDeltaTimePoisson(records, mean):
+    """The length of the intervall of two successive Poisson events
+    mean:   in CPS
+    return: distribution with times in µs
+    """
+
+    fncname = "getDeltaTimePoisson_"
+    DataSrc = "DeltaTimePoisson_CPSmean={}".format(mean)
+
+    x       = np.random.exponential(1 / mean, size=records) * 1E6    # duration before next pulse in µs
+
+    xtext   = fncname + "size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
+    fprint("Resulting Data:", xtext, debug=True)
+
+    return x, DataSrc
 
 
 def getWhiteNoisePoisson(records, mean):
     """White noise data drawn from Poisson distribution"""
 
-    fncname = "getWhiteNoisePoisson: "
-    DataSrc = "WhiteNoisePoisson_CPSmean={}".format(mean)
+    fncname = "getWhiteNoisePoisson_"
+    DataSrc = fncname + "CPSmean={}".format(mean)
 
     x       = np.random.poisson(mean, size=records)
 
-    xtext   = "WhiteNoisePoisson: size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
+    xtext   = fncname + "size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
     fprint("Resulting Data:", xtext, debug=True)
 
     return x, DataSrc
 
 
 def getWhiteNoiseNormal(records, mean, stddev):
-    """
-    White noise data drawn from Normal distribution
-    """
-    DataSrc = "WhiteNoiseNormal_CPSmean={}_std={:3.2f}".format(mean, stddev)
+    """White noise data drawn from Normal distribution"""
+
+    fncname = "getWhiteNoiseNormal_"
+    DataSrc = fncname + "CPSmean={}_std={:3.2f}".format(mean, stddev)
 
     x       = np.random.normal(mean, stddev, size=records)
 
-    xtext   = "WhiteNoiseNormal: size:{}, mean={:0.3f}, var={:0.3f}, std={:0.3f}".format(x.size, np.mean(x), np.var(x), np.std(x))
+    xtext   = fncname + "size:{}, mean={:0.3f}, var={:0.3f}, std={:0.3f}".format(x.size, np.mean(x), np.var(x), np.std(x))
     fprint("Resulting Data:", xtext, debug=True)
 
     return x, DataSrc

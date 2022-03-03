@@ -26,7 +26,7 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -40,8 +40,8 @@ def plotPoisson():
     setBusyCursor()
 
     vindex      = gglobs.exgg.select.currentIndex()
-    vname       = list(gglobs.varsBook)[vindex]
-    vnameFull   = gglobs.varsBook[vname][0]
+    vname       = list(gglobs.varsCopy)[vindex]
+    vnameFull   = gglobs.varsCopy[vname][0]
 
     if gglobs.logTimeDiffSlice is None:
         gglobs.exgg.showStatusMessage("No data available")
@@ -359,7 +359,7 @@ def plotPoisson():
     # canvas - this is the Canvas Widget that displays the `figure`
     # it takes the `figure` instance as a parameter to __init__
     canvas2 = FigureCanvas(fig2)
-    canvas2.setFixedSize(600,400) # needs to be >=600 wide for the nav coords to show even when in 2 lines!
+    canvas2.setFixedSize(520, 400)
 
 
     # plot histogram and other curves #########################################
@@ -385,30 +385,18 @@ def plotPoisson():
 
     ###########################################################################
 
-    labout  = QTextBrowser() # label to hold the description
+    labout = QTextBrowser()
     labout.setFont(gglobs.fontstd)
     labout.setLineWrapMode(QTextEdit.NoWrap)
     labout.setTextInteractionFlags(Qt.LinksAccessibleByMouse|Qt.TextSelectableByMouse)
     labout.setMinimumHeight(330)
-    #labout.setMinimumHeight(550)
 
+    labout.append("Countrates per Histogram Bin: {}".format(step))
     labout.append("Bin   Count Rate    Frequency    % of   Poisson-Fit    Residuals")
-
-    if step == 1:
-        # bins have only 1 count rate
-        labout.append("No.                (blue col)   Total    (red line) (Freq - Fit)")
-        for i in range(0, len(hist)):
-            labout.append("{:3d}   {:4.1f}           {:8.1f}  {:5.2f}%    {:10.1f}   {:+10.1f}".format(i + 1, bins[i], hist[i], hist[i]*100 / lenx, pdfs[i], hist[i] - pdfs[i]))
-    else:
-        # bins have more than one count rate
-        labout.append("No.   from ... to  (blue col)   Total    (red line) (Freq - Fit)")
-        for i in range(0, len(hist)):
-            labout.append("{:3d}   {:4.1f} ...{:4.1f}   {:8.1f}  {:5.2f}%    {:10.1f}   {:+10.1f}".format(i + 1, bins[i], bins[i+1] - 1, hist[i], hist[i]*100 / lenx, pdfs[i], hist[i] - pdfs[i]))
-
-    labout.append("Total count=       {:10.1f}  100.00%   {:10.1f}   {:+10.1f}".format(sum(hist), sum(pdfs), sum(hist - pdfs)))
-
-    labout.append("Countrates per Bin: {}".format(step))
-
+    labout.append("No.                (blue col)   Total    (red line) (Freq - Fit)")
+    for i in range(0, len(hist)):
+        labout.append("{:3d}   {:10.0f}   {:10.0f}  {:5.2f}%    {:10.1f}   {:+10.1f}".format(i + 1, bins[i], hist[i], hist[i]*100 / lenx, pdfs[i], hist[i] - pdfs[i]))
+    labout.append("Total count=       {:10.0f} 100.00%    {:10.1f}   {:+10.1f}".format(sum(hist), sum(pdfs), sum(hist - pdfs)))
     labout.append("\nGoodness of Fit Poisson :  r²  = {:5.3f}".format(r2))
 
     # chi stuff all removed, see above
@@ -426,55 +414,39 @@ def plotPoisson():
 
 # Assemble Data set statistics
     labout.append("\nData Set:")
-    labout.append("File      = {}"    .format(DataSrc))
-    labout.append("Records   = {}"    .format(x.size))
-    labout.append("Cycletime ={:8.2f}".format(cycletime * 86400) + " sec (overall average)")
-    labout.append("Average   ={:8.2f}".format(avgx))
-    labout.append("Variance  ={:8.2f}  same as Average if true Poisson Dist.".format(varx))
-    labout.append("Std.Dev.  ={:8.2f}".format(stdx))
-    if avgx >= 0:
-        labout.append("Sqrt(Avg) ={:8.2f}  same as Std.Dev. if true Poisson Dist.".format(np.sqrt(avgx)))
-    else:
-        labout.append("Sqrt(Avg) ={:8.2f}  same as Std.Dev. if true Poisson Dist.".format(gglobs.NAN))
-    labout.append("Std.Err.  ={:8.2f}".format(stdx / np.sqrt(x.size)))
-    labout.append("Skewness  ={:8.2f}  0:Norm.Dist.; skewed to: +:right   -:left".format(scipy.stats.skew    (x) ))
-    labout.append("Kurtosis  ={:8.2f}  0:Norm.Dist.; shape is:  +:pointy: -:flat".format(scipy.stats.kurtosis(x) ))
+    labout.append("File      = {}"     .format(gglobs.currentDBPath))
+    labout.append("Records   = {:8.0f}".format(x.size))
+    labout.append("Cycletime = {:8.2f} sec (overall average)".format(cycletime * 86400))
+    labout.append("Average   = {:8.2f}".format(avgx))
+    labout.append("Variance  = {:8.2f} same as Average if true Poisson Distribution".format(varx))
+    labout.append("Std.Dev.  = {:8.2f}".format(stdx))
+    if avgx >= 0:   mysqrt = np.sqrt(avgx)
+    else:           mysqrt = gglobs.NAN
+    labout.append("Sqrt(Avg) = {:8.2f} same as Std.Dev. if true Poisson Distribution".format(mysqrt))
+    labout.append("Std.Err.  = {:8.2f}".format(stdx / np.sqrt(x.size)))
+    labout.append("Skewness  = {:8.2f} 0:Norm.Dist.; skewed to: +:right   -:left".format(scipy.stats.skew    (x) ))
+    labout.append("Kurtosis  = {:8.2f} 0:Norm.Dist.; shape is:  +:pointy: -:flat".format(scipy.stats.kurtosis(x) ))
     labout.append("")
 
-    d       = QDialog()
+    d = QDialog()
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setWindowTitle("Poisson Test")
     d.setWindowModality(Qt.WindowModal)
-
-    #~mystatusBar = QStatusBar()
-    #~mystatusBar.showMessage("")
+    d.setMaximumWidth(520)
 
     navtoolbar = NavigationToolbar(canvas2, d) # choice of parent does not matter?
-    #~navtoolbar = NavigationToolbar(canvas2, None) # choice of parent does not matter?
-    #~navtoolbar = NavigationToolbar(canvas2, gglobs.exgg) # choice of parent does not matter?
 
-    # hide the cursor position from showing in the Nav toolbar
-    #ax1 = plt.gca()
-    #~ax1.format_coord = lambda x,y: f"x={x:.1f}, y={y:.1f}"
-    #~ax1.format_coord = lambda x,y: "x={:.1f},\ny={:.1f}".format(x, y)
-    #ax1.format_coord = lambda x,y: "x={:.1f}, y={:.1f}".format(x, y)
+    # show the cursor x, y position in the Nav toolbar
+    ax1 = plt.gca()
+    ax1.format_coord = lambda x,y: "x={:.1f}, y={:.1f}".format(x, y)
 
     bbox    = QDialogButtonBox()
     bbox.setStandardButtons(QDialogButtonBox.Ok)
     bbox.accepted.connect(lambda: d.done(0))
 
-    #~layoutHtb = QHBoxLayout()
- #~#   layoutHtb.addWidget(bbox)
-    #~layoutHtb.addWidget(navtoolbar)
-    #~layoutHtb.addStretch()
-    #~layoutHtb.addStretch() # strange - one is not enough? on Py3.5
-    #~layoutHtb.addStretch() # strange - one is not enough? on Py3.8
-
     layoutV   = QVBoxLayout(d)
     layoutV.addWidget(navtoolbar)
-    #layoutV.addLayout(layoutHtb)
     layoutV.addWidget(canvas2)
-    #~layoutV.addWidget(mystatusBar)
     layoutV.addWidget(labout)
     layoutV.addWidget(bbox)
 

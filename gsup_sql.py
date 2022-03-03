@@ -27,7 +27,7 @@ include in programs with:
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -304,9 +304,17 @@ def DB_readData(DB_Connection, sql, limit=0):
     if limit=0, the std sql is called, otherwise the lower or upper LIMIT limit"""
 
     res     = DB_Connection.execute(sql)
-    rows    = res.fetchall()
-    if limit > 0:    rows   = rows[0:limit] + rows[-limit:]
-    #print("rows:", rows)
+    try:
+        rows    = res.fetchall()
+    except Exception as e:
+        msg    = "Coding Error in Database"
+        exceptPrint(e, msg)
+        return msg
+
+    # for r in rows:        cdprint("rows:", r)
+
+    if limit > 0:
+        if len(rows) > limit * 2: rows   = rows[0:limit] + rows[-limit:]
 
     ddd = [x[1:2][0] for x in rows]
 
@@ -331,7 +339,7 @@ def DB_readComments(DB_Connection):
 
     res     = DB_Connection.execute(sql)
     rows    = res.fetchall()
-    #print("rows:", nrows, "\n", rows)
+    #cdprint("rows:", nrows, "\n", rows)
 
     ddd     = [x[1:2][0] for x in rows] # make a list of only the commentstr
 
@@ -392,12 +400,12 @@ def DB_readDevice(DB_Connection):
 
 
 def DB_readLogcycle(DB_Connection):
-    """Read the data from the database table logcycle"""
+    """Read the data from the database table logCycle"""
 
     sql = """
             select
                 lcycle
-            from logcycle
+            from logCycle
           """
 
     res     = DB_Connection.execute(sql) # res is a sqlite3.Cursor object
@@ -410,10 +418,10 @@ def DB_readLogcycle(DB_Connection):
 
 
 def DB_insertLogcycle(DB_Connection, value):
-    """Insert the value into the database table logcycle"""
+    """Insert the value into the database table logCycle"""
 
     fncname = "DB_insertLogcycle: "
-    sql = """INSERT INTO logcycle (lcycle)  VALUES (?)"""
+    sql = """INSERT INTO logCycle (lcycle)  VALUES (?)"""
 
     vprint(fncname + "SQL:", sql, ", Data: ", value)
 
@@ -427,10 +435,10 @@ def DB_insertLogcycle(DB_Connection, value):
 
 
 def DB_updateLogcycle(DB_Connection, value):
-    """Update database table logcycle in rowid=1 with value"""
+    """Update database table logCycle in rowid=1 with value"""
 
     fncname = "DB_updateLogcycle: "
-    sql = """UPDATE logcycle SET lcycle=(?) where ROWID=1"""
+    sql = """UPDATE logCycle SET lcycle=(?) where ROWID=1"""
 
     vprint(fncname + "SQL:", sql, ", Data: ", value)
 
@@ -443,8 +451,9 @@ def DB_updateLogcycle(DB_Connection, value):
     DB_commit(DB_Connection)
 
 
-def createFFmapFromDB():
-    """Read data from table bin as blob and print map of FFs into notePad"""
+def createByteMapFromDB(value):
+    """Read data from table bin as blob and print map of value into notePad
+    value is meant ot be FF (=empty value) or AA (=DateTime String)"""
 
     if gglobs.hisConn == None:
         gglobs.exgg.showStatusMessage("No data available")
@@ -452,11 +461,11 @@ def createFFmapFromDB():
 
     start = time.time()
 
-    fprint(header("Show History Binary Data as FF Map"))
+    fprint(header("Show History Binary Data as 0x{:02X} Map".format(value)))
     fprint("from: {}\n".format(gglobs.hisDBPath))
 
     hist    = DB_readBinblob(gglobs.hisConn)
-    #print("createFFmapFromDB: hist:", hist)
+    #print("createByteMapFromDB: hist:", hist)
     if hist == None:
         efprint("No binary data found in this database")
         return
@@ -466,7 +475,8 @@ def createFFmapFromDB():
     lenLine   = 1024
     lenChunk  = 16
     lenHist   = len(hist)
-    markline  = "Occurence of 0xFF values in History binary data is marked with 'X'\n"
+    if value == 0xFF:   markline  = "Occurence of 0xFF value in History binary data is marked with single 'F' (FF=empty value)\n"
+    else:               markline  = "Occurence of 0xAA value in History binary data is marked with single 'A' (AA=DateTime String)\n"
     lstlines  = markline
     lstlines += "1 printed character maps a chunk of 16 bytes of data\n"
     lstlines += "Byte No|" + "_______|" * 8 + "\n"
@@ -482,8 +492,13 @@ def createFFmapFromDB():
         for j in range(0, lenLine, lenChunk):
             l = i + j
             if l >= lenHist: break
-            if 255 in hist[l:l + lenChunk]:  s = "X"
-            else:                            s = "."
+            if value == 0xFF:
+                if 0xFF in hist[l:l + lenChunk]:  s = "F"
+                else:                             s = "."
+            else:
+                if 0xAA in hist[l:l + lenChunk]:  s = "A"
+                else:                             s = "."
+
             lstline += s
 
         lstlines += lstline + "\n"
@@ -494,7 +509,6 @@ def createFFmapFromDB():
 
     setNormalCursor()
 
-### flag!!!!!!!!!!!!!!!!!!!11
 
 def createParseFromDB(lmax=12, full=True):
     """Read the data from the database data table include comments and parse comments """
@@ -509,8 +523,6 @@ def createParseFromDB(lmax=12, full=True):
     if not DB_readParse(gglobs.hisConn):
         efprint("No Parse Comments data found in this database")
         return
-    else:
-        print("createParseFromDB: parse records were found")
 
     setBusyCursor()
 
@@ -550,25 +562,30 @@ def createParseFromDB(lmax=12, full=True):
 
     res     = gglobs.hisConn.execute(sql)
     data    = res.fetchall()
-    print("createParseFromDB: sql:", sql, "\ndata:", len(data), "data:\n", data)
+    #print("createParseFromDB: sql:", sql, "\nlen(data):", len(data), "data:\n", data)
 
-    ruler  = "## Index,            DateTime,    CPM,    CPS, CPM1st, CPS1st, CPM2nd, CPS2nd, ParseInfo"
+    ruler  = "#   Index,            DateTime,    CPM,    CPS, CPM1st, CPS1st, CPM2nd, CPS2nd, ParseInfo"
     fprint(ruler)
     counter     = 0
-    batch       = 100
+    counter_max = 64
     printstring = ""
     gglobs.stopPrinting = False
 
     if full:
         for a in data:
-            #print("createParseFromDB: a[1]:", a[1])
-            if counter == batch:
+            printstring += a[1] + "\n"
+            # print("createParseFromDB: a[1]:", a[1])
+            if counter >= counter_max:
                 fprint(printstring[:-1])
                 printstring = ""
                 counter     = 0
-            printstring += a[1] + "\n"
-            counter     += 1
+                Qt_update()
+                # print("counter_max: ", counter_max)
+                if counter_max < 5000: counter_max *= 2
+
             if gglobs.stopPrinting: break
+            counter     += 1
+
         gglobs.stopPrinting = False
     else:
         for a in data[:+lmax]: fprint(a[1])
@@ -612,7 +629,8 @@ def createLstFromDB(*args, lmax=12, full=True):
     # header
     lstlines    = "#History Download - Binary Data in Human-Readable Form\n"
     lstlines   += "#{}\n".format(data_origin)
-    lstlines   += "#Format: bytes_index[hex]=bytes_index[dec] : value[hex]=value[dec] |\n"
+    # lstlines   += "#Format: bytes_index[hex]=bytes_index[dec] : value[hex]=value[dec] |\n"
+    lstlines   += "#Format: | index[hex]=index[dec] : value[hex]=value[dec] |\n"
 
     # This takes the full hist data clipped for FF, independent of the
     # memory setting of the currently selected counter
@@ -623,26 +641,46 @@ def createLstFromDB(*args, lmax=12, full=True):
                 if j + k >= ppagesize:   break
                 l  = i + j + k
                 if l >= histRClen:       break
-                lstline += "{:04x}={:<5d}:{:02x}={:<3d}|".format(l, l, histRC[l], histRC[l])
-            lstlines += lstline[:-1] + "\n"
+                lstline += "{:05x}={:<7d}:{:02x}={:<3d}|".format(l, l, histRC[l], histRC[l])
+            # lstlines += lstline[:-1] + "\n"
+            lstlines += lstline + "\n"
             if l >= histRClen:           break
 
-        lstlines += "Reading Page {} of size {} bytes complete; next address: 0x{:04x}={:5d} {}\n".format(i/ppagesize, ppagesize, i+ppagesize, i+ppagesize, "-" * 6)
-        #print "(l +1)", (l+1), "(l +1) % 4096", (l+1) % 4096
+        if l < histRClen:
+            lstlines += "Reading Page {:5.0f} of size {} Bytes complete; next address: 0x{:05x}={:7d} {}\n\n"\
+                .format(i/ppagesize + 1, ppagesize, i+ppagesize, i+ppagesize, "-" * 6)
+
         if (l + 1) % 4096 == 0 :
-            lstlines += "Reading Page {} of size {} Bytes complete {}\n".format(i/4096, 4096, "-" * 35)
+            lstlines += "Reading Page {:5.0f} of size {} Bytes complete {}\n\n".format((l + 1)/4096, 4096, "-" * 37)
+
         if l >= histRClen:               break
 
     if histRClen < histlen:
-        lstlines += "Remaining {} Bytes to the end of history (size:{}) are all ff\n".format(histlen -histRClen, histlen)
+        lstlines += "Remaining {} Bytes to the end of history (size:{}) are all 0xFF\n".format(histlen -histRClen, histlen)
     else:
         lstlines += "End of history reached\n"
 
     listlstlines = lstlines.split('\n')[:-1]
+    counter     = 0
+    counter_max = 64
+    printstring = ""
+    gglobs.stopPrinting = False
     if full:
         for a in listlstlines:
-            fprint(a)
+            printstring += a + "\n"
+            if counter >= counter_max:
+                fprint(printstring[:-1])
+                printstring = ""
+                counter     = 0
+                Qt_update()
+                # print("counter_max: ", counter_max)
+                if counter_max < 8100: counter_max *= 2
             if gglobs.stopPrinting: break
+            counter     += 1
+
+        gglobs.stopPrinting = False
+        fprint(printstring[:-1])
+
 
     else: #excerpt only
         for a in listlstlines[:+lmax]: fprint(a)
@@ -654,6 +692,8 @@ def createLstFromDB(*args, lmax=12, full=True):
 
 
 ###############################################################################
+# Variable definitions:
+
 
 sqlGetLogUnionAsString =   """
                 select
@@ -692,7 +732,9 @@ sqlGetLogUnionAsString =   """
 
 # sql INSERT commands
 # NOTE: when the argument to julianday is already julianday, sqlite does not change it!
-#sqlInsertData       = """INSERT INTO data       (dindex, Julianday, cpm, cps, cpm1st, cps1st, cpm2nd, cps2nd, t, p, h, r) VALUES (?,julianday(?,?),?,?,?,?,?,?,?,?,?,?)"""
+# Julianday: julianday(timestring [, modifier1, ...])
+#   timestring:   now:        now is a literal used to return the current date
+#   modifier:     localtime: 	Adjusts date to localtime, assuming the timestring was expressed in UTC
 sqlInsertData       = """INSERT INTO data       (dindex, Julianday, cpm, cps, cpm1st, cps1st, cpm2nd, cps2nd, cpm3rd, cps3rd, t, p, h, x) VALUES (?,julianday(?,?),?,?,?,?,?,?,?,?,?,?,?,?)"""
 sqlInsertComments   = """INSERT INTO comments   (ctype, cJulianday, cinfo)  VALUES (?, julianday(?, ?), ?)"""
 sqlInsertParse      = """INSERT INTO parse      (pindex, pinfo)             VALUES (?, ?)"""
@@ -767,10 +809,10 @@ sqlCreate.append('''
          )
     ''')
 
-# make table logcycle
-# storing the logcycle in sec
+# make table logCycle
+# storing the logCycle in sec
 sqlCreate.append('''
-    CREATE TABLE logcycle
+    CREATE TABLE logCycle
          (
           lcycle    FLOAT
          )
@@ -784,56 +826,44 @@ sqlCreate.append("""CREATE VIEW ViewUnion    AS {}""".format(sqlGetLogUnionAsStr
 def getShowCompactDataSql(varchckd):
     """gets unioned data & comments, but only for variables existing in DB"""
 
+    # First 12 {} are for the format for the 12 vars, like '%7.7g'
+    # next 12 {} are for the values of the 12 vars
     sqlprintftmplt = """
             printf(" %8s, %19s{}{}{}{}{}{}{}{}{}{}{}{}",
                    dindex,
                    datetime(julianday)
-                   {}{}{}{}{}{}{}{}
-                   {}{}{}{}
+                   {}{}{}{}{}{}{}{}{}{}{}{}
                   )
             """                             # needs a filler with 24 places
 
-    ruler  = "#>  Index,            DateTime"
+    ruler  = "#   Index,            DateTime"
     filler = [""] * 24
-    for i, vname in enumerate(gglobs.varsBook):
-        #print("i:, vname: ", i, vname)
+    for i, vname in enumerate(gglobs.varsCopy):
+        ########################################################################
+        # After the  T, P, H, X variables were renamed to Temp, Press, Humid, Xtra
+        # but the database structure left on the old style, this renaming became
+        # necessary:
+        oldvname = gglobs.varsCopy[vname][5]
+        ########################################################################
+        # NOTE: in printf format '%7.7g' a SQL NULL will be printed as '0" (zero)
+        #       in printf format '%8s'   a SQL NULL will be an empty string
+
+        # print("i:{:2d}, vname: {:6s}, oldvname: {}".format(i, vname, oldvname))
         if varchckd[vname]:
-            #print("varchecked: i:, vname: ", i, vname)
-            filler [i]    = ", %7s"
-            filler [i+12] = """, ifnull({}, "")""".format(vname)
-            ruler        += ", {:>7s}".format(vname)
+            # cdprint("varchecked: i: {}, vname: {}".format(i, vname))
+            # filler [i]    = ", %7.7g"                                             #  1 ... 12 for the format
+            filler [i]    = ", %8s"                                                 #  1 ... 12 for the format
+            filler [i+12] = """, ifnull({}, "nan")""".format(oldvname)              # 13 ... 24 for the values
+
+            ruler        += ", {:>8s}".format(vname)
         else:
             #print("NOT varchecked: i:, vname: ", i, vname)
             filler [i]    = ""
             filler [i+12] = ""
 
+    # cdprint("filler:", filler)
     sqlprintft = sqlprintftmplt.format(*filler)
-    #print("sqlprintft:", sqlprintft)
-
-    OLDsql =   """
-            select
-                julianday,
-                {}
-                as datastr,
-                dindex,
-                rowid
-            from data
-
-            union
-
-            select
-                cjulianday as julianday,
-                printf("#%8s, %19s, %s",
-                        ctype               ,
-                        datetime(cjulianday),
-                        cinfo
-                      ) as commentstr,
-                ctype,
-                rowid
-            from comments
-
-            order by julianday asc, rowid asc
-            """.format(sqlprintft) # order by julianday asc, dindex asc, rowid asc : not good
+    # cdprint("sqlprintft:", sqlprintft)
 
     sql =   """
             select
@@ -860,16 +890,14 @@ def getShowCompactDataSql(varchckd):
             order by julianday asc, dindex asc, rowid asc
             """.format(sqlprintft) # order by julianday asc, dindex asc, rowid asc : not good wieso not good? geht doch????
 
-
-    #print("sql:", sql)
+    # cdprint("getShowCompactDataSql: sql:", sql)
 
     return sql, ruler
 
 
-def getDataFromDatabase():
+def getDataFromDatabase(DBtype):    # DBtype: 'Log' or 'His'
     """
-    read the data from database
-    and create data array with timestamp, CPM, CPS, etc
+    read the data from database and create data array with timestamp, CPM, CPS, etc
     """
 
     fncname = "getDataFromDatabase: "
@@ -879,9 +907,9 @@ def getDataFromDatabase():
 
     start = time.time()
 
-    nrows           = None                           # set later by DB call
-    ncols           = gglobs.datacolsDefault
-    localvarchecked = gglobs.varcheckedCurrent.copy()
+    nrows             = None                            # set later by DB call
+    ncols             = gglobs.datacolsDefault
+    localvarSetForRun = gglobs.varAllFalse.copy()       # same reset for both Log and His
 
     sql = """
         SELECT
@@ -913,15 +941,18 @@ def getDataFromDatabase():
         start3  = time.time()
         res     = gglobs.currentConn.execute(sql)
         rows    = res.fetchall()
+        # for r in rows: cdprint(fncname + "row:", r)
+
         nrows   = len(rows)
         vprint(fncname +"{:8.2f}ms sql call, " .format((time.time() - start3) * 1000))
-    #    self.toolPrintArrayInfo("rows", rows)
+
     except Exception as e:
         edprint(fncname + "get the db rows: Exception executing SQL: ", e, debug=True)
         edprint("SQL command: ", sql, debug=True)
         efprint("ERROR trying to read database: ", e)
         setDebugIndent(0)
-        return np.empty([0, 0]), localvarchecked
+        # return np.empty([0, 0]), localvarchecked
+        return np.empty([0, 0]), localvarSetForRun
 
 
 # convert db rows to np array
@@ -954,18 +985,12 @@ def getDataFromDatabase():
                     dataArray[row, col] = gglobs.NAN # "ValueError: cannot convert float NaN to integer"
                     dprint(fncname + "create dataarray: Exception: row={}, col={} ".format(row, col), e)
 
-
 # Check the dataarray for columns having ONLY nan values. Block those
-# column from being selectable in combobox and showing in graph
+# column from being selectable in combobox and showing in graph         --- not good, they may be configured and just happend to be empty up to now
     start6 = time.time()
     # all except DateTime set to true if at least one entry is not nan
-    for i, a in enumerate(gglobs.varsBook):
-        if not np.isnan(dataArray[:, i + 1]).all():
-            #print("i:", i, a, "has data")
-            localvarchecked [a] = True
-        else:
-            #print("i:", i, a, "has only nan data")
-            localvarchecked [a] = False
+    for i, vname in enumerate(gglobs.varsCopy):
+        if not np.isnan(dataArray[:, i + 1]).all(): localvarSetForRun [vname] = True # sets vars found in DB
     vprint(fncname + "{:8.2f}ms for nan checking, " .format((time.time() - start6) * 1000))
 
 # Clean up
@@ -973,7 +998,7 @@ def getDataFromDatabase():
 
     setDebugIndent(0)
 
-    return dataArray, localvarchecked
+    return dataArray, localvarSetForRun
 
 
 def toolPrintArrayInfo(name, array):
@@ -993,10 +1018,12 @@ def toolPrintArrayInfo(name, array):
 
 
 
-def saveData(dataSource=None, full=True):
+def saveDataToCSV(dataSource=None, full=True):
     """Save Log or His Data to file as CSV. dataSource can be 'Log' or 'His'"""
 
-    #print("saveData: dataSource, full: ", dataSource, full)
+    fncname = "saveDataToCSV: "
+
+    # dprint(fncname + "dataSource:{}, full:{}".format(dataSource, full))
 
     if dataSource == "Log": connection  = gglobs.logConn
     else:                   connection  = gglobs.hisConn #  dataSource == "His"
@@ -1009,17 +1036,15 @@ def saveData(dataSource=None, full=True):
     if dataSource == "Log":
         dtype       = "Log"
         dbpath      = gglobs.logDBPath
-        #~csvfilename = dbpath + ".log"
         csvfilename = dbpath + ".csv"
-        varchecked  = gglobs.varcheckedLog
+        varchecked  = gglobs.varsSetForLog
 
 # dataSource == "His"
     else:
         dtype       = "History"
         dbpath      = gglobs.hisDBPath
-        #~csvfilename = dbpath + ".his"
         csvfilename = dbpath + ".csv"
-        varchecked  = gglobs.varcheckedHis
+        varchecked  = gglobs.varsSetForHis
 
     setBusyCursor()
 
@@ -1027,78 +1052,14 @@ def saveData(dataSource=None, full=True):
     fprint("from: {}".format(dbpath))
     fprint("into: {}".format(csvfilename))
 
-    #print("showLogData: varcheckedLog: ", gglobs.varcheckedLog)
     sql, ruler = getShowCompactDataSql(varchecked)
+    data       = DB_readData(connection, sql, limit=0)
 
-    writeFileW(csvfilename, "") # delete and recreate file
-    data = DB_readData(connection, sql, limit=0)
-    for a in data: writeFileA(csvfilename, a)
-
-    setNormalCursor()
-
-
-def saveRepairData(dataSource=None, full=True):
-    """Save Log or His Data to file as CSV. dataSource can be 'Log' or 'His'"""
-    # was intended to repair a History recorded with Clock-broken GMC500+,
-    # but does not work sufficiently well!
-
-    def _convertUnixtimeToDateTime(unixtime):
-        """convert a Unix time in sec into datetime like: 2020-05-10 11:48:50"""
-        return datetime.datetime.utcfromtimestamp(unixtime).strftime('%Y-%m-%d %H:%M:%S')
-
-    #print("saveData: dataSource, full: ", dataSource, full)
-
-    if dataSource == "Log": connection  = gglobs.logConn
-    else:                   connection  = gglobs.hisConn #  dataSource == "His"
-
-    if connection == None:
-        showStatusMessage("No data available")
-        return
-
-    if dataSource == "Log":
-        dtype       = "Log"
-        dbpath      = gglobs.logDBPath
-        csvfilename = dbpath + ".log"
-        varchecked  = gglobs.varcheckedLog
-
-    else:                                   # dataSource == "His"
-        dtype       = "History"
-        dbpath      = gglobs.hisDBPath
-        csvfilename = dbpath + ".his"
-        varchecked  = gglobs.varcheckedHis
-
-    setBusyCursor()
-
-    fprint(header("Saving {} Data as CSV File".format(dtype)))
-    fprint("from: {}".format(dbpath))
-    fprint("into: {}".format(csvfilename))
-
-    print("showLogData: varcheckedLog: ", gglobs.varcheckedLog)
-    sql, ruler = getShowCompactDataSql(varchecked)
-
-    writeFileW(csvfilename, "") # delete and recreate file
-    data = DB_readData(connection, sql, limit=0)
-    for a in data[:30]:
-        print("a: ", a) # a has no LF
-        #~writeFileA(csvfilename, a)
-    print("...")
-    for a in data[-30:]:
-        print("a: ", a) # a has no LF
-        #~writeFileA(csvfilename, a)
-
-    print("\n\n")
-    # unix: 946684800  == 2000-01-01T00:00:00+00:00 in ISO 8601
-    t0 = 946684800
-
-    count    = 0
-    endcount = len(data)
+    writeFileW(csvfilename, "")         # delete and recreate file
+    writeFileA(csvfilename, ruler)      # header: #   Index,            DateTime,  CPM1st, ...
     for a in data:
-        newtime = _convertUnixtimeToDateTime(t0 + count)
-        aa = a[0:11] + newtime + a[11+19:]
-        if count < 30 or count > (endcount - 30): print("aa: ", aa) # a has no LF
-        if count == 30: print(".......")
-        writeFileA(csvfilename, aa)
-        count += 1
+        writeFileA(csvfilename, a)      # data:          19, 2021-09-23 15:56:49,    26.0, ...
+    writeFileA(csvfilename, ruler)      # footer: #   Index,            DateTime,  CPM1st, ...
 
     setNormalCursor()
 
@@ -1315,11 +1276,11 @@ def getCSV(CSV_FilePath):
 
     demo = \
 """
-#  Index,            DateTime,      CPM,      CPS,   CPM1st,   CPS1st,   CPM2nd,   CPS2nd,   CPM3rd,   CPS3rd,     Temp,    Press,    Humid,        X
+#  Index,        DateTime,      CPM,      CPS,   CPM1st,   CPS1st,   CPM2nd,   CPS2nd,   CPM3rd,   CPS3rd,     Temp,    Press,    Humid,        X
    0, 2019-01-11 19:32:14,      181,        6,      168,        5,       13,        1,       77,        3,         ,         ,         ,
    1, 2019-01-11 19:32:18,      197,        3,      172,        2,       25,        1,       64,        4,     22.3,  1014.64,     45.7,       17
 -----------------------------------------------------------------------------------------------------------------------------------------------------
-Column0,             Column1,  Column2,  Column3,  Column4,  Column5,  Column6,  Column7,  Column8,  Column9, Column10, Column11, Column12, Column13"""
+Col0,             Column1,  Column2,  Column3,  Column4,  Column5,  Column6,  Column7,  Column8,  Column9, Column10, Column11, Column12, Column13"""
 
     demofile = QLabel("Default Association of Column Number and Data (Example Data)")
     demofile.setFont(QFont("Sans",14,weight=QFont.Bold))
@@ -1370,15 +1331,15 @@ Column0,             Column1,  Column2,  Column3,  Column4,  Column5,  Column6, 
     dataOptions.addWidget(QLabel("DateTime:"),                  1,   0)
     dataOptions.addWidget(col_selectors[1],                     1,   1)
 
-    for i, vname in enumerate(gglobs.varsBook):
-        dataOptions.addWidget(QLabel(gglobs.varsBook[vname][0] + ":"),  i+2, 0)
+    for i, vname in enumerate(gglobs.varsCopy):
+        dataOptions.addWidget(QLabel(gglobs.varsCopy[vname][0] + ":"),  i+2, 0)
         dataOptions.addWidget(col_selectors[i+2],                      i+2, 1)
         #dataOptions.addWidget(col_selectors[0],                      i+2, 1)
         if i >=5: break
 
-    for i, vname in enumerate(gglobs.varsBook):
+    for i, vname in enumerate(gglobs.varsCopy):
         if i <= 5: continue
-        dataOptions.addWidget(QLabel(gglobs.varsBook[vname][0] + ":"),  i-6, 2)
+        dataOptions.addWidget(QLabel(gglobs.varsCopy[vname][0] + ":"),  i-6, 2)
         dataOptions.addWidget(col_selectors[i+2],                      i-6, 3)
 
     L0 = QLabel("Guidance:")
@@ -1401,8 +1362,6 @@ Column0,             Column1,  Column2,  Column3,  Column4,  Column5,  Column6, 
     dial.setWindowIcon(gglobs.iconGeigerLog)
     dial.setFont(gglobs.fontstd)
     dial.setWindowTitle("Get Data from CSV File" )
-    #dial.setWindowModality(Qt.ApplicationModal)
-    #dial.setWindowModality(Qt.NonModal)
     dial.setWindowModality(Qt.WindowModal)
     dial.setMinimumWidth(1300)
     dial.setMinimumHeight(750)
@@ -1429,7 +1388,7 @@ Column0,             Column1,  Column2,  Column3,  Column4,  Column5,  Column6, 
     layoutV.addLayout(layoutH1)
     layoutV.addWidget(bbox)
 
-    dexec = dial.exec_()
+    dexec = dial.exec()
 
     if dexec == 0:
         gglobs.pointer = []

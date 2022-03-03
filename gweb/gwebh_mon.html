@@ -1,0 +1,63 @@
+<!-- Web Page mon -->
+<!DOCTYPE html>
+<html lang="en">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+<meta charset="utf-8" />
+<link rel="stylesheet" href="/css">
+<link rel="icon" type="image/png" href="/favicon.ico" sizes="16x16">
+<style>
+    div {max-width:380px;}
+    p   {margin-bottom:0px; font-weight:normal;}
+    #cpm, #cps, #usv, #temp, #press, #humid, #airq {font-size:34px; font-weight:bold;}
+    *{box-sizing:border-box;}
+    .gauge  {text-align:right; padding-left:10px;}
+    .gauge-container{font-family:Helvetica,Arial,sans-serif;text-align:right;}
+    .gauge g.arc{fill:steelblue;}
+    .gauge g.pointer{fill:#555555;stroke:white;}
+    .gauge g.label text{text-anchor:middle;font-size:12px;font-weight:700;fill:#666; text-align:right;}
+    .gauge .tickline{stroke:black;stroke-width:5px;}
+</style>
+<title>Mon</title>
+
+INSERTHTMLMENU
+
+<div >
+    <p style="background-color:#aaffaa; margin-top:0px;" id="lastRecordDateTime">
+    <div class="gauge-container">
+        <div style="text-align:center; background-color:#ebebeb; padding-top:5px;" id="unit">CPM</div>
+        <div style="background-color:#ebebeb;" id="gauge"></div>
+    </div>
+    <!-- <div id="divcalib"></div> -->
+    <div><p style="width:100%; font-size:14px; background-color:#ebebeb;" id="selectorDisp"></div>
+    <table style="width:100%; border:1px solid #ebebeb;">
+        <tr>
+            <td colspan = 3 style='height:30px; font-size: 18px; font-weight: bold;'>
+                <label for="vars">Choose a Variable:</label>
+                <select style="height:30px; font-size:16px; font-weight:bold;" name="vars" id="vars" >
+                <option value="CPM">CPM</option>
+                <option value="CPM1st">CPM1st</option>
+                <option value="CPM2nd">CPM2nd</option>
+                <option value="CPM2nd">CPM3rd</option>
+                </select>
+            </td>
+        <tr><td style="width:40%;">CPM
+            <td style="width:30%;">CPS
+            <td                   >DR [µSv/h]
+        <tr><td id="cpm"          >-
+            <td id="cps"          >-
+            <td id="usv"          >-
+    </table>
+    <table style="width:100%; border:1px solid #ebebeb;">
+        <tr><td style="width:50%;">Temperature [°C]
+            <td                   >Humidity [%]
+        <tr><td id="temp"         >-
+            <td id="humid"        >-
+        <tr><td                   >Pressure [hPa]
+            <td                   >Air Quality [%]
+        <tr><td id="press"        >-
+            <td id="airq"         >-
+    </table>
+</div>
+
+<script src="https://d3js.org/d3.v5.min.js"></script>
+

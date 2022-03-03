@@ -29,27 +29,32 @@ Use document 'GeigerLog-Manual-v<version number>.pdf' for further details
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-import sys                      # system functions
-
 # Test for proper Python version
-# Check must be done before importing from gsup_utils, as some imports fail on
-# older version.
-#   Python 3.5 reached the end of its life on September 13th, 2020.
+# Check must be done before importing from gsup_utils, as some imports
+# fail on older version!
+#
+# Python 3.5
+#   Python 3.5 reached end of life on September 13th, 2020.
 #   Please upgrade your Python as Python 3.5 is no longer maintained.
 #   pip 21.0 will drop support for Python 3.5 in January 2021.
-# Python 3.5 does NOT support ordered dicts, resulting in major problems!
+#   Python 3.5 does NOT support ordered dicts, resulting in major problems!
+# Python 3.6
+#   Python 3.6 reached end of life on 23 Dec 2021
+# Python 3.7
+#   Python 3.7 will reach end of life on 27 Jun 2023
 #
+import sys                              # will also be imported by gsup_utils
 svi            = sys.version_info
 currentVersion = "{}.{}.{}".format(svi[0], svi[1], svi[2])
 msg            = ""
 if svi < (3, 6):    # Python version >= v3.6 is required.
     msg += """
-        This version of GeigerLog requires Python in version 3.6 or later!<br>
+        This version of GeigerLog requires <b>Python in version 3.6 or later!</b><br>
         Your Python version is: {}.<br>""".format(currentVersion)
 
     if svi < (3,) :
@@ -79,13 +84,14 @@ if svi < (3, 6):    # Python version >= v3.6 is required.
 
             <a href='https://www.python.org/downloads/'>https://www.python.org/downloads/</a>
 
-            <br>Python version 3.9 is recommended.<br><br>
+            <br><br>Python version 3.10 is recommended.<br><br>
             Cannot continue, will exit.
             """
 
-from   gsup_utils            import *
+from   gsup_utils            import *   # includes import of gglobs
 
-gglobs.python_failure = msg # the Python version failure message
+gglobs.python_version = msg # the Python version failure message
+
 
 
 def main():
@@ -146,7 +152,7 @@ def main():
 
         elif opt in ("-V", "--Version"):
             print("Version status:")
-            for a in getVersionStatus(): print("   {:16s}: {}".format(a[0], a[1]))
+            for ver in gglobs.versions:    print("   {:25s}: {}".format(ver, gglobs.versions[ver]))
             return 0
 
         elif opt in ("-P", "--Portlist"):   # which ports are available?
@@ -197,38 +203,50 @@ def main():
             gglobs.devel2   = True
             gglobs.devel3   = True
 
-        if arg == "fullhist":   gglobs.fullhist         = True
-        if arg == "keepFF":     gglobs.keepFF           = True
+        if arg == "fullhist":   gglobs.fullhist             = True
+        if arg == "keepFF":     gglobs.keepFF               = True
+        if arg == "forcelw":    gglobs.forcelw              = True  # force Linebreak on lines longer than screen
+        if arg == "testing":    gglobs.testing              = True
+        if arg == "graphdemo":  gglobs.graphdemo            = True
+        if arg == "stattest":   gglobs.stattest             = True
+        if arg == "GStesting":  gglobs.GStesting            = True # required for GammaScout with simulation
 
-        if arg == "tput":       gglobs.tput             = True
+        if arg == "test1":      gglobs.test1                = True
+        if arg == "test2":      gglobs.test2                = True
+        if arg == "test3":      gglobs.test3                = True
+        if arg == "test4":      gglobs.test4                = True
 
-        if arg == "testing":    gglobs.testing          = True
-        if arg == "graphdemo":  gglobs.graphdemo        = True
-        if arg == "stattest":   gglobs.stattest         = True
-        if arg == "GStesting":  gglobs.GStesting        = True # required for GammaScout with simulation
+        if arg == "gmc":        gglobs.Devices["GMC"][2]        = True
+        if arg == "audio":      gglobs.Devices["Audio"][2]      = True
+        if arg == "osterei":    gglobs.AudioOei                 = True
+        if arg == "radmon":     gglobs.Devices["RadMon"][2]     = True
+        if arg == "ambio":      gglobs.Devices["AmbioMon"][2]   = True
+        if arg == "gscout":     gglobs.Devices["GammaScout"][2] = True
+        if arg == "i2c":        gglobs.Devices["I2C"][2]        = True
+        if arg == "labjack":    gglobs.Devices["LabJack"][2]    = True
+        if arg == "minimon":    gglobs.Devices["MiniMon"][2]    = True
+        if arg == "simul":      gglobs.Devices["Simul"][2]      = True
+        if arg == "manu":       gglobs.Devices["Manu"][2]       = True
+        if arg == "wifis":      gglobs.Devices["WiFiServer"][2] = True
+        if arg == "wific":      gglobs.Devices["WiFiClient"][2] = True
 
-        if arg == "test1":      gglobs.test1            = True
-        if arg == "test2":      gglobs.test2            = True
-        if arg == "test3":      gglobs.test3            = True
-        if arg == "test4":      gglobs.test4            = True
-
-        if arg == "gmc":        gglobs.GMCActivation    = True
-        if arg == "audio":      gglobs.AudioActivation  = True
-        if arg == "osterei":    gglobs.AudioOei         = True
-        if arg == "radmon":     gglobs.RMActivation     = True
-        if arg == "ambio":      gglobs.AmbioActivation  = True
-        if arg == "scout":      gglobs.GSActivation     = True
-        if arg == "i2c":        gglobs.I2CActivation    = True
-        if arg == "labjack":    gglobs.LJActivation     = True
-        if arg == "raspi":      gglobs.RaspiActivation  = True
-        if arg == "simul":      gglobs.SimulActivation  = True
-        if arg == "minimon":    gglobs.MiniMonActivation= True
+    # print("sys.warnoptions: ", sys.warnoptions) # is always: sys.warnoptions:  []
+    if gglobs.devel:
+        # under devel show all warnings always
+        if not sys.warnoptions:
+            # warnings.simplefilter("default")         # Change the filter in this process
+            warnings.simplefilter("always")            # Change the filter in this process
+            os.environ["PYTHONWARNINGS"] = "default"   # Also affect subprocesses
+    else:
+        # hide all warnings when in regular use, i.e. non-devel use
+        if not sys.warnoptions:
+            warnings.simplefilter("ignore")
 
 # clear and initialize the program log file 'geigerlog.proglog'
     clearProgramLogFile()
 
-# set terminal output with or without linebreaks (works in Linux only)
-    executeTPUT(action = 'set')
+# set terminal output with or without line wrapping (works in Linux only)
+    executeTPUT(action = 'no_line_wrapping')
 
 # Signal handlers
     # Attention on Windows:
@@ -277,7 +295,7 @@ def main():
 
 # Versions
     dprint("Version status: ")
-    for a in getVersionStatus(): dprint("   {:25s}: {}".format(a[0], a[1]))
+    for ver in gglobs.versions: dprint("   {:25s}: {}".format(ver, gglobs.versions[ver]))
 
 # Python Search Path
     dprint("Python Search Paths:")
@@ -297,7 +315,9 @@ def main():
 # Read the configuration file
     # - these settings will override defaults in gglobs.py
     # - command line options may override these settings
-    readGeigerLogConfig()
+    readGeigerLogConfig()   # geigerlog.cfg file MUST be present
+    readPrivateConfig()     # ../private.cfg file may be present or not
+
 
 ###############################################################################
 # Starting PyQt
@@ -321,8 +341,8 @@ def main():
     # see my article: HOWTO - Using PyQt5 and matplotlib on HiDPI monitors (Python3).pdf
     #
     # QApplication.setAttribute(Qt.AA_EnableHighDpiScaling, True)
-    # !!!! im Raspi führte diese Anweisung zu einer Bildschirmgröße von 960x540,
-    # !!!! obwohl Bildschirm auf 1920x1080 steht! -->unbrauchbar für Raspi
+    # !!!! im Manu führte diese Anweisung zu einer Bildschirmgröße von 960x540,
+    # !!!! obwohl Bildschirm auf 1920x1080 steht! -->unbrauchbar für Manu
     #
     dprint("{:28s}".format("High DPI Scaling:"))
     if gglobs.hidpiActivation == "auto" or gglobs.hidpiActivation == "yes" :
@@ -459,17 +479,23 @@ def main():
         if result is None:  dprint("   Selected Style '{}' could not be applied".format(gglobs.windowStyle))
     dprint("   {:25s}: {}".format("Active Style is", gglobs.app.style().metaObject().className()))
 
+# # test colors
+#     # TBLUE               = '\033[94m'            # blue (dark)
+#     for i in range(0, 110):
+#         print("\033["+ str(i) + "m", end="")
+#         print("{:3n} Der süße Björn macht ständig Ärger".format(i))
+
 # get the GUI
     from  ggeiger import ggeiger
 
 # starting the GUI
-    dprint(TGREEN + "Starting the GUI " + "-" * 110 + TDEFAULT)
+    cdprint("Starting the GUI " + "-" * 110)
     ex     = ggeiger()              # an instance of ggeiger; runs init and draws window
-    status = gglobs.app.exec_()     # starts the QApplication([]); run the GUI until closure
-    dprint(TGREEN + "Exited GUI with status of: {} ".format(status) + "-" * 97 + TDEFAULT)
+    status = gglobs.app.exec()      # starts the QApplication([]); run the GUI until closure
+    gdprint("Exited GUI with status of: {} ".format(status) + "-" * 97)
 
 # cleanup
-    executeTPUT(action = 'clean')
+    executeTPUT(action = 'allow_line_wrapping')
 
     return status
 

@@ -40,9 +40,8 @@ You should see in terminal 1:
     ambiomon/temp hello world
 """
 
-
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -51,15 +50,25 @@ from   gsup_utils           import *
 
 try:
     # https://pypi.org/project/paho-mqtt/
+
     import paho.mqtt.client as mqtt
+    # print("paho.mqtt version", paho.mqtt.__version__) # führt zu Exception: paho.mqtt.__version__
+    from paho.mqtt      import __version__  as paho_version
+    # print("paho-mqtt version", paho_version)
+    gglobs.versions["paho-mqtt"] = paho_version
+
 except Exception as e:
-    msg  = "Module 'paho-mqtt' could not be loaded\n"
-    msg += "Verify that 'paho-mqtt' is installed using gtools/GLpipcheck.py"
+    msg  = "\nPython module 'paho-mqtt' was not found\n"
+    msg += "In order to run any IoT device like RadMon this module is required\n"
+    msg += "Verify that 'paho-mqtt' is installed using GeigerLog tool: 'GLpipcheck.py'"
     exceptPrint(e, msg)
     edprint("Halting GeigerLog")
     playWav("err")
     sys.exit()
 
+
+RMconnectionState = False
+RMconnectDuration = ""
 
 ###############################################################################
 # BEGIN MQTT Callbacks
@@ -67,6 +76,10 @@ except Exception as e:
 
 def on_connect(client, userdata, flags, rc):
     """The callback for when the client receives a CONNACK response from the server"""
+
+    global RMconnectionState
+
+    fncname = "on_connect: "
 
     # The value of rc indicates success or not:
     strrc = {
@@ -84,9 +97,11 @@ def on_connect(client, userdata, flags, rc):
     gglobs.RMconnect = (rc, src)
 
     if rc == 0:
-        gglobs.RMConnection = True
+        # gglobs.RMConnection = True
+        RMconnectionState = True
     else:
-        gglobs.RMConnection = False
+        # gglobs.RMConnection = False
+        RMconnectionState = False
 
     dprint(">RadMon: on_connect: Client connected:")
     dprint(">        {:20s}: {}".format("with userdata"     , userdata))
@@ -98,9 +113,16 @@ def on_connect(client, userdata, flags, rc):
     #gglobs.rm_client.subscribe("$SYS/#") # gives huge amount of traffic! Careful!!!
     gglobs.rm_client.subscribe(gglobs.RMServerFolder + "#", qos=2)
 
+    # edprint(fncname + "gglobs.RMConnection: ", gglobs.RMConnection)
+    edprint(">RadMon: on_connect: RMconnectionState: ", RMconnectionState)
+
 
 def on_disconnect (client, userdata, rc):
     """When the client has sent the disconnect message it generates an on_disconnect() callback."""
+
+    global RMconnectionState
+
+    fncname = "on_disconnect: "
 
     # The rc parameter indicates the disconnection state.
     # If MQTT_ERR_SUCCESS (0), the callback was called in response to a
@@ -117,20 +139,33 @@ def on_disconnect (client, userdata, rc):
     else:           src = strrc[1]
     gglobs.RMdisconnect = (rc, src)
 
-    gglobs.RMConnection = False         # it is disconnected in any case
+    # gglobs.RMConnection = False         # it is disconnected in any case
+    RMconnectionState = False
 
     dprint(">RadMon: on_disconnect: Client disconnected:")
     dprint(">        {:20s}: {}".format("with userdata"     , userdata))
     dprint(">        {:20s}: {}".format("with result"       , src), "(Result Code: {})".format(rc))
 
+    # edprint(fncname + "gglobs.RMConnection: ", gglobs.RMConnection)
+    # edprint(fncname + "RMconnectionState: ", RMconnectionState)
+    edprint(">RadMon: on_disconnect: RMconnectionState: ", RMconnectionState)
+
 
 def on_subscribe(client, userdata, mid, granted_qos):
     """Callback when a subscribe has occured"""
+
+    global RMconnectionState
+
+    fncname = "on_subscribe: "
 
     dprint(">RadMon: on_subscribe: Topic subscribed:")
     dprint(">        {:20s}: {}".format("with userdata"     , userdata))
     dprint(">        {:20s}: {}".format("with mid"          , mid))
     dprint(">        {:20s}: {}".format("with granted_qos"  , granted_qos))
+
+    # edprint(fncname + "gglobs.RMConnection: ", gglobs.RMConnection)
+    # edprint(fncname + "RMconnectionState: ", RMconnectionState)
+    edprint(">RadMon: on_subscribe: RMconnectionState: ", RMconnectionState)
 
 
 def on_message(client, userdata, msg):
@@ -139,6 +174,11 @@ def on_message(client, userdata, msg):
     # msg: an instance of MQTTMessage.
     # This is a class with members topic, payload, qos, retain.
     # type of msg.payload: <class 'bytes'>
+
+    global RMconnectionState
+
+    fncname = "on_message: "
+
     vprint(">RadMon: on_message: topic: {:20s}, payload: {:10s}, qos: {}, retain: {}".format(msg.topic, str(msg.payload), msg.qos, msg.retain))
 
     try:
@@ -155,36 +195,48 @@ def on_message(client, userdata, msg):
     elif msg.topic == gglobs.RMServerFolder + "rssi":     gglobs.rm_rssi   = msg_payload    # rssi
     #else:  print("msg.topic: {}, msg.payload: {}".format(msg.topic, msg_payload))   # only dose it not used
 
+    # edprint(fncname + "gglobs.RMConnection: ", gglobs.RMConnection)
+    # edprint(fncname + "RMconnectionState: ", RMconnectionState)
+    edprint(">RadMon: on_message: RMconnectionState: ", RMconnectionState)
+
 
 def on_publish(client, userdata, mid):
     """ Called when a message that was to be sent using the publish() call
     has completed transmission to the broker"""
 
-    #dprint("on_publish: messageID: mid: ", mid)
-    pass
+    global RMconnectionState
+
+    fncname = "on_publish: "
+    dprint(fncname + "messageID: mid: ", mid)
+
+    # edprint(fncname + "gglobs.RMConnection: ", gglobs.RMConnection)
+    # edprint(fncname + "RMconnectionState: ", RMconnectionState)
+    edprint(">RadMon: on_publish: RMconnectionState: ", RMconnectionState)
 
 
 ###############################################################################
 # END MQTT Callbacks
 ###############################################################################
 
-def getRadMonValues(varlist):
+
+def getValuesRadMon(varlist):
     """Read all RadMon data; return only when complete"""
 
-    fncname = "getRadMonValues: "
+    start = time.time()
+
+    fncname = "getValuesRadMon: "
 
     alldata = {}
 
-
     dataIncomplete = False
     for vname in varlist:
-        if   vname == "T" and gglobs.rm_temp  == None :
+        if   vname == "Temp" and gglobs.rm_temp  == None :
             dataIncomplete = True
             break
-        elif vname == "P" and gglobs.rm_press == None :
+        elif vname == "Press" and gglobs.rm_press == None :
             dataIncomplete = True
             break
-        elif vname == "H" and gglobs.rm_hum   == None :
+        elif vname == "Humid" and gglobs.rm_hum   == None :
             dataIncomplete = True
             break
         elif vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd") and gglobs.rm_cpm == None:
@@ -193,29 +245,29 @@ def getRadMonValues(varlist):
 
     if not dataIncomplete:
         for vname in varlist:
-            if   vname == "T":
+            if   vname == "Temp":
                 Temp            = gglobs.rm_temp
                 Temp            = scaleVarValues(vname, Temp, gglobs.ValueScale[vname])
                 gglobs.rm_temp  = None
-                alldata.update({"T": Temp})
+                alldata.update({"Temp": Temp})
 
-            elif vname == "P":
+            elif vname == "Press":
                 Press           = gglobs.rm_press
                 Press           = scaleVarValues(vname, Press, gglobs.ValueScale[vname])
                 gglobs.rm_press = None
-                alldata.update({"P": Press})
+                alldata.update({"Press": Press})
 
-            elif vname == "H":
+            elif vname == "Humid":
                 Hum             = gglobs.rm_hum
                 Hum             = scaleVarValues(vname, Hum, gglobs.ValueScale[vname])
                 gglobs.rm_hum   = None
-                alldata.update({"H": Hum})
+                alldata.update({"Humid": Hum})
 
-            elif vname == "X":
+            elif vname == "Xtra":
                 Rssi            = gglobs.rm_rssi
                 Rssi            = scaleVarValues(vname, Rssi, gglobs.ValueScale[vname])
                 gglobs.rm_rssi  = None
-                alldata.update({"X": Rssi})
+                alldata.update({"Xtra": Rssi})
 
             elif vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd"):
                 cpm             = gglobs.rm_cpm
@@ -223,80 +275,30 @@ def getRadMonValues(varlist):
                 gglobs.rm_cpm   = None
                 alldata.update({vname: cpm})
 
-    printLoggedValues(fncname, varlist, alldata)
+    printLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
-
-
-def getRadMonInfo(extended=False):
-    """Info on the Radmon Device"""
-
-    if gglobs.rm_client  == None:   return "No connected device"
-
-    if gglobs.rm_rssi == None:      rssi = "Not available"
-    else:                           rssi = str(gglobs.rm_rssi)
-
-    RMInfo = """Connected Device:             '{}'
-Configured Variables:         {}
-Geiger Tube Sensitivity:      {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
-""".format(\
-                                                  gglobs.RMDeviceDetected, \
-                                                  gglobs.RMVariables, \
-                                                  #~ gglobs.RMSensitivity )
-                                                  gglobs.RMSensitivity, 1 / gglobs.RMSensitivity)
-
-    if extended == True:
-        RMInfo += """
-Connection:                   wireless, MQTT server {}, port:{}
-Folder:                       '{}'
-Internal collection time:     60 s
-Total cycle time (typical):   67 ... 70 s
-Wireless signal strength:     {} (rssi)""".format(\
-                                                  gglobs.RMServerIP, \
-                                                  gglobs.RMServerPort, \
-                                                  gglobs.RMServerFolder, \
-                                                  rssi)
-
-    return RMInfo
-
-
-def printRMDevInfo(extended=False):
-    """prints basic info on the RadMon device"""
-
-    setBusyCursor()
-
-    txt = "RadMon Device"
-    if extended:  txt += " Extended"
-    fprint(header(txt))
-    fprint("Configured Connection:", "MQTT on {}:{} topic:{}".format(gglobs.RMServerIP, gglobs.RMServerPort, gglobs.RMServerFolder))
-    fprint(getRadMonInfo(extended=extended))
-
-    setNormalCursor()
 
 
 def initRadMon():
     """Initialize the client and set all Callbacks"""
 
+    global RMconnectDuration
+
     fncname = "initRadMon: "
     errmsg  = ""
 
-    if not gglobs.RMActivation:
-        errmsg = "RadMon device not activated"
-        dprint(fncname + errmsg)
-        return errmsg
-
-    dprint(fncname + "Initialzing RadMon")
+    dprint(fncname + "Initializing RadMon")
     setDebugIndent(1)
 
-    gglobs.RMDeviceName = "RadMon+"
-    gglobs.RMDeviceDetected     = gglobs.RMDeviceName # no difference so far
-    gglobs.Devices["RadMon"][0] = gglobs.RMDeviceDetected
+    # gglobs.RMDeviceName              = "RadMon+"
+    gglobs.Devices["RadMon"][DNAME] = "RadMon+"
 
     # set configuration
     if gglobs.RMServerIP     == "auto": gglobs.RMServerIP     = "test.mosquitto.org" # before: "mqtt.eclipse.org"
     if gglobs.RMServerPort   == "auto": gglobs.RMServerPort   = 1883
     if gglobs.RMServerFolder == "auto": gglobs.RMServerFolder = "/"
-    if gglobs.RMTimeout      == "auto": gglobs.RMTimeout      = 3
+    if gglobs.RMTimeout      == "auto": gglobs.RMTimeout      = 5
 
 # set client
     # Client(client_id="", clean_session=True, userdata=None, protocol=MQTTv311)
@@ -322,9 +324,9 @@ def initRadMon():
         srcinfo = fncname + "ERROR: Connection to IoT server failed"
         exceptPrint(e, srcinfo)
         gglobs.rm_client     = None
-        errmsg += "<br>ERROR: Connection failed using server IP='{}', port={}".format(gglobs.RMServerIP, gglobs.RMServerPort)
-        errmsg += "<br>ERROR: '{}'".format(sys.exc_info()[1])
-        errmsg += "<br>{} not connected. Is server offline? Verify server IP and server port".format(gglobs.RMDeviceName)
+        errmsg += "\nERROR: Connection failed using: server IP='{}', port={}".format(gglobs.RMServerIP, gglobs.RMServerPort)
+        errmsg += "\nERROR: '{}'".format(sys.exc_info()[1])
+        errmsg += "\n{} not connected. Is server offline? Verify server IP and server port".format(gglobs.Devices["RadMon"][DNAME])
 
         setDebugIndent(0)
         return errmsg
@@ -349,22 +351,27 @@ def initRadMon():
     while time.time() < (starttime  + gglobs.RMTimeout):
         #print("gglobs.RMconnect:", time.time() - starttime, gglobs.RMconnect)
         time.sleep(0.05)
-        if gglobs.RMConnection:
-            #print("gglobs.RMconnect:", time.time() - starttime, gglobs.RMconnect)
+        # if gglobs.RMConnection:
+        if RMconnectionState:
             timeout = False
+            RMconnectDuration = "{:0.2f} sec".format(time.time() - starttime)
+            dprint(fncname + "Connected after: {}".format(RMconnectDuration))
             break
 
     if timeout:
         # no callback signalling a connection
         dprint(fncname + "RadMon connection timed out ({} sec)".format(gglobs.RMTimeout), debug=True)
-        errmsg += "<br>ERROR: Connection to RadMon+ server failed; RadMon+ inactivated"
+        errmsg += "\nERROR: Connection to RadMon+ server failed; RadMon+ inactivated"
+        RMconnectDuration = "Failure, timeout after {} sec".format(gglobs.RMTimeout)
     else:
         # set only after successful AND confirmed connect!
         if gglobs.RMSensitivity  == "auto":    gglobs.RMSensitivity = 154  # inverse of 0.0065
-        if gglobs.RMVariables    == "auto":    gglobs.RMVariables   = "CPM3rd, T, P, H"
+        if gglobs.RMVariables    == "auto":    gglobs.RMVariables   = "CPM3rd, Temp, Press, Humid"
 
-        setCalibrations(gglobs.RMVariables, gglobs.RMSensitivity)
+        setTubeSensitivities(gglobs.RMVariables, gglobs.RMSensitivity)
         setLoggableVariables("RadMon", gglobs.RMVariables)
+
+    gglobs.Devices["RadMon"][CONN] = RMconnectionState
 
     setDebugIndent(0)
     return errmsg
@@ -395,17 +402,56 @@ def terminateRadMon():
     while time.time() < (starttime  + gglobs.RMTimeout):
         #print("gglobs.RMdisconnect:", time.time() - starttime, gglobs.RMdisconnect)
         time.sleep(0.05)
-        if not gglobs.RMConnection:
+        if not RMconnectionState:
             #print("gglobs.RMdisconnect:", time.time() - starttime, gglobs.RMdisconnect)
             timeout = False
             break
 
     if timeout:
         dprint("RadMon dis-connection timed out ({} sec)".format(gglobs.RMTimeout), debug=True)
-        efprint("<br>ERROR: Dis-Connection from RadMon+ server failed; RadMon+ inactivated")
-        setDebugIndent(0)
+        efprint("ERROR: Dis-Connection from RadMon+ server failed; RadMon+ inactivated")
         retval = ""
     else:
         retval = "RadMon+"
 
+    gglobs.Devices["RadMon"][CONN] = RMconnectionState
+
+    dprint(fncname + "Terminated")
     setDebugIndent(0)
+
+
+
+def getInfoRadMon(extended=False):
+    """Info on the Radmon Device"""
+
+    RMInfo = "Configured Connection:        MQTT on {}:{} topic:'{}'\n".\
+        format(gglobs.RMServerIP, gglobs.RMServerPort, gglobs.RMServerFolder)
+
+    if not gglobs.Devices["RadMon"][CONN]: return RMInfo + "Device is not connected"
+
+    RMInfo += """Connected Device:             '{}'
+Configured Variables:         {}
+Configured Tube Sensitivity:  {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
+""".format(\
+                    gglobs.Devices["RadMon"][DNAME],    \
+                    gglobs.RMVariables,         \
+                    gglobs.RMSensitivity,       \
+                    1 / gglobs.RMSensitivity    \
+            )
+
+    if gglobs.rm_rssi    == None:   rssi = "Not available"
+    else:                           rssi = str(gglobs.rm_rssi)
+
+    if extended == True:
+        RMInfo += """
+Connecting Duration:          {}
+Folder:                       '{}'
+Internal collection time:     60 s
+Total cycle time (typical):   67 ... 70 s
+Wireless signal strength:     {} (rssi)""".format(\
+                                                  RMconnectDuration,     \
+                                                  gglobs.RMServerFolder, \
+                                                  rssi)
+
+    return RMInfo
+

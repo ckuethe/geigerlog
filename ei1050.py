@@ -8,8 +8,9 @@ import threading
 import time
 
 import u3
-import u6
+# import u6     # u6 is ignored here
 
+__version__ = "ei1050_local"    # ei1050 has no version number; this is inserted by ullix
 
 class EI1050:
     """

@@ -26,7 +26,7 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = ["Phil Gillaspy", "GQ"]
 __license__         = "GPL3"
 
@@ -40,24 +40,14 @@ __license__         = "GPL3"
 
 from   gsup_utils           import *
 
+# import serial                       # serial port (module has name: 'pyserial'!)
 
-try:
-    import serial                       # serial port (module has name: 'pyserial'!)
-    import serial.tools.list_ports      # allows listing of serial ports
-except Exception as e:
-    msg  = "Module 'serial' could not be loaded\n"
-    msg += "Verify that 'pyserial' is installed using gtools/GLpipcheck.py"
-    exceptPrint(e, msg)
-    edprint("Halting GeigerLog")
-    playWav("err")
-    sys.exit()
 
-# "Power", "Alarm", "Speaker", "SaveDataType"
-# common to all GMCs
-cfgKeyLow =  \
+# common to all GMC counter
+cfgKeyLowDefault =  \
 {
-#                                      Index
-#    key                Value,    from       to
+#                                           Index
+#    key                          Value,    from       to
     "Power"                   : [ None,     (0,        0 + 1) ],
     "Alarm"                   : [ None,     (1,        1 + 1) ],
     "Speaker"                 : [ None,     (2,        2 + 1) ],
@@ -77,11 +67,11 @@ cfgKeyLow =  \
     "ThresholdMode"           : [ None,     (64,      64 + 1) ],     # yes, at 64! Mode: 0:CPM, 1:µSv/h, 2:mR/h
     "ThresholduSv"            : [ None,     (65,      65 + 4) ],     # yes, at 65! Threshold in usv (4 bytes)
 }
+cfgKeyLow = cfgKeyLowDefault
 
 
-# "SSID", "Password", "Website", "URL", "UserID", "CounterID", "Period", "WiFi"
 # only WiFi enabled counter
-cfgKeyHigh =  \
+cfgKeyHighDefault =  \
 {
 # gglobs.GMC_WifiIndex:  0         1           2                    3                      4
 #                     GMCmap    cfgMap      cfg256ndx            cfg512ndx
@@ -95,11 +85,17 @@ cfgKeyHigh =  \
     "CounterID"   : [ None,     None,     (150,   150 + 12),    (229,   229 + 32) ,    (293,   293 + 32) ],
     "Period"      : [ None,     None,     (112,   112 +  1),    (261,   261 +  1) ,    (325,   325 +  1) ], # 0 ... 255
     "WiFi"        : [ None,     None,     (113,   113 +  1),    (262,   262 +  1) ,    (326,   326 +  1) ], # WiFi On=1 Off=0
-    "FastEstTime" : [ None,     None,     (255,   255 +  1),    (262,   262 +  1) ,    (328,   328 +  1) ], # Fast Estimate Time:
+    # "FastEstTime" : [ None,     None,     (255,   255 +  1),    (262,   262 +  1) ,    (328,   328 +  1) ], # Fast Estimate Time:
+    #                                                                                                         # on 500+: 5, 10, 15, 20, 30, 60=sec, 3=dynamic
+    #                                                                                                         # not on 300 series
+
+    #testing: changing loc of FET byte
+    "FastEstTime" : [ None,     None,     (255,   255 +  1),    (263,   263 +  1) ,    (328,   328 +  1) ], # Fast Estimate Time:
                                                                                                             # on 500+: 5, 10, 15, 20, 30, 60=sec, 3=dynamic
                                                                                                             # not on 300 series
 }
 
+cfgKeyHigh = cfgKeyHighDefault
 
 # the History mode of saving
 savedatatypes = (
@@ -109,6 +105,16 @@ savedatatypes = (
                     "CPM, save hourly average",
                     "CPS, save every second if exceeding threshold",
                     "CPM, save every minute if exceeding threshold",
+                )
+
+# Light staes
+LightState = (
+                    "Light: OFF",
+                    "Light: ON",
+                    "Timeout: 1",
+                    "Timeout: 3",
+                    "Timeout: 10",
+                    "Timeout: 30",
                 )
 
 # to keep track of illegal entries in cal* fields
@@ -121,12 +127,191 @@ validMatrix   = {
                     "cal2usv" : True ,
                 }
 
+
+def initGMC():
+    """
+    Tries to open the serial port, and to verify communication
+    Return: on success: ""
+            on failure: errmessage
+    """
+
+    fncname              = "initGMC: "
+    dprint(fncname)
+    setDebugIndent(1)
+
+    gglobs.GMCDeviceName = "GMC Device"
+
+    gglobs.GMCLast60CPS  = np.full(60, gglobs.NAN)  # storing last 60 sec of CPS values, filled with all NAN
+    gglobs.GMCEstFET     = np.full(60, 0)           # storing last 60 sec of CPS values, filled with all 0
+
+    cfgKeyLow  = cfgKeyLowDefault
+    cfgKeyHigh = cfgKeyHighDefault
+
+    if gglobs.GMC_baudrate      == "auto":  gglobs.GMC_baudrate         = 115200
+    if gglobs.GMC_timeout       == "auto":  gglobs.GMC_timeout          = 3
+    if gglobs.GMC_timeout_write == "auto":  gglobs.GMC_timeout_write    = 1
+
+    if gglobs.GMC_usbport is None: gglobs.GMC_usbport = "auto"
+
+    if  gglobs.GMC_usbport == "auto":
+        port, baud = getSerialConfig("GMC")
+        if port is None or baud is None:
+            setDebugIndent(0)
+            return "A {} was not detected.".format(gglobs.GMCDeviceName)
+        else:
+            gglobs.GMC_usbport  = port
+            gglobs.GMC_baudrate = baud
+            fprint("A {} was detected at port: {} and baudrate: {}".format(gglobs.GMCDeviceName, gglobs.GMC_usbport, gglobs.GMC_baudrate))
+    else:
+        fprint("A {} was configured for port: {} and baudrate: {}".format(gglobs.GMCDeviceName, gglobs.GMC_usbport, gglobs.GMC_baudrate))
+
+    msg            = "port='{}' baudrate={} timeoutR={} timeoutW={}".format(gglobs.GMC_usbport, gglobs.GMC_baudrate, gglobs.GMC_timeout, gglobs.GMC_timeout_write)
+    gglobs.GMCser  = None
+    error          = 0
+    errmessage     = ""
+    errmessage1    = ""
+
+    while True:
+        # Make the serial connection
+        errmessage1 = "Connection failed using: " + msg
+        try:
+            # gglobs.GMCser is like:
+            # Serial<id=0x7f2014d371d0, open=True>(port='/dev/ttyUSB0',
+            # baudrate=115200, bytesize=8, parity='N', stopbits=1,
+            # timeout=20, xonxoff=False, rtscts=False, dsrdtr=False)
+            gglobs.GMCser = serial.Serial(gglobs.GMC_usbport, gglobs.GMC_baudrate, timeout=gglobs.GMC_timeout, write_timeout=gglobs.GMC_timeout_write)
+
+        except serial.SerialException as e:
+            exceptPrint(e, fncname + "SerialException: " + errmessage1)
+            terminateGMC()
+            break
+
+        except Exception as e:
+            exceptPrint(e, fncname + "Exception: " + errmessage1)
+            terminateGMC()
+            break
+
+        # any bytes in pipeline? clear them first
+        getGMC_ExtraByte()
+
+        # get the version name of the GMC device
+        try:
+            ver, error, errmessage = getGMC_VER()
+        except Exception as e:
+            errmessage1  = "ERROR: Port opened ok, but Communication failed. Is baudrate correct?"
+            exceptPrint(e, fncname + errmessage1)
+            terminateGMC()
+            break
+
+        if error < 0:
+            errmessage1  = "ERROR getting version: " + errmessage
+            edprint(fncname + errmessage1, debug=True)
+            terminateGMC()
+            break
+
+        else:
+            # Got something back for ver
+            if ver.startswith("GMC"):
+                # got back like: 'GMC-300Re 4.22'
+                gglobs.GMCDeviceDetected = ver
+
+                if gglobs.Devices["GMC"][0] is not None and gglobs.GMCDeviceDetected != gglobs.Devices["GMC"][0]:
+                    rmsg = "The GMC Device was changed - cannot continue. To use the new device restart GeigerLog."
+                    terminateGMC()
+                    setDebugIndent(0)
+                    return rmsg
+
+                gglobs.Devices["GMC"][0] = gglobs.GMCDeviceDetected
+
+        break
+
+    if gglobs.GMCser == None:
+        rmsg = "{}".format(errmessage1.replace('[Errno 2]', '\n'))
+        gglobs.Devices["GMC"][CONN] = False
+
+    else:
+        # dprint(fncname + "Communication ok with device: '{}'".format(ver))
+        rmsg = ""
+        gglobs.Devices["GMC"][CONN] = True
+
+        # identify device
+        getGMC_DeviceProperties()
+
+        # get the cfg
+        cfg, error, errmessage = getGMC_CFG() # goes to gglobs.GMC_cfg within f'on
+        if error < 0:
+            rmsg = "ERROR trying to read GMC Device Configuration: " + errmessage
+            gglobs.Devices["GMC"][CONN] = False
+
+    # Heartbeat --> OFF
+    turnGMC_HeartbeatOFF()  # just in case it had been turned on!
+
+    setDebugIndent(0)
+
+    # NOTE: /usr/lib/python3.9/http/server.py
+    # has line 284: requestline = requestline.rstrip('\r\n')
+    # requestline = requestline.rstrip('\r\n')
+    # # mod by ullix
+    # requestline = requestline.rstrip('\r')
+    # # end mod
+    # --> does not work
+
+    # getResponseAT(b'<AT>>')                 # b'AT\r\r\n\r\nOK\r\n\n'
+    # getResponseAT(b'<AT+RST>>')             # b'AT+RST\r\r\n\r\nOK\r\nWIFI DISCONNECT\r\n\r\n ets Jan  8 2013,rst cause:2, boot mode:(3,6)\r\n\r\nload 0x40100000, len 1856, room 16 \r\ntail 0\r\nchksum 0x63\r\nload 0x3ffe8000, len 776, room 8 \r\ntail 0\r\nchksum 0x02\r\nload 0x3ffe8310, len 552, room 8 \r\ntail 0\r\nchksum 0x7'
+    # # getResponseAT(b'<AT+GMR>>')             # b'AT+GMR\r\r\nAT version:1.2.0.0(Jul  1 2016 20:04:45)\r\nSDK version:1.5.4.1(39cb9a32)\r\nAi-Thinker Technology Co. Ltd.\r\nDec  2 2016 14:21:16\r\nOK\r\nWIFI DISCONNECT\r\nWIFI CONNECTED\r\nWIFI GOT IP\r\n\n'
+    # # getResponseAT(b'<AT+CIFSR>>')           # b'AT+CIFSR\r\r\n+CIFSR:APIP,"192.168.4.1"\r\n+CIFSR:APMAC,"a2:20:a6:36:ac:ba"\r\n+CIFSR:STAIP,"10.0.0.42"\r\n+CIFSR:STAMAC,"a0:20:a6:36:ac:ba"\r\n\r\nOK\r\n\n'
+    # #                                         # FritzBox: GMC-500+: A0:20:A6:36:AC:BA == STAMAC!
+    # getResponseAT(b'<AT+CIPSTART="TCP","10.0.0.20",8000>>')
+    # getResponseAT(b'<AT+CIFSR>>')
+
+    # # getResponseAT(b'<AT+CIPMODE=0>>')
+    # # getResponseAT(b'<AT+CIPMODE=1>>')     # 1 führt zur Blockade von CIPSTART
+
+    # # getResponseAT(b'<AT+CWLIF>>')         # b'AT+CWLIF\r\r\n\r\nOK\r\n\n'
+    # # getResponseAT(b'<AT+CWSAP?>>')        # b'AT+CWSAP?\r\r\n+CWSAP:"AI-THINKER_36ACBA","",1,0,4,0\r\n\r\nOK\r\nWIFI GOT IP\r\n\n'
+    # # getResponseAT(b'<AT+CWMODE?>>')       # b'AT+CWMODE?\r\r\n+CWMODE:3\r\n\r\nOK\r\nWIFI DISCONNECT\r\nWIFI CONNECTED\r\nWIFI GOT IP\r\n\n'
+    # # getResponseAT(b'<AT+CWMODE=?>>')      # b'AT+CWMODE=?\r\r\n+CWMODE:(1-3)\r\n\r\nOK\r\nWIFI GOT IP\r\n\n'
+
+    # # getResponseAT(b'<AT+CWLIF="mac">>')   # --> error                         ??? not avialable?
+    # # getResponseAT(b'<AT+CMD>>')           # b'AT+CMD?\r\r\n\r\nERROR\r\n\n'   ??? not avialable?
+    # # getResponseAT(b'<AT+CMD?>>')          # b'AT+CMD?\r\r\n\r\nERROR\r\n\n'   ??? not avialable?
+
+    return rmsg
+
+
+def terminateGMC():
+    """close Serial connection if open,
+    and set: gglobs.GMCser        = None,
+    and      gglobs.Devices["GMC"][CONN]  = False"""
+
+    fncname = "terminateGMC: "
+    dprint(fncname )
+    setDebugIndent(1)
+
+    if gglobs.GMCser != None:
+        try:
+            gglobs.GMCser.close()
+            dprint(fncname + "Serial Connection is closed")
+        except:
+            edprint(fncname + "Failed trying to close Serial Connection; terminating anyway", debug=True)
+
+        gglobs.GMCser = None
+
+    gglobs.Devices["GMC"][CONN] = False
+
+    dprint(fncname + "Terminated")
+    setDebugIndent(0)
+
+
+
+
 #
 # Commands and functions implemented in GMC device
 #
 
 def getGMC_VER():
-    # Get hardware model and version
+    """Get GMC hardware model and version"""
+
     # send <GETVER>> and read 14 bytes
     # returns total of 14 bytes ASCII chars from GQ GMC unit.
     # includes 7 bytes hardware model and 7 bytes firmware version.
@@ -144,15 +329,13 @@ def getGMC_VER():
     # But I don't think the 300 or 320 has been updated so maybe you can ask
     # support for the fix."
 
-
     fncname = "getGMC_VER:"
 
     dprint(fncname)
     setDebugIndent(1)
-    recd    = None
 
+    # expect >= 14 chars
     rec, error, errmessage = serialGMC_COMM(b'<GETVER>>', 14, orig(__file__))
-    #for i in range(0, 14): print("i={:2d}  rec={:08b}  rec={:02X}".format(i, rec[i], rec[i]))
 
     if error >= 0:
         try:
@@ -162,29 +345,33 @@ def getGMC_VER():
             errmessage = "ERROR getting Version - Bytes are not ASCII: " + str(rec)
             exceptPrint(e, errmessage)
             recd       = str(rec)
+    else:
+        recd = None
 
     ###############################################################################
     # FOR TESTING ONLY - start GL with command: 'testing' #########################
-    # use in combination with testing setting in getGMC_cfg
+    # use in combination with testing setting in getGMC_cfg()
     if gglobs.testing:
         pass
         #recd = "GMC-300Re 3.20"
         #recd = "GMC-300Re 4.20"
         #recd = "GMC-300Re 4.22"
-        #recd = "GMC-320Re 3.22"   # device used by user katze
+        #recd = "GMC-320Re 3.22"    # device used by user katze
         #recd = "GMC-320Re 4.19"
-        recd = "GMC-320Re 5.xx"    # with WiFi
+        #recd = "GMC-320Re 5.xx"    # with WiFi
         #recd = "GMC-500Re 1.00"
         #recd = "GMC-500Re 1.08"
         #recd = "GMC-500+Re 1.0x"
         #recd = "GMC-500+Re 1.18"
+        #recd = "GMC-500+Re 2.28"   # latest version as of 2021-10-20
         #recd = "GMC-600Re 1.xx"
-        #recd = "GMC-600+Re 2.xx"  # fictitious device; not (yet) existing
-                                   # simulates the bug in the 'GMC-500+Re 1.18'
+        #recd = "GMC-600+Re 2.xx"   # fictitious device; not (yet) existing
+                                    # simulates the bug in the 'GMC-500+Re 1.18'
         #recd = ""
     # TESTING END #################################################################
     ###############################################################################
-
+    # recd = "GMC-300Re 3.20"
+    # recd = "GMC-500+Re 2.28"
 
     try:    lenrec = len(rec)
     except: lenrec = None
@@ -196,40 +383,59 @@ def getGMC_VER():
     return (recd, error, errmessage)
 
 
-def GMCgetValues(varlist):
-    """return all values in the varlist
-    NOTE: the getGMC_CPM/S[L | H] functions all return (value, error, errmessage)
-          here only value will be used
-    """
+def getValuesGMC(varlist):
+    """return all GMC values for each var in the varlist"""
 
-    fncname = "GMCgetValues: "
+    # NOTE: the getGMC_CPM/S[L|H] functions all return (value, error, errmessage)
+    #       here only value will be used
 
+    #       True counter values are returned only for CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,
+    #       Other returns (not disclosed in config):
+    #           CPM3rd: CPM calculated from last 60 CPS
+    #           CPS3rd: Counts per MINUTE with simulated Fast Estimate Time
+    #           Humid:  Duration of calling all vars
+    #           Xtra:   Delta Time "computer minus device" (negative if device is faster than computer)
+
+    fncname = "getValuesGMC: "
+    start   = time.time()
     alldata = {}
 
     for vname in varlist:
-        #start = time.time()
+        if   vname == "CPM":    alldata[vname] = getGMC_CPM ()[0]                     # CPM counts per MINUTE
+        elif vname == "CPS":    alldata[vname] = getGMC_CPS ()[0]                     # CPS counts per SECOND
+        elif vname == "CPM1st": alldata[vname] = getGMC_CPML()[0]                     # CPM from 1st tube, normal tube
+        elif vname == "CPS1st": alldata[vname] = getGMC_CPSL()[0]                     # CPS from 1st tube, normal tube
+        elif vname == "CPM2nd": alldata[vname] = getGMC_CPMH()[0]                     # CPM from 2nd tube, extra tube
+        elif vname == "CPS2nd": alldata[vname] = getGMC_CPSH()[0]                     # CPS from 2nd tube, extra tube
 
-        if   vname == "CPM":    alldata[vname] = getGMC_CPM ()[0]                   # CPM counts per MINUTE
-        elif vname == "CPS":    alldata[vname] = getGMC_CPS ()[0]                   # CPS counts per SECOND
-        elif vname == "CPM1st": alldata[vname] = getGMC_CPML()[0]                   # CPM from 1st tube, normal tube
-        elif vname == "CPS1st": alldata[vname] = getGMC_CPSL()[0]                   # CPS from 1st tube, normal tube
-        elif vname == "CPM2nd": alldata[vname] = getGMC_CPMH()[0]                   # CPM from 2nd tube, extra tube
-        elif vname == "CPS2nd": alldata[vname] = getGMC_CPSH()[0]                   # CPS from 2nd tube, extra tube
-        elif vname == "CPM3rd": alldata[vname] = GMCgetCPMfromCPS(alldata, "CPS1st")# CPM calculated from last 60 CPS
-        elif vname == "CPS3rd": alldata[vname] = GMCgetCPMwithFET(alldata, "CPS1st")# counts per MINUTE with simulated Fast Estimate Time
-        elif vname == "X":      alldata[vname] = GMCgetDeltaTime()                  # Delta Time "computer minus device" (negative if device is faster than computer)
+        elif vname == "CPM3rd": alldata[vname] = getGMC_CPMfromCPS(alldata, "CPS1st") # CPM calculated from last 60 CPS; requires CPS1st!
+        elif vname == "CPS3rd": alldata[vname] = getGMC_CPMwithFET(alldata, "CPS1st") # Counts per MINUTE with simulated Fast Estimate Time; requires CPS1st!
 
-        #dprint(fncname + "var: {:7s} took: {:0.3f} ms".format(vname, (time.time() - start) * 1000))
+        elif vname == "Xtra":   alldata[vname] = getGMC_DeltaTime()                   # Delta Time "computer minus device" (negative if device is faster than computer)
 
-    printLoggedValues(fncname, varlist, alldata)
+    duration = round((time.time() - start) * 1000, 1)
+    if "Humid" in varlist:  alldata["Humid"] = duration
+
+    printLoggedValues(fncname, varlist, alldata, duration)
+
+    # for heartbeat testing only
+    # turnGMC_HeartbeatON()
+    # counter = 0
+    # while True and counter < 5:
+    #     if gglobs.GMCser.in_waiting:
+    #         counter += 1
+    #         getGMC_ExtraByte()
+    #     # print(getGMC_CPM ()[0])
+    #     time.sleep(0.1)
+    # turnGMC_HeartbeatOFF()
 
     return alldata
 
 
-def GMCgetCPMwithFET(valuedict, vname):
+def getGMC_CPMwithFET(valuedict, vname):
     """calculate CPM from the last N values of CPS;
     N is used as in Fast Estimate Time, i.e. N = FET = 3, 5, 10, 15, 20, 30, 60
-    used in GMCgetValues:  cps data from CPS1st, CPM mapped to CPM"""
+    used in getValuesGMC:  cps data from CPS1st, CPM mapped to CPM"""
 
     """
     from: http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=9506
@@ -259,7 +465,7 @@ def GMCgetCPMwithFET(valuedict, vname):
 
     try:                    lastcps = valuedict[vname]
     except Exception as e:
-                            exceptPrint(e, "GMCgetCPMwithFET: vname: {}".format(vname))
+                            exceptPrint(e, "getGMC_CPMwithFET: vname: {}".format(vname))
                             return gglobs.NAN
 
     # keep np array at 60 values and use last 60 only
@@ -272,13 +478,13 @@ def GMCgetCPMwithFET(valuedict, vname):
     return int(np.nansum(gglobs.GMCEstFET[-FET:]) * 60 / FET) # without int a blob is saved to DB!
 
 
-def GMCgetCPMfromCPS(valuedict, vname):
+def getGMC_CPMfromCPS(valuedict, vname):
     """calculate CPM from the last 60 values of CPS;
-    used in GMCgetValues:  cps data from CPS1st, CPM mapped to CPM3rd"""
+    used in getValuesGMC:  cps data from CPS1st, CPM mapped to CPM3rd"""
 
     try:                    lastcps = valuedict[vname]
     except Exception as e:
-                            exceptPrint(e, "GMCgetCPMfromCPS: vname: {}".format(vname))
+                            exceptPrint(e, "getGMC_CPMfromCPS: vname: {}".format(vname))
                             return gglobs.NAN
 
     # append single value to np array but use last 60 only
@@ -298,7 +504,8 @@ def getGMC_ValuefromRec(rec, maskHighBit=False):
 
 
 def getGMC_CPM():
-    # Get current CPM value
+    """Get current GMC CPM value"""
+
     # send <GETCPM>> and read 2 bytes
     # In total 2 bytes data are returned from GQ GMC unit
     # as a 16 bit unsigned integer.
@@ -324,7 +531,8 @@ def getGMC_CPM():
 
 
 def getGMC_CPS():
-    # Get current CPS value
+    """Get current GMC CPS value"""
+
     # send <GETCPS>> and read 2 bytes
     # In total 2 bytes data are returned from GQ GMC unit
     #
@@ -427,7 +635,7 @@ def getGMC_CPSH():
     return (value, error, errmessage)
 
 
-def turnGMC_HeartbeatOn():
+def turnGMC_HeartbeatON():
     # 3. Turn on the GQ GMC heartbeat
     # Note:     This command enable the GQ GMC unit to send count per second data to host every second automatically.
     # Command:  <HEARTBEAT1>>
@@ -437,7 +645,7 @@ def turnGMC_HeartbeatOn():
     #           The highest bit 15 and bit 14 are reserved data bits.
     # Firmware supported:  GMC-280, GMC-300  Re.2.10 or later
 
-    dprint("turnGMC_HeartbeatOn:")
+    dprint("turnGMC_HeartbeatON:")
     setDebugIndent(1)
 
     if gglobs.GMCser == None:
@@ -447,7 +655,7 @@ def turnGMC_HeartbeatOn():
     else:
         rec, error, errmessage = serialGMC_COMM(b'<HEARTBEAT1>>', 0, orig(__file__))
 
-    dprint("turnGMC_HeartbeatOn: rec='{}', err={}, errmessage='{}'".format(rec, error, errmessage))
+    wprint("turnGMC_HeartbeatON: rec='{}', err={}, errmessage='{}'".format(rec, error, errmessage))
 
     setDebugIndent(0)
 
@@ -460,7 +668,8 @@ def turnGMC_HeartbeatOFF():
     # Return:   None
     # Firmware supported:  Re.2.10 or later
 
-    dprint("turnGMC_HeartbeatOFF:")
+    fncname = "turnGMC_HeartbeatOFF: "
+    dprint(fncname)
     setDebugIndent(1)
 
     if gglobs.GMCser == None:
@@ -471,7 +680,7 @@ def turnGMC_HeartbeatOFF():
     else:
         rec, error, errmessage = serialGMC_COMM(b'<HEARTBEAT0>>', 0, orig(__file__))
 
-    dprint("turnGMC_HeartbeatOFF: rec='{}', err={}, errmessage='{}'".format(rec, error, errmessage))
+    dprint(fncname + "rec={}, err={}, errmessage='{}'".format(rec, error, errmessage))
 
     setDebugIndent(0)
 
@@ -600,8 +809,9 @@ def getGMC_SPIR(address = 0, datalength = 4096):
     if gglobs.GMC_SPIRbugfix:   dl = struct.pack(">H", datalength - 1)
     else:                       dl = struct.pack(">H", datalength    )
 
-    dprint("getGMC_SPIR: SPIR requested: address: {:5d}, datalength:{:5d}   (hex: address: {:02x} {:02x} {:02x}, datalength: {:02x} {:02x})".\
-            format(address, datalength, ad[0], ad[1], ad[2], dl[0], dl[1]))
+    # dprint("getGMC_SPIR: SPIR requested: address: {:5d}, datalength:{:5d}   (address: 0x {:02x} {:02x} {:02x}, datalength: 0x {:02x} {:02x})".\
+    dprint("getGMC_SPIR: SPIR requested: address: {:5d} (0x {:02x} {:02x} {:02x}), datalength:{:5d} (0x {:02x} {:02x})".\
+            format(address, ad[0], ad[1], ad[2], datalength, dl[0], dl[1]))
     setDebugIndent(1)
 
     rec, error, errmessage = serialGMC_COMM(b'<SPIR' + ad + dl + b'>>', datalength, orig(__file__)) # returns bytes
@@ -616,32 +826,35 @@ def getGMC_SPIR(address = 0, datalength = 4096):
 
 
 def getGMC_ExtraByte():
-    """read single bytes until no further bytes coming"""
+    """read until no further bytes coming"""
 
+    start   = time.time()
     fncname = "getGMC_ExtraByte: "
+    # edprint(fncname)
+    xrec    = b""
+    # time.sleep(0.001) # this code may be running too fast and missing waiting bytes. Happened with 500+
+    time.sleep(0.010) # this code may be running too fast and missing waiting bytes. Happened with 500+
 
-    # failed when called from 2nd instance of GeigerLog; just to avoid error
-    try:    bytesWaiting = gglobs.GMCser.in_waiting
-    except: bytesWaiting = 0
+    # failed when called from 2nd instance of GeigerLog; just to avoid crash
+    try:
+        bytesWaiting = gglobs.GMCser.in_waiting
+    except Exception as e:
+        exceptPrint(e, "Exception bytesWaiting")
+        bytesWaiting = 0
 
-    xrec = b""
     if bytesWaiting == 0:
-        wprint(fncname + "No extra bytes waiting for reading")
+        msg = TCYAN + "Bytes waiting: None"
+
     else:
-        # read single byte until nothing is in_waiting
-        vprint(fncname + "Bytes waiting: {}".format(bytesWaiting), verbose=True)
-        #while gglobs.GMCser.in_waiting:
+        # read until nothing is in_waiting
+        # mdprint(fncname + "Bytes waiting: {}".format(bytesWaiting))
         while True:
-            try:
-                cnt = gglobs.GMCser.in_waiting
-            except Exception as e:
-                exceptPrint(e, fncname + "gglobs.GMCser.in_waiting Exception")
-                cnt = 0
-            if cnt == 0: break
 
             try:
-                x = gglobs.GMCser.read(1)
-                time.sleep(0.001) # it may be running too fast and missing waiting bytes. Happened with 500+
+                x = gglobs.GMCser.read(bytesWaiting)
+
+                # edprint("x: len:", len(x), " ", x)
+                time.sleep(0.010) # this loop may be running too fast and missing waiting bytes. Happened with 500+
             except Exception as e:
                 edprint(fncname + "Exception: {}".format(e))
                 exceptPrint(e, fncname + "Exception: ")
@@ -650,8 +863,18 @@ def getGMC_ExtraByte():
             if len(x) == 0: break
             xrec += x
 
-        vprint(fncname + "Got {} extra bytes from reading-pipeline: ".format(len(xrec)), list(xrec), verbose=True)
-        vprint(fncname + "Extra bytes as ASCII: (0xFF --> F) {}".format(BytesAsASCIIFF(xrec)), verbose=True)
+            try:
+                bytesWaiting = gglobs.GMCser.in_waiting
+            except Exception as e:
+                exceptPrint(e, fncname + "gglobs.GMCser.in_waiting Exception")
+                bytesWaiting = 0
+
+            if bytesWaiting == 0: break
+
+        msg = BOLDRED + "Got {} extra bytes from reading-pipeline: {}".format(len(xrec), xrec[:70])
+
+        duration = 1000 * (time.time() - start)
+        cdprint(fncname + msg + " - duration:{:0.1f} ms".format(duration))
 
     return xrec
 
@@ -663,7 +886,7 @@ def getGMC_CFG():
     # - the cfg as a Python bytes string, should be 256 or 512 bytes long
     # - the error value (0, -1, +1)
     # - the error message as string
-    # has set gglobs.GMCcfg with read cfg
+    # has set gglobs.GMC_cfg with read cfg
 
     # NOTE: 300series uses 256 bytes; 500 and 600 series 512 bytes
     # config size is determined by deviceproperties
@@ -682,12 +905,11 @@ def getGMC_CFG():
     #~print("getGMC_CFG: gglobs.GMC_configsize: ", gglobs.GMC_configsize)
     #~print("getGMC_CFG: type gglobs.GMC_configsize: ", type(gglobs.GMC_configsize))
 
-###############################################################################
-####### BEGIN TESTDATA ########################################################
-# replaces current cfg with cfg from other runs
-# requires that a testdevice was activated in getGMC_VER
-# only do this when command 'testing' was given on command line !
-
+    ###############################################################################
+    ####### BEGIN TESTDATA ########################################################
+    # replaces current cfg with cfg from other runs
+    # requires that a testdevice was activated in getGMC_VER
+    # only do this when command 'testing' was given on command line !
     if gglobs.testing:
         if gglobs.GMC_configsize == 512:
             # using a 512 bytes sequence; data from a GMC-500(non-plus) readout
@@ -725,11 +947,10 @@ def getGMC_CFG():
         print(BytesAsHex(cfg))
         print(BytesAsASCIIFF(cfg))
         print("TESTDATA:  END ------------")
+    ####### END TESTDATA ##########################################################
+    ###############################################################################
 
-####### END TESTDATA ##########################################################
-###############################################################################
-
-    gglobs.GMCcfg = cfg  # set the global value with whatever you got, real or fake data
+    gglobs.GMC_cfg = cfg  # set the global value with whatever you got, real or fake data
 
     if cfg == None:
         dprint("getGMC_CFG: ERROR: Failed to get any configuration data", debug=True)
@@ -752,15 +973,6 @@ def getGMC_CFG():
             return cfg, -1, "getGMC_CFG: Exception: {}".format(e)
 
         try:
-            #  ("Power", "Alarm", "Speaker", "CalibCPM_0", "CalibuSv_0", "CalibCPM_1", "CalibuSv_0", "CalibCPM_2", "CalibuSv_0", "SaveDataType", "MaxCPM", "Baudrate", "Battery")
-            #~cfgKeyLow["Power"][0]          = cfgKeyLow["Power"][0]        #[0]
-            #~cfgKeyLow["Alarm"][0]          = cfgKeyLow["Alarm"][0]        #[0]
-            #~cfgKeyLow["Speaker"][0]        = cfgKeyLow["Speaker"][0]      #[0]
-            #~cfgKeyLow["SaveDataType"][0]   = cfgKeyLow["SaveDataType"][0] #[0]
-            #~cfgKeyLow["Baudrate"][0]       = cfgKeyLow["Baudrate"][0]     #[0]
-            #~cfgKeyLow["Battery"][0]        = cfgKeyLow["Battery"][0]      #[0]
-            #cfgKeyLow["ThresholdMode"][0]  = cfgKeyLow["ThresholdMode"][0] #[0]
-
             cfgKeyLow["CalibCPM_0"]  [0]     = struct.unpack(">H",    cfgKeyLow["CalibCPM_0"]  [0] )[0]
             cfgKeyLow["CalibCPM_1"]  [0]     = struct.unpack(">H",    cfgKeyLow["CalibCPM_1"]  [0] )[0]
             cfgKeyLow["CalibCPM_2"]  [0]     = struct.unpack(">H",    cfgKeyLow["CalibCPM_2"]  [0] )[0]
@@ -783,9 +995,9 @@ def getGMC_CFG():
         # now get the WiFi part of the config
         ndx = gglobs.GMC_WifiIndex
         if ndx != None:
-            #print("ndx = ", ndx)
+            # gdprint("ndx = ", ndx)
             for key in cfgKeyHigh:
-                #print("key: ", key)
+                # gdprint("key: ", key)
                 if key == "Period":
                     # Period is one byte, value = 0...255 (minutes)
                     cfgKeyHigh[key][1] = str(ord((cfg[cfgKeyHigh[key][ndx][0] : cfgKeyHigh[key][ndx][1]])))
@@ -824,7 +1036,7 @@ def writeGMC_ConfigSingle(cfgaddress, value):
 
     # get a fresh config and make a copy
     getGMC_CFG()
-    cfgcopy = copy.copy(gglobs.GMCcfg)
+    cfgcopy = copy.copy(gglobs.GMC_cfg)
 
     # modify cfgcopy at cfgaddress with value
     cfgcopy = cfgcopy[:cfgaddress] + bytes([value]) + cfgcopy[cfgaddress + 1:]
@@ -869,14 +1081,20 @@ def writeGMC_Config(config):
     5. <CFGUPDATE>>
     """
 
+
+    ######################################################################################
+    # local function
     def printstr(size, i, c, A0, D0):
-        index = 5
+        index = 1000
         if size == 256: pfs = "i==A0={:>3d}(0x{:02X}), cfgval==D0={:>3d}(0x{:02X})" # formatted print string for single byte address
         else:           pfs = "i==A0={:>3d}(0x{:03X}), cfgval==D0={:>3d}(0x{:02X})" # formatted print string for double byte address
-        if i < index or i > (len(cfgstrip) - (index +1)):
-            vprint(pfs.format(i, int.from_bytes(A0, byteorder='big'), c, int.from_bytes(D0, byteorder='big')))
-        if i == index: vprint("...")
 
+        if i < index or i > (len(cfgstrip) - (index + 1)):
+            # vprint(pfs.format(i, int.from_bytes(A0, byteorder='big'), c, int.from_bytes(D0, byteorder='big')))
+            mdprint(pfs.format(i, int.from_bytes(A0, byteorder='big'), c, int.from_bytes(D0, byteorder='big')))
+        if i == index: mdprint("...")
+
+    ######################################################################################
 
     fncname = "writeGMC_Config: "
 
@@ -889,13 +1107,13 @@ def writeGMC_Config(config):
     if   len(cfgcopy) <= 256 and gglobs.GMC_configsize == 256:  doUpdate = 256
     elif len(cfgcopy) <= 512 and gglobs.GMC_configsize == 512:  doUpdate = 512
     else: # ERROR:
-        msg  = "Number of configuration data inconsistent with detected device.<br>Updating config will NOT be done, as Device might be damaged by it!"
+        msg  = "Number of configuration data inconsistent with detected device.\nUpdating config will NOT be done, as Device might be damaged by it!"
         efprint(msg)
-        dprint(fncname + msg.replace('<br>', ' '), debug=True)
+        dprint(fncname + msg.replace('\n', ' '), debug=True)
         setDebugIndent(0)
         return
 
-    # remove right side FFs; after erasing th config memory this will be the default anyway
+    # remove right side FFs; after erasing the config memory this will be the default anyway
     cfgstrip = cfgcopy.rstrip(b'\xFF')
     #~dprint(fncname + "Config right-stripped from FF: len:{}:\n".format(len(cfgstrip)), BytesAsASCIIFF(cfgstrip))
 
@@ -903,6 +1121,7 @@ def writeGMC_Config(config):
     dprint(fncname + "Erase Config")
     rec = serialGMC_COMM(b'<ECFG>>', 1, orig(__file__))
 
+    # write the config to device
     dprint(fncname + "Write new Config Data for Config Size: >>>>>>>>>>>>>>>>{}<<<<<<<<<<<<".format(doUpdate))
     setDebugIndent(1)
     if doUpdate == 256:
@@ -922,11 +1141,16 @@ def writeGMC_Config(config):
             D0 = bytes([c])
             printstr(512, i, c, A0, D0)
             setDebugIndent(1)
+            # rdprint("i:", i)
+            if D0 == ">": edprint("D0 == >")
             rec = serialGMC_COMM(b'<WCFG' + A0 + D0 + b'>>', 1, orig(__file__))
+            getGMC_ExtraByte()
             setDebugIndent(0)
 
+            #### GMC Bug #######################################################
             # GMC-500 always times out at byte #11.
             # solved: it is a bug in the firmware; data resulted in ">>>"
+            ####################################################################
 
     setDebugIndent(0)
 
@@ -935,8 +1159,8 @@ def writeGMC_Config(config):
 
     # read the config
     getGMC_CFG()
-    wprint(fncname + "Config copy strip: len: {}:\n".format(len(cfgstrip)),      BytesAsASCIIFF(cfgstrip))
-    wprint(fncname + "Config read back:  len: {}:\n".format(len(gglobs.GMCcfg)), BytesAsASCIIFF(gglobs.GMCcfg))
+    wprint(fncname + "Config copy strip: len: {}:\n".format(len(cfgstrip)),       BytesAsASCIIFF(cfgstrip))
+    wprint(fncname + "Config read back:  len: {}:\n".format(len(gglobs.GMC_cfg)), BytesAsASCIIFF(gglobs.GMC_cfg))
 
     setDebugIndent(0)
 
@@ -960,7 +1184,6 @@ def updateGMC_Config():
 
     dprint(fncname + "rec: ", rec)
 
-
     setDebugIndent(0)
 
 
@@ -983,11 +1206,11 @@ def setGMC_ConfigSettings():
 
     while True: # to allow jumping to exit
 
-        gcfg = bytearray(gglobs.GMCcfg)
+        gcfg = bytearray(gglobs.GMC_cfg)
         wprint(fncname + "gcfg:\n" + BytesAsASCIIFF(gcfg))
 
     # low index - single byte values
-        lowkeys = "Power", "Alarm", "Speaker", "SaveDataType"
+        lowkeys = "Power", "Alarm", "Speaker", "SaveDataType", "BackLightTimeoutSeconds" # changes!!!!!!!!!!!!!!
         for key in lowkeys:
             # all keys are only 1 byte long
             cfgrec      = cfgKeyLow[key]
@@ -1001,7 +1224,7 @@ def setGMC_ConfigSettings():
             wprint(fncname + "#1 cfgKeyLow: {:15s}, val: {:1d}, ndx: {}".format(key, keyval, cfgrec[1]))
 
     # low index - multi byte values (GMC_endianness)
-        if gglobs.GMC_endianness == 'big':  fString = ">f"  # use big-endian ---   500er, 600er:
+        if gglobs.GMC_endianness == 'big': fString = ">f"  # use big-endian ---   500er, 600er:
         else:                              fString = "<f"  # use little-endian -- other than 500er and 600er:
         lowkeys = "CalibCPM_0", "CalibuSv_0", "CalibCPM_1", "CalibuSv_1", "CalibCPM_2", "CalibuSv_2"
         for key in lowkeys:
@@ -1089,7 +1312,7 @@ def setGMC_ConfigSettings():
 
     getGMC_HistSaveMode()
     gglobs.exgg.setGMCPowerIcon()
-    fprintGMC_DeviceInfo(extended = False)
+    fprint(getInfoGMC(extended = False))
 
     setDebugIndent(0)
     setNormalCursor()
@@ -1118,13 +1341,15 @@ def editGMC_Configuration():
 
     rmself = gglobs.exgg    # access to ggeiger "remote self"
 
-    if not gglobs.GMCConnection:
+    # if not gglobs.GMCConnection:
+    if not gglobs.Devices["GMC"][CONN] :
         showStatusMessage("No GMC Device Connected")
         return
 
-# get gglobs.config
+    # get gglobs.config
     cfg, error, errmessage = getGMC_CFG()
-    #~print("error, errmessage: ", error, errmessage, ", cfg:\n", cfg)
+    # print("error, errmessage: ", error, errmessage, ", cfg:\n", cfg)
+    # print("cfgKeyLow", cfgKeyLow)
     if error < 0:
         efprint("Error:" + errmessage)
         return
@@ -1138,7 +1363,7 @@ def editGMC_Configuration():
     # https://www.tutorialspoint.com/pyqt/pyqt_qlineedit_widget.htm
     # https://snorfalorpagus.net/blog/2014/08/09/validating-user-input-in-pyqt4-using-qvalidator/
 
-    setDefault = False  # i.e. False: show what is read from device
+    setDefault = False  # i.e. False==show what is read from device
 
     while True:
         fbox=QFormLayout()
@@ -1158,7 +1383,7 @@ def editGMC_Configuration():
         hbox0.addWidget(r01)
         hbox0.addWidget(r02)
         hbox0.addStretch()
-        fbox.addRow(QLabel("Power"), hbox0)
+        fbox.addRow(QLabel("Power State"), hbox0)
         if isGMC_PowerOn() == 'ON': r01.setChecked(True)
         else:                       r02.setChecked(True)
 
@@ -1174,7 +1399,7 @@ def editGMC_Configuration():
         hbox1.addWidget(r11)
         hbox1.addWidget(r12)
         hbox1.addStretch()
-        fbox.addRow(QLabel("Alarm"), hbox1)
+        fbox.addRow(QLabel("Alarm State"), hbox1)
         if isGMC_AlarmOn() == 'ON': r11.setChecked(True)
         else:                       r12.setChecked(True)
 
@@ -1190,7 +1415,7 @@ def editGMC_Configuration():
         hbox2.addWidget(r21)
         hbox2.addWidget(r22)
         hbox2.addStretch()
-        fbox.addRow(QLabel("Speaker"), hbox2)
+        fbox.addRow(QLabel("Speaker State"), hbox2)
         if isGMC_SpeakerOn() == 'ON':   r21.setChecked(True)
         else:                           r22.setChecked(True)
 
@@ -1198,9 +1423,36 @@ def editGMC_Configuration():
         hbox3=QHBoxLayout()
         cb1=QComboBox()
         cb1.addItems(savedatatypes)
-        cb1.setCurrentIndex(gglobs.GMCsavedataindex)
+        cb1.setCurrentIndex(gglobs.GMC_savedataindex)
         hbox3.addWidget(cb1)
         fbox.addRow(QLabel("History Saving Mode"), hbox3)
+
+    # Light states
+        # LightState = ( "Light: OFF",     # 0     counter: 0
+        #                     "Light: ON",      # 1     counter: 1
+        #                     "Timeout: 1",     # 2     counter: 2
+        #                     "Timeout: 3",     # 3     counter: 4
+        #                     "Timeout: 10",    # 4     counter: 11
+        #                     "Timeout: 30",    # 5     counter: 31
+        #                 )
+        hbox4=QHBoxLayout()
+        cb2=QComboBox()
+        cb2.addItems(LightState)
+
+        # print("cfgKeyLow[BackLightTimeoutSeconds] [0]", cfgKeyLow["BackLightTimeoutSeconds"] [0])
+        # print("ord(cfgKeyLow[BackLightTimeoutSeconds] [0]", ord(cfgKeyLow["BackLightTimeoutSeconds"] [0]))
+        LightStatusValue = ord(cfgKeyLow["BackLightTimeoutSeconds"] [0])
+        LightStatusIndex = 0
+        if   LightStatusValue == 0 : LightStatusIndex = 0
+        elif LightStatusValue == 1 : LightStatusIndex = 1
+        elif LightStatusValue > 11 : LightStatusIndex = 5
+        elif LightStatusValue >  4 : LightStatusIndex = 4
+        elif LightStatusValue >  1 : LightStatusIndex = 3
+        else                       : LightStatusIndex = 2
+
+        cb2.setCurrentIndex(LightStatusIndex)
+        hbox4.addWidget(cb2)
+        fbox.addRow(QLabel("Light State"), hbox4)
 
     # sensitivity
         cpmtip   = "Enter an integer number 1 ... 1 Mio"
@@ -1326,11 +1578,12 @@ def editGMC_Configuration():
     # WiFi settings
 
         if not gglobs.GMC_WifiEnabled:
-            wifimsg = QLabel("<span style='font-weight:400;'>This counter is not WiFi enabled</span>")
             wififlag = False
+            wifimsg = QLabel("<span style='font-weight:400;'>This counter is not WiFi enabled</span>")
         else:
-            wifimsg = QLabel("")
             wififlag = True
+            if setDefault : wifimsg = QLabel("<span style='font-weight:900;'>Showing User configuration read from GeigerLog's config file</span>")
+            else:           wifimsg = QLabel("<span style='font-weight:900;'>Showing active configuration read from the Counter</span>")
 
         dashline = QLabel("<span style='font-weight:500;'>{}</span>".format("-" * 70))
         dashline.setAlignment(Qt.AlignCenter)
@@ -1389,6 +1642,8 @@ def editGMC_Configuration():
         l4e.setText(cfgKeyHigh["URL"]       [ndx])
         l5e.setText(cfgKeyHigh["CounterID"] [ndx])
         l6e.setText(cfgKeyHigh["UserID"]    [ndx])
+        # print("ndx: ", ndx)
+        # print("-------------------------------------------------cfgKeyHigh['Period']    [ndx]:", cfgKeyHigh["Period"]    [ndx], type(cfgKeyHigh["Period"]    [ndx]))
         l7e.setText(cfgKeyHigh["Period"]    [ndx])
 
         l1e.setEnabled(wififlag)
@@ -1406,7 +1661,7 @@ def editGMC_Configuration():
         cb4.setCurrentIndex(0)
         cb4.setEnabled(wififlag)
         hbox4.addWidget(cb4)
-        fbox.addRow(QLabel("Fast Estimate Time <span style='color:red;'>CAUTION: see GeigerLog manual</span>"), hbox4)
+        fbox.addRow(QLabel("FET (Fast Estimate Time) <span style='color:red;'>CAUTION: see GeigerLog manual</span>"), hbox4)
 
     # dialog
         dialog = QDialog()
@@ -1423,31 +1678,41 @@ def editGMC_Configuration():
         bbox.helpRequested.connect      (lambda: dialog.done(2))    # Help: Apply ...
         bbox.clicked .connect           (lambda: dialog.done(3))    # reset
 
-        gglobs.bboxbtn = bbox.button(QDialogButtonBox.Ok)   # ok button
+        gglobs.bboxbtn = bbox.button(QDialogButtonBox.Ok)           # ok button
         gglobs.bboxbtn.setEnabled(True)
 
-        bboxhbtn = bbox.button(QDialogButtonBox.Help)       # Help button
-        bboxhbtn.setText("Apply GeigerLog Configuration")
+        bboxhbtn = bbox.button(QDialogButtonBox.Help)               # Help button
+        bboxhbtn.setText("Show User Configuration")
         bboxhbtn.setEnabled(wififlag)
+
+        bboxRbtn = bbox.button(QDialogButtonBox.Reset)              # Reset button
+        bboxRbtn.setText("Show Counter's Active Configuration")
+        bboxRbtn.setEnabled(wififlag)
 
         layoutV   = QVBoxLayout(dialog)
         layoutV.addLayout(fbox)
         layoutV.addWidget(bbox)
 
-        popupdlg = dialog.exec_()
+        popupdlg = dialog.exec()
         #~print("-------------Ex:", popupdlg)
 
-        if   popupdlg == 0:     return              # reject
-        elif popupdlg == 1:     break               # accept
+        if   popupdlg == 0:
+            setDebugIndent(0)
+            return              # reject
+        elif popupdlg == 1:     break               # accept; end while
         elif popupdlg == 2:     setDefault = True   # help, Apply ... i.e. show what is defined in the GeigerLog config
         elif popupdlg == 3:     setDefault = False  # reset           i.e. show what is read from device
-        else:                   return              # should never be called
+        else:
+            setDebugIndent(0)
+            return              # should never be called
 
+    # while ends here
 
     wprint("Power:       r01 is Checked: ", r01.isChecked(), ", Power:       r02 is Checked: ", r02.isChecked())
     wprint("Alarm:       r11 is Checked: ", r11.isChecked(), ", Alarm:       r12 is Checked: ", r12.isChecked())
     wprint("Speaker:     r21 is Checked: ", r21.isChecked(), ", Speaker:     r22 is Checked: ", r22.isChecked())
     wprint("HistSavMode: cb1.currentIndex():", cb1.currentIndex())
+    wprint("LightStatus: cb2.currentIndex():", cb2.currentIndex())
 
     wprint("cal1_cpm: ", rmself.cal1_cpm.text ())
     wprint("cal1_usv: ", rmself.cal1_usv.text ())
@@ -1457,10 +1722,19 @@ def editGMC_Configuration():
     wprint("cal3_usv: ", rmself.cal3_usv.text ())
 
     ndx = 0
-    cfgKeyLow["Power"]          [ndx] = 0   if r01.isChecked() else 255
-    cfgKeyLow["Alarm"]          [ndx] = 1   if r11.isChecked() else 0
-    cfgKeyLow["Speaker"]        [ndx] = 1   if r21.isChecked() else 0
+    cfgKeyLow["Power"]          [ndx] = 0 if r01.isChecked() else 255
+    cfgKeyLow["Alarm"]          [ndx] = 1 if r11.isChecked() else 0
+    cfgKeyLow["Speaker"]        [ndx] = 1 if r21.isChecked() else 0
     cfgKeyLow["SaveDataType"]   [ndx] = cb1.currentIndex()
+
+    cb2ci = cb2.currentIndex()
+    if   cb2ci == 0 : LightStatusValue = 0  # "Light: OFF",     # 0     counter: 0
+    elif cb2ci == 1 : LightStatusValue = 1  # "Light: ON",      # 1     counter: 1
+    elif cb2ci == 2 : LightStatusValue = 2  # "Timeout: 1",     # 2     counter: 2
+    elif cb2ci == 3 : LightStatusValue = 4  # "Timeout: 3",     # 3     counter: 4
+    elif cb2ci == 4 : LightStatusValue = 11 # "Timeout: 10",    # 4     counter: 11
+    else            : LightStatusValue = 31 # "Timeout: 30",    # 5     counter: 31
+    cfgKeyLow["BackLightTimeoutSeconds"] [ndx] = LightStatusValue
 
     cfgKeyLow["CalibCPM_0"]     [ndx] = rmself.cal1_cpm.text()
     cfgKeyLow["CalibuSv_0"]     [ndx] = rmself.cal1_usv.text()
@@ -1470,9 +1744,8 @@ def editGMC_Configuration():
     cfgKeyLow["CalibuSv_2"]     [ndx] = rmself.cal3_usv.text()
 
     for key in cfgKeyLow:
-        wprint("cfgKeyLow:  {:20s}".format(key), cfgKeyLow[key][ndx])
+        wprint("cfgKeyLow:  {:25s}".format(key), cfgKeyLow[key][ndx])
     wprint()
-
 
     if gglobs.GMC_WifiEnabled:
         wprint("WiFi:        r31 is Checked: ", r31.isChecked(), ", WiFi:        r32 is Checked: ", r32.isChecked())
@@ -1584,8 +1857,8 @@ def getGMC_SERIAL():
     if error == 0 or error == 1:  # Ok or Warning
         hexlookup = "0123456789ABCDEF"
         sn =""
-        for i in range(0,7):
-            n1   = ((rec[i] & 0xF0) >>4)
+        for i in range(0, 7):
+            n1   = ((rec[i] & 0xF0) >> 4)
             n2   = ((rec[i] & 0x0F))
             sn  += hexlookup[n1] + hexlookup[n2]
         rec = sn
@@ -1639,7 +1912,7 @@ def getGMC_DATETIME():
     wprint(fncname)
     setDebugIndent(1)
 
-    extra = getGMC_ExtraByte()   # just to make sure the pipeline is clean
+    extra = getGMC_ExtraByte()    # just to make sure the pipeline is clean
     prec  = "2000-01-01 00:00:01" # default fake date to use on error
 
     # yields: rec: b'\x12\x04\x13\x0c9;\xaa' , len:7
@@ -1768,7 +2041,7 @@ def setGMC_POWEROFF():
 
     setDebugIndent(1)
     rec  = serialGMC_COMM(b'<POWEROFF>>', 0, orig(__file__))
-    dprint("setGMC_POWEROFF:", rec)
+    dprint("setGMC_POWEROFF: ", rec)
     setDebugIndent(0)
 
     return rec
@@ -1782,7 +2055,7 @@ def setGMC_POWERON():
 
     setDebugIndent(1)
     rec  = serialGMC_COMM(b'<POWERON>>', 0, orig(__file__))
-    dprint("setGMC_POWERON:", rec)
+    dprint("setGMC_POWERON: ", rec)
     setDebugIndent(0)
 
     return rec
@@ -1796,7 +2069,7 @@ def setGMC_REBOOT():
 
     setDebugIndent(1)
     rec  = serialGMC_COMM(b'<REBOOT>>', 0, orig(__file__))
-    dprint("setGMC_REBOOT:", rec)
+    dprint("setGMC_REBOOT: ", rec)
     setDebugIndent(0)
 
     return rec
@@ -1810,7 +2083,7 @@ def setGMC_FACTORYRESET():
 
     setDebugIndent(1)
     rec  = serialGMC_COMM(b'<FACTORYRESET>>', 1, orig(__file__))
-    dprint("setGMC_FACTORYRESET:", rec)
+    dprint("setGMC_FACTORYRESET: ", rec)
     setDebugIndent(0)
 
     return rec
@@ -1821,18 +2094,21 @@ def setGMC_FACTORYRESET():
 #
 
 
-def GMCgetDeltaTime():
+def getGMC_DeltaTime():
     """reads the DateTime from computer and device, converts into a number,
     and returns the int of delta time in sec"""
 
-    fncname = "GMCgetDeltaTime: "
+    fncname = "getGMC_DeltaTime: "
 
     rec, error, errmessage = getGMC_DATETIME()
 
     if error < 0:
+        # error
         edprint(fncname + "rec:{}, errmessage:'{}'".format( rec, errmessage))
         return gglobs.NAN
+
     else:
+        # ok or Warning only
         time_computer = longstime()
         time_device   = str(rec)
         time_delta    = round((mpld.datestr2num(time_computer) - mpld.datestr2num(time_device)) * 86400, 6)
@@ -1841,12 +2117,12 @@ def GMCgetDeltaTime():
         return time_delta
 
 
-def fprintGMC_TimeMessage(msg):
+def getGMC_TimeMessage(msg):
     """determines difference between times of computer and device and gives message"""
 
-    deltatime      = GMCgetDeltaTime() # is nan on error
+    deltatime      = getGMC_DeltaTime() # is nan on error
     deviceDateTime = getGMC_DATETIME()[0]
-    fprintDeltaTimeMessage(deltatime, deviceDateTime)
+    return getDeltaTimeMessage(deltatime, deviceDateTime)
 
 
 def isGMC_PowerOn():
@@ -1924,7 +2200,7 @@ def isGMC_WifiOn():
 
     fncname = "isGMC_WifiOn: "
 
-    try:   c = gglobs.GMCcfg[cfgKeyHigh["WiFi"][gglobs.GMC_WifiIndex][0]]
+    try:   c = gglobs.GMC_cfg[cfgKeyHigh["WiFi"][gglobs.GMC_WifiIndex][0]]
     except Exception as e:
         dprint(fncname + "Exception: {}".format(e))
         return 255
@@ -1937,9 +2213,24 @@ def isGMC_WifiOn():
     return p
 
 
+def getLightStatus():
+
+    try:    c = ord(cfgKeyLow["BackLightTimeoutSeconds"][0])
+    except: return "UNKNOWN"
+
+    if   c == 0 : p = "Light: OFF"
+    elif c == 1 : p = "Light: ON"
+    else        : p = "Timeout: {} sec".format(c - 1)
+
+    return p
+
+
 def getFastEstTime():
 
-    return gglobs.GMC_FastEstTime
+    try:    fet = int(float(gglobs.GMC_FastEstTime))
+    except: fet = 60
+
+    return fet
 
 
 def getGMC_BatteryType():
@@ -1995,31 +2286,36 @@ def getGMC_BAUDRATE():
         baudrate = 57600        # config setting: 9
     """
 
-    dprint("getGMC_BAUDRATE:")
+    fncname = "getGMC_BAUDRATE: "
+    dprint(fncname)
     setDebugIndent(1)
 
-    if  "GMC-3" in gglobs.GMCDeviceDetected: # all 300series
+    if  "GMC-3" in gglobs.GMCDeviceDetected:
+        # all 300series
         brdict  = {64:1200, 160:2400, 208:4800, 232:9600, 240:14400, 244:19200, 248:28800, 250:38400, 252:57600, 254:115200}
 
     elif "GMC-5" in gglobs.GMCDeviceDetected or \
-         "GMC-6" in gglobs.GMCDeviceDetected :  # 500, 500+, 600, 600+
+         "GMC-6" in gglobs.GMCDeviceDetected :
+        # 500, 500+, 600, 600+
         brdict  = {0:115200, 1:1200, 2:2400, 3:4800, 4:9600, 5:14400, 6:19200, 7:28800, 8:38400, 9:57600}
 
     else:
         brdict  = {}
 
-    #print("getGMC_BAUDRATE: cfg Baudrate:")
-    #for key, value in sorted(brdict.items()):
+    # print(fncname + "cfg Baudrate:")
+    # for key, value in sorted(brdict.items()):
     #    print ("      {:08b} {:3d} {:6d}".format(key, key, value))
 
     try:
         key = ord(cfgKeyLow["Baudrate"][0])
+        cdprint("key: ", key)
         rec = brdict[key]
-    except:
+    except Exception as e:
+        exceptPrint(e, "cfgKeyLow[Baudrate] ")
         key = -999
         rec = "ERROR: Baudrate cannot be determined"
 
-    dprint("getGMC_BAUDRATE: " + str(rec) + " with cfgKeyLow[\"Baudrate\"][0]={}".format(key))
+    dprint(fncname + str(rec) + " with cfgKeyLow[\"Baudrate\"][0]={}".format(key))
 
     setDebugIndent(0)
 
@@ -2034,21 +2330,23 @@ def quickGMC_PortTest(usbport):
                  first successful baudrate otherwise
     """
 
+    if usbport is None: return 0
+
     fncname = "quickGMC_PortTest: "
 
-    dprint("quickGMC_PortTest: testing 57600 and 115200 baudrate on port: '{}'".format(usbport))
+    dprint(fncname + "testing 57600 and 115200 baudrate on port: '{}'".format(usbport))
     setDebugIndent(1)
 
     baudrate_found = 0
     if os.access(usbport, os.F_OK):  # test if file with name like '/dev/geiger' exists
         for baudrate in (115200, 57600):
-            dprint("quickGMC_PortTest: Trying baudrate:", baudrate)
+            # dprint(fncname + "Trying baudrate:", baudrate)
+            msg = fncname + "Trying baudrate: {:6d} - ".format(baudrate)
             try:
                 QPTser = serial.Serial(usbport, baudrate, timeout=0.5, write_timeout=0.5)
                 QPTser.write(b'<GETVER>>')
                 rec = QPTser.read(14)   # may leave bytes in the pipeline, if GETVER has
                                         # more than 14 bytes as may happen in newer GMC counters
-                #while QPTser.in_waiting:
                 while True:
                     try:
                         cnt = QPTser.in_waiting
@@ -2056,23 +2354,25 @@ def quickGMC_PortTest(usbport):
                         exceptPrint(e, fncname + "QPTser.in_waiting Exception")
                         cnt = 0
                     if cnt == 0: break
-                    QPTser.read(1)
+                    QPTser.read(cnt)
                     time.sleep(0.1)
 
                 QPTser.close()
                 if rec.startswith(b"GMC"):
-                    dprint("quickGMC_PortTest: Success with baudrate {} on port {}".format(baudrate, usbport))
+                    dprint(msg + "Success")
                     baudrate_found = baudrate
                     break
+                else:
+                    dprint(msg + "Failure")
 
             except Exception as e:
-                errmessage1 = "quickGMC_PortTest: ERROR: Serial communication error on testing baudrate {} on port {}".format(baudrate, usbport)
+                errmessage1 = fncname + "ERROR: Serial communication error on testing baudrate {} on port {}".format(baudrate, usbport)
                 exceptPrint(e, errmessage1)
                 baudrate_found = -1
                 break
 
     else:
-        errmessage1 = "quickGMC_PortTest: ERROR: Serial Port '{}' does not exist".format(usbport)
+        errmessage1 = fncname + "ERROR: Serial Port '{}' does not exist".format(usbport)
         edprint(errmessage1)
         baudrate_found = -1
 
@@ -2081,35 +2381,36 @@ def quickGMC_PortTest(usbport):
     return baudrate_found
 
 
-def autoGMC_BAUDRATE(usbport):
-    """Tries to find a proper baudrate by testing for successful serial
-    communication at up to all possible baudrates, beginning with the
-    highest"""
-
+def GMCautoBaudrate(usbport):
     """
-    NOTE: the device port can be opened without error at any baudrate,
-    even when no communication can be done, e.g. due to wrong baudrate.
-    Therfore we test for successful communication by checking for the return
-    string beginning with 'GMC'. ON success, this baudrate will be returned.
-    A baudrate=0 will be returned when all communication fails.
-    On a serial error, baudrate=None will be returned.
+    Tries to find a proper baudrate by testing for successful serial communication
+    at up to all possible baudrates, beginning with the highest.
+    return: baudrate = None     :   serial error
+            baudrate = 0        :   None found
+            baudrate = <number> :   highest baudrate which worked
+    """
+    """
+    NOTE: the device port can be opened without error at any baudrate, even when no
+    communication can be done, e.g. due to wrong baudrate. Therefore we test for
+    successful communication by checking for the return string beginning with 'GMC'.
+    ON success, this baudrate will be returned. A baudrate=0 will be returned when
+    all communication fails. On serial error baudrate=None will be returned.
     """
 
-    fncname = "autoGMC_BAUDRATE: "
+    fncname = "GMCautoBaudrate: "
 
-    dprint("autoGMC_BAUDRATE: Autodiscovery of baudrate on port: '{}'".format(usbport))
+    dprint(fncname + "on port: '{}'".format(usbport))
     setDebugIndent(1)
 
     baudrates = gglobs.GMCbaudrates
     baudrates.sort(reverse=True) # to start with highest baudrate
     for baudrate in baudrates:
-        dprint("autoGMC_BAUDRATE: Trying baudrate:", baudrate, debug=True)
+        dprint(fncname + "Trying baudrate:", baudrate, debug=True)
         try:
             ABRser = serial.Serial(usbport, baudrate, timeout=0.5, write_timeout=0.5)
             ABRser.write(b'<GETVER>>')
             rec = ABRser.read(14) # may leave bytes in the pipeline, if GETVER has
                                   # more than 14 bytes as may happen in newer counters
-            #~while ABRser.in_waiting:
             while True:
                 try:
                     cnt = ABRser.in_waiting
@@ -2121,166 +2422,33 @@ def autoGMC_BAUDRATE(usbport):
                 time.sleep(0.1)
             ABRser.close()
             if rec.startswith(b"GMC"):
-                dprint("autoGMC_BAUDRATE: Success with {}".format(baudrate), debug=True)
+                dprint(fncname + "Success with {}".format(baudrate), debug=True)
                 break
 
         except Exception as e:
-            errmessage1 = "autoGMC_BAUDRATE: ERROR: autoGMC_BAUDRATE: Serial communication error on finding baudrate"
+            errmessage1 = fncname + "ERROR: Serial communication error on finding baudrate"
             exceptPrint(e, errmessage1)
             baudrate = None
             break
 
         baudrate = 0
 
-    dprint("autoGMC_BAUDRATE: Found baudrate: {}".format(baudrate))
+    dprint(fncname + "Chosen baudrate: {}".format(baudrate))
     setDebugIndent(0)
 
     return baudrate
 
 
-#
-# Communication with serial port OPEN, CLOSE, COMM
-#
-def initGMC():
-    """
-    Tries to open the serial port, and to verify communication
-    Return: on success: ""
-            on failure: errmessage
-    """
-
-    fncname = "initGMC: "
-    gglobs.GMCDeviceName = "GMC Device"
-
-    #~gglobs.GMCLast60CPS  = np.full(60, 0)   # storing last 60 sec of CPS values, filled with all 0
-    gglobs.GMCLast60CPS  = np.full(60, gglobs.NAN)   # storing last 60 sec of CPS values, filled with all 0
-    gglobs.GMCEstFET     = np.full(60, 0)   # storing last 60 sec of CPS values, filled with all 0
-
-    msg         = "port='{}' baudrate={} timeoutR={} timeoutW={}".format(gglobs.GMCusbport, gglobs.GMCbaudrate, gglobs.GMCtimeout, gglobs.GMCtimeout_write)
-    gglobs.GMCser  = None
-    error       = 0
-    errmessage  = ""
-    errmessage1 = ""
-
-    dprint(fncname + "Settings: " + msg)
-    setDebugIndent(1)
-
-    if not os.access(gglobs.GMCusbport, os.F_OK):  # file with name like '/dev/geiger' does NOT exist
-        rmsg = fncname + "Initialization failed, Serial Port '{}' does not exist".format(gglobs.GMCusbport)
-        edprint(rmsg)
-
-    else:                                       # file with name like '/dev/geiger' DOES exist
-        while True:
-            # Make the serial connection
-            errmessage1 = "Connection failed using " + msg
-            try:
-                # gglobs.GMCser is like:
-                # Serial<id=0x7f2014d371d0, open=True>(port='/dev/ttyUSB0',
-                # baudrate=115200, bytesize=8, parity='N', stopbits=1,
-                # timeout=20, xonxoff=False, rtscts=False, dsrdtr=False)
-                gglobs.GMCser = serial.Serial(gglobs.GMCusbport, gglobs.GMCbaudrate, timeout=gglobs.GMCtimeout, write_timeout=gglobs.GMCtimeout_write)
-
-            except serial.SerialException as e:
-                exceptPrint(e, fncname + "SerialException: " + errmessage1)
-                terminateGMC()
-                break
-
-            except Exception as e:
-                exceptPrint(e, fncname + "Exception: " + errmessage1)
-                terminateGMC()
-                break
-
-            # Connection is made. Now test for successful communication with a
-            # GMC Geiger counter, because the device port can be opened without
-            # error even when no communication can be done, e.g. due to wrong
-            # baudrate or wrong device
-            dprint(fncname + "Port opened ok, now testing communication")
-
-            # any bytes in pipeline? clear them first
-            getGMC_ExtraByte()
-
-            try:
-                ver, error, errmessage = getGMC_VER()
-            except Exception as e:
-                errmessage1  = "ERROR: Port opened ok, but Communication failed. Is baudrate correct?"
-                exceptPrint(e, fncname + errmessage1)
-                terminateGMC()
-                break
-
-            if error < 0:
-                errmessage1  = "ERROR: Communication problem: " + errmessage
-                edprint(fncname + errmessage1, debug=True)
-                terminateGMC()
-                break
-
-            else:
-                # Got something back for ver like: 'GMC-300Re 4.22'
-                if ver.startswith("GMC"):
-                    gglobs.GMCDeviceDetected = ver
-                    gglobs.Devices["GMC"][0] = gglobs.GMCDeviceDetected
-
-                else:
-                    err  = "<br>INFO: No GMC device detected. While a connected device was found, it <br>"
-                    err += "identified itself with this unknown signature: '{}'.".format(ver)
-                    errmessage1 += err
-                    edprint(fncname + err, debug=True)
-                    terminateGMC()
-
-            break
-
-        if gglobs.GMCser == None:
-            rmsg = "{}".format(errmessage1.replace('[Errno 2]', '<br>'))
-            gglobs.GMCConnection = False
-
-        else:
-            dprint(fncname + "Communication ok with device: '{}'".format(ver))
-            rmsg = ""
-            gglobs.GMCConnection = True
-
-            # identify device
-            getGMC_DeviceProperties()
-
-            # get the cfg
-            cfg, error, errmessage = getGMC_CFG() # goes to gglobs.GMCcfg within f'on
-            if error < 0:
-                rmsg = "ERROR trying to read GMC Device Configuration: " + errmessage
-                gglobs.GMCConnection = False
-            else:
-                pass
-
-    setDebugIndent(0)
-
-    return rmsg
-
-
-def terminateGMC():
-    """what is needed here???"""
-
-    fncname = "terminateGMC: "
-    dprint(fncname )
-    if not gglobs.GMCConnection: return fncname + "No GMC Counter connection"
-
-    setDebugIndent(1)
-
-    if gglobs.GMCser != None:
-        try:    gglobs.GMCser.close()
-        except: dprint(fncname + "Failed trying to close serial port; terminating anyway", debug=True)
-        gglobs.GMCser  = None
-
-    gglobs.GMCConnection = False
-    #dprint(fncname + "GMC Counter is disconnected")
-    setDebugIndent(0)
-
-
-def serialGMC_COMM(sendtxt, returnlength, caller = ("", "", -1)):
+def serialGMC_COMM(sendtxt, RequestLength, caller = ("", "", -1)):
     # write to and read from serial port, exit on serial port error
-    # when not enough bytes returned, try send+read again up to 3 times.
+    # when not enough bytes returned, try send+read again up to 3 times.  # currently cancelled -> no repeats
     # exit if it still fails
+    # error==0 => OK, error==1 => Warning,  error==-1 => ERROR,
 
     fncname = "serialGMC_COMM: "
 
-    wprint(fncname + "sendtxt: '{}', returnlength: {}, caller: '{}'".format(sendtxt, returnlength, caller))
+    #cdprint(fncname + "sendtxt:{}  RequestLength:{}  caller:'{}'".format(sendtxt, RequestLength, caller))
     setDebugIndent(1)
-    #print(fncname + "gglobs.GMCser: ", gglobs.GMCser)
 
     rec         = None
     error       = 0
@@ -2288,72 +2456,76 @@ def serialGMC_COMM(sendtxt, returnlength, caller = ("", "", -1)):
 
     while True:
 
-    # is GMC device still connected?
-        if not os.access(gglobs.GMCusbport , os.R_OK):
-            # /dev/ttyUSB* can NOT be read
-            terminateGMC()
-            rec         = None
-            error       = -1
-            errmessage  = "ERROR: Is GMC device connected? USB Port '{}' not found".format(gglobs.GMCusbport)
-            dprint(fncname + errmessage, debug=True)
-            efprint(errmessage)
-            break
-        else:
-            # /dev/ttyUSB* can be read
-            if gglobs.GMCser == None:
-                # serial connection does NOT exist
-                try:
-                    initGMC()        # try to reconnect
-                except:
-                    rec         = None
-                    error       = -1
-                    errmessage  = "No connection (Serial Port is closed)"
-                    break
-            else:
-                # serial connection exists
-                pass
+    # # is GMC device still connected?
+    #     if not os.access(gglobs.GMC_usbport , os.R_OK):
+    #         # /dev/ttyUSB* can NOT be read
+
+    #         terminateGMC()
+    #         rec         = None
+    #         error       = -1
+    #         errmessage  = "ERROR: USB Port '{}' not found. Is GMC device connected?".format(gglobs.GMC_usbport)
+    #         dprint(fncname + errmessage, debug=True)
+    #         efprint(errmessage)
+    #         break
+    #     else:
+    #         # /dev/ttyUSB* can be read
+
+    #         if gglobs.GMCser == None:
+    #             # but serial connection does NOT exist
+    #             try:
+    #                 initGMC()        # try to reconnect
+    #             except:
+    #                 rec         = None
+    #                 error       = -1
+    #                 errmessage  = "No connection (Serial Port is closed)"
+    #                 break
+    #         else:
+    #              # /dev/ttyUSB* can be read and serial connection exists
+    #             pass
 
     #write to USB port
+        breakWrite = False
+        startwtime = time.time()
         try:
-            #raise Exception
-            #raise serial.SerialException
-            #raise serial.SerialTimeoutException  # write-timeout exception
-            wtime = time.time()
-            rec = gglobs.GMCser.write(sendtxt)  # rec = no of bytes written
-            wtime = (time.time() - wtime) * 1000 # wtime in ms
+            #raise Exception                            # test exception
+            #raise serial.SerialException               # test serial exception
+            #raise serial.SerialTimeoutException        # test serial write-timeout exception
+            rec = gglobs.GMCser.write(sendtxt)          # rec = no of bytes written
 
         except serial.SerialException as e:
             srcinfo = fncname + "ERROR: WRITE failed with SerialException when writing: '{}'".format(sendtxt)
             exceptPrint(e, srcinfo)
-            wtime = -99
+            breakWrite = True
 
         except serial.SerialTimeoutException as e:
+            # Exception that is raised on WRITE timeouts.
             srcinfo = fncname + "ERROR: WRITE failed with SerialTimeoutException when writing: '{}'".format(sendtxt)
             exceptPrint(e, srcinfo)
-            wtime = -99
+            breakWrite = True
 
         except Exception as e:
             srcinfo = fncname + "ERROR: WRITE failed with Exception when writing: '{}'".format(sendtxt)
             exceptPrint(e, srcinfo)
-            wtime = -99
+            breakWrite = True
 
-        if wtime == -99:
-            #print(fncname + "wtime:", wtime)
+        if breakWrite:
             terminateGMC()
             rec         = None
             error       = -1
             errmessage  = fncname + "ERROR: WRITE failed. See log for details"
             break
 
+        wtime = 1000 * (time.time() - startwtime)         # wtime in ms
 
-    # read from port
-        breakRead = False
-        rtime  = time.time()
-        rtimex = rtime
+
+    # read from USB port
+        breakRead  = False
+        startrtime = time.time()
         try:
             #raise Exception
             #raise serial.SerialException
-            rec    = gglobs.GMCser.read(returnlength)
+            rec    = gglobs.GMCser.read(RequestLength)
+
         except serial.SerialException as e:
             srcinfo = fncname + "ERROR: READ failed with serial exception"
             exceptPrint(e, srcinfo)
@@ -2373,95 +2545,120 @@ def serialGMC_COMM(sendtxt, returnlength, caller = ("", "", -1)):
             errmessage  = fncname + "ERROR: READ failed. See log for details"
             break
 
-        rtime  = (time.time() - rtime) * 1000
-        wprint(fncname + "got {} bytes, first (up to 15) bytes: {}".format(len(rec), rec[:15]))
-        if len(rec) < returnlength:
-            for i in range(len(rec[:15])):
-                try:
-                    wprint("byte: ", rec[i])
-                except Exception as e:
-                    dprint(fncname + "Exception: ", e)
+        rtime  =  1000 * (time.time() - startrtime)
+        # edprint(fncname + "orig: len(rec): ", len(rec))
 
-        extra  = getGMC_ExtraByte()
-        rec   += extra
-        rtimex = (time.time() - rtimex) * 1000 - rtime
 
-        # avoid divide by zero
-        if returnlength > 0:    rbyte = "{:6.1f}".format(rtime/returnlength)
-        else:                   rbyte = "N/A"
+        # to save timing data in Manu
+        ##################### xyz change :
+        # write duration: 0.050 ±0.0166  range: 0.03 ...   0.18 # appears to be desktop times only
+        # read  duration: 42.95 ±58.2           4.0  ... 428    # big fluctuations
+        CPtype = "Dummy"
+        if b"CPM" in sendtxt:
+            # any CPMxxx
+            # gglobs.ManuValue[1] = round(rtime, 3)
+            CPtype = "CPM*"
 
-        if rtime > (gglobs.GMCtimeout * 1000):
-            marker      = "Timeout--" * 7     # mark Timeout lines
-            localdebug  = True                # and force these to debug print
+        elif b"CPS" in sendtxt:
+            # any CPSxxx
+            # gglobs.ManuValue[3] = round(rtime, 3)
+            CPtype = "CPS*"
+        #################### end change
 
-        elif rtime > 400:
-            marker      = ">" * 50            # mark long reading times
-            localdebug  = True                # and force these to debug print
+        rec   += getGMC_ExtraByte()
+
+        try:    brtime = rtime / len(rec)
+        except: brtime = -99
+
+        if   rtime > (gglobs.GMC_timeout * 1000):
+            marker = BOLDRED + " Timeout--" * 7                 # mark Timeout lines
+
+        elif brtime > 10: # >10 ms per Byte
+            marker = BOLDRED + " Long read time!  {:0.0f} ms ({:0.0f} ms/B) {}  ".format(rtime, brtime, CPtype) + ">" * 25 # mark long read times
 
         else:
-            marker      = ""
-            localdebug  = gglobs.werbose
-        wprint(fncname + "Timing (ms): write:{:6.2f}, read:{:6.1f}, read per byte:{}, extraread:{:6.1f}  ".format(wtime, rtime, rbyte, rtimex), marker, werbose=localdebug)
+            marker = ""
+
+        recShort = rec[:15]
+        cdprint(fncname + "got {} out of {} bytes in {:0.1f} ms, first ≤15 bytes: {} dec: '{}'".format(
+                                                                                    len(rec),
+                                                                                    RequestLength,
+                                                                                    rtime,
+                                                                                    recShort,
+                                                                                    " ".join("%d" % e for e in recShort),
+                                                                                    ),
+                                                                                marker)
 
     # Retry loop
-        if len(rec) < returnlength:
-            if rtime > (gglobs.GMCtimeout * 1000):
-                msg  = "{} TIMEOUT ERROR Serial Port; command {} exceeded {:3.1f}s".format(stime(), sendtxt, gglobs.GMCtimeout)
-                qefprint(html_escape(msg)) # escaping needed as GMC commands like b'<GETCPS>>' have <> brackets
-                edprint(fncname + msg, "- rtime:{:5.1f}ms".format(rtime), debug=True)
-            efprint("{} Got {} data bytes, expected {}. Retrying.".format(stime(), len(rec), returnlength))
-            Qt_update()
+        if len(rec) < RequestLength:
 
-            edprint(fncname + "ERROR: Received length: {} is less than requested: {}".format(len(rec), returnlength), debug=True)
-            edprint(fncname + "rec: (len={}): {}".format(len(rec), BytesAsHex(rec)))
+            ###################### xyz change : no retries
+            error       = -1
+            if   rtime > (gglobs.GMC_timeout * 1000): marker = "TIMEOUT: "
+            else:                                     marker = ""
+            errmessage  = fncname + "{}Cmd:{} Bytes: Rcvd:{} < Requ:{}".format(marker, sendtxt, len(rec), RequestLength)
+            efprint(stime() + " " + errmessage)
+            #edprint(errmessage)
+            break
+            #################### end change
 
-            error       = 1
-            errmessage  = fncname + "ERROR: Command:{} - Record too short: Received bytes:{} < requested:{}".format(sendtxt, len(rec), returnlength)
 
-            # RETRYING
-            count    = 0
-            countmax = 3
-            while True:
-                count += 1
-                errmsg = fncname + "RETRY: to get full return record, trial #{}".format(count)
-                dprint(errmsg, debug=True)
+            # if rtime > (gglobs.GMC_timeout * 1000):
+            #     msg  = "{} TIMEOUT ERROR Serial Port; command {} exceeded {:3.1f}s".format(stime(), sendtxt, gglobs.GMC_timeout)
+            #     qefprint(html_escape(msg)) # escaping needed as GMC commands like b'<GETCPS>>' have <> brackets
+            #     edprint(fncname + msg, "- rtime:{:5.1f}ms".format(rtime), debug=True)
+            # efprint("{} Got {} data bytes, expected {}. Retrying.".format(stime(), len(rec), RequestLength))
+            # Qt_update()
 
-                time.sleep(0.5) # extra sleep after not reading enough data
+            # edprint(fncname + "ERROR: Received length: {} is less than requested: {}".format(len(rec), RequestLength), debug=True)
+            # edprint(fncname + "rec: (len={}): {}".format(len(rec), BytesAsHex(rec)))
 
-                extra = getGMC_ExtraByte()   # just to make sure the pipeline is clean
+            # # error       = 1
+            # # errmessage  = fncname + "ERROR: Command:{} - Record too short: Received bytes:{} < requested:{}".format(sendtxt, len(rec), RequestLength)
 
-                gglobs.GMCser.write(sendtxt)
-                time.sleep(0.3) # after sending
+            # # RETRYING
+            # count    = 0
+            # countmax = 3
+            # while True:
+            #     count += 1
+            #     errmsg = fncname + "RETRY: to get full return record, trial #{}".format(count)
+            #     dprint(errmsg, debug=True)
 
-                rtime  = time.time()
-                rec = gglobs.GMCser.read(returnlength)
-                rtime = (time.time() - rtime) * 1000
-                dprint("Timing (ms): Retry read:{:6.1f}".format(rtime))
+            #     time.sleep(0.5) # extra sleep after not reading enough data
 
-                if len(rec) == returnlength:
-                    bah = BytesAsHex(rec)
-                    if len(bah) > 50: sbah = ", rec:\n" + bah
-                    else:             sbah = ", rec:" + bah
-                    dprint(fncname + "RETRY: returnlength is {} bytes. OK now. Continuing normal cycle".format(len(rec)), sbah, debug=True)
-                    errmessage += "; ok after {} retry".format(count)
-                    extra = getGMC_ExtraByte()   # just to make sure the pipeline is clean
-                    fprint("Retry successful.")
-                    gglobs.exgg.addError(errmessage)
-                    break
-                else:
-                    #dprint(u"RETRY:" + fncname + "returnlength is {} bytes. Still NOT ok; trying again".format(len(rec)), debug=True)
-                    pass
+            #     extra = getGMC_ExtraByte()   # just to make sure the pipeline is clean
 
-                if count >= countmax:
-                    dprint(fncname + "RETRY: Retried {} times, always failure, giving up. Serial communication error.".format(count), debug=True)
-                    error       = -1
-                    errmessage  = "ERROR communicating via serial port. Giving up."
-                    fprint(errmessage)
-                    gglobs.exgg.addError(errmessage)
-                    break
+            #     gglobs.GMCser.write(sendtxt)
+            #     time.sleep(0.3) # after sending
 
-                fprint("ERROR communicating via serial port. Retrying again.")
+            #     rtime  = time.time()
+            #     rec = gglobs.GMCser.read(RequestLength)
+            #     rtime = (time.time() - rtime) * 1000
+            #     dprint("Timing (ms): Retry read:{:6.1f}".format(rtime))
 
+            #     if len(rec) == RequestLength:
+            #         bah = BytesAsHex(rec)
+            #         if len(bah) > 50: sbah = ", rec:\n" + bah
+            #         else:             sbah = ", rec:" + bah
+            #         dprint(fncname + "RETRY: RequestLength is {} bytes. OK now. Continuing normal cycle".format(len(rec)), sbah, debug=True)
+            #         errmessage += "; ok after {} retry".format(count)
+            #         extra = getGMC_ExtraByte()   # just to make sure the pipeline is clean
+            #         fprint("Retry successful.")
+            #         gglobs.exgg.addGMC_Error(errmessage)
+            #         break
+            #     else:
+            #         #dprint(u"RETRY:" + fncname + "RequestLength is {} bytes. Still NOT ok; trying again".format(len(rec)), debug=True)
+            #         pass
+
+            #     if count >= countmax:
+            #         dprint(fncname + "RETRY: Retried {} times, always failure, giving up. Serial communication error.".format(count), debug=True)
+            #         error       = -1
+            #         errmessage  = "ERROR communicating via serial port. Giving up."
+            #         fprint(errmessage)
+            #         gglobs.exgg.addGMC_Error(errmessage)
+            #         break
+
+            #     fprint("ERROR communicating via serial port. Retrying again.")
         break
 
     setDebugIndent(0)
@@ -2469,26 +2666,19 @@ def serialGMC_COMM(sendtxt, returnlength, caller = ("", "", -1)):
     return (rec, error, errmessage)
 
 
-def setGMC_DateTime():
+def GMCsetDateTime():
     """ set date and time on GMC device to computer date and time"""
 
-    dprint("setGMC_DateTime:")
+    fncname = "GMCsetDateTime: "
+    dprint(fncname)
     setDebugIndent(1)
 
     fprint(header("Set Date&Time of GMC Device"))
-    rec, error, errmessage = getGMC_DATETIME()
-
-    if error < 0:
-        efprint("Communication problem with device: ", errmessage)
-        qefprint("Trying to force setting of Date&Time")
-
-    else:
-        #fprintGMC_TimeMessage("setGMC_DateTime")
-        fprint("Setting device time to computer time")
+    fprint("Setting device time to computer time")
 
     setGMC_DATETIME()
-    rec, error, errmessage = getGMC_DATETIME()
-    fprint("New Date&Time from device:", str(rec))
+
+    fprint(getGMC_TimeMessage(fncname))
 
     setDebugIndent(0)
 
@@ -2506,26 +2696,33 @@ def getGMC_HistSaveMode():
 
     fncname = "getGMC_HistSaveMode: "
 
-    sdttxt = savedatatypes
-    #print sdttxt, len(sdttxt)
+    sdt     = 9999
+    sdttxt  = savedatatypes     # = "OFF (no history saving)", "CPS, save every second", "CPM, save every minute", ...(len=6)
+    # edprint(fncname + "sdttxt, len(sdttxt):", sdttxt, len(sdttxt))
 
-    try:        sdt = ord(cfgKeyLow["SaveDataType"][0])
-    except:
-        try:    sdt = int(cfgKeyLow["SaveDataType"][0])
-        except Exception as e:
-            edprint(fncname + "Exception: ", e)
-            sdt = 9999
-    #print "sdt:", sdt
+    if cfgKeyLow["SaveDataType"][0] != None:
+        try:
+            sdt = ord(cfgKeyLow["SaveDataType"][0])
+        except:
+            edprint(fncname + "cfgKeyLow['SaveDataType'][0]: ", cfgKeyLow["SaveDataType"][0])
+            edprint(fncname + "sdt: ", sdt)
+            try:
+                sdt = int(cfgKeyLow["SaveDataType"][0])
+            except Exception as e:
+                edprint(fncname + "Exception: ", e)
+
+    # edprint(fncname + "sdt: ", sdt)
 
     try:
         if sdt <= len(sdttxt):  txt = sdttxt[sdt]
         else:                   txt = "UNKNOWN"
-        gglobs.GMCsavedatatype  = txt
-        gglobs.GMCsavedataindex = sdt
+        gglobs.GMC_savedatatype  = txt
+        gglobs.GMC_savedataindex = sdt
     except Exception as e:
         edprint(fncname + "Exception: ", e)
         txt= fncname + "Error: undefined type: {}".format(sdt)
 
+    # edprint(fncname + "return: sdt:{}, txt:{}".format(sdt, txt) )
     return sdt, txt  # <index>, <mode as text>
 
 
@@ -2538,13 +2735,13 @@ def setGMC_HistSaveMode():
     while True:
         # get current config
         cfg, error, errmessage = getGMC_CFG()
-        gglobs.GMCcfg = cfg
+        gglobs.GMC_cfg = cfg
         if error < 0:
             fprint("Error:" + errmessage)
             break
 
         SDT, SDTtxt = getGMC_HistSaveMode()
-        gglobs.GMCsavedatatype = SDTtxt
+        gglobs.GMC_savedatatype = SDTtxt
 
         # setup dialog and get new config setting
         selection   = savedatatypes
@@ -2581,8 +2778,8 @@ def switchGMC_DeviceSpeaker(newstate = "ON"):
     # write the new config data (will get a fresh config)
     writeGMC_ConfigSingle(cfgKeyLow["Speaker"][1][0], st)
 
-    if gglobs.GMCcfg[cfgKeyLow["Speaker"][1][0]] == 1: ipo = "ON"
-    else:                                              ipo = "OFF"
+    if gglobs.GMC_cfg[cfgKeyLow["Speaker"][1][0]] == 1: ipo = "ON"
+    else:                                               ipo = "OFF"
 
     fprint("Device Speaker State is: ",  ipo)
 
@@ -2607,12 +2804,12 @@ def switchGMC_DeviceAlarm(newstate = "ON"):
     setNormalCursor()
 
 
-def printGMC_ConfigMemory():
-    """prints the 256 or 512 bytes of device configuration memory"""
+def fprintGMC_ConfigMemory():
+    """prints the 256 or 512 bytes of device configuration memory to the NotePad"""
 
     setBusyCursor()
 
-    fncname = "printGMC_ConfigMemory: "
+    fncname = "fprintGMC_ConfigMemory: "
 
     fprint(header("GMC Device Configuration"))
 
@@ -2652,74 +2849,79 @@ def printGMC_ConfigMemory():
     setNormalCursor()
 
 
-def fprintGMC_DeviceInfo(extended = False):
+def getInfoGMC(extended = False):
     """prints basic or extended info on the GMC device"""
-    # the config is read in initGMC
+    # the GMC config is read in initGMC
 
-    txt = "GMC Device"
-    if extended:  txt += " Extended"
-    fprint(header(txt))
+    fncname  = "getInfoGMC: "
+    tmp      = "{:30s}{}\n"
+    gmcinfo  = ""
+    gmcinfo += tmp.format("Configured Connection:", "Port:'{}' Baud:{} TimeoutR:{}s TimeoutW:{}s".\
+                    format(gglobs.GMC_usbport, gglobs.GMC_baudrate, gglobs.GMC_timeout, gglobs.GMC_timeout_write))
 
-    if not gglobs.GMCConnection:
-        efprint("No connected device")
-        return
+    if not gglobs.Devices["GMC"][CONN]: return gmcinfo + "Device is not connected"
 
-    setBusyCursor()
-
-    fprint("Configured Connection:", "port:'{}' baud:{} timeoutR:{}s timeoutW:{}s".\
-            format(gglobs.GMCusbport, gglobs.GMCbaudrate, gglobs.GMCtimeout, gglobs.GMCtimeout_write))
-
-    fncname = "fprintGMC_DeviceInfo: "
-    dprint(fncname)
-    setDebugIndent(1)
-
+    # gmcinfo += "<html>" # seems to enforce HTML output
     # device name
-    fprint("Connected Device:", "'{}'".format(gglobs.GMCDeviceDetected))
+    gmcinfo += tmp.format("Connected Device:", "'{}'".format(gglobs.GMCDeviceDetected))
 
     # GMC_variables
-    fprint("Configured Variables:", gglobs.GMC_variables)
+    gmcinfo += tmp.format("Configured Variables:", gglobs.GMC_variables)
 
-    # sensitivity 1st tube
-    no1 = "#1" if not gglobs.GMC_SingleTube else ""
-    fprint("Geiger Tube{} Sensitivity:  ".format(no1), "{:<5.5g} CPM/(µSv/h) (= {:0.4f} µSv/h/CPM)".format(gglobs.calibration1st, 1 / gglobs.calibration1st))
+    if gglobs.GMC_DualTube:
+        # sensitivity 1st tube
+        gmcinfo += tmp.format("Configured Tube1 Sensitivity:", "{:<4.5g} CPM/(µSv/h) (= {:0.4f} µSv/h/CPM)".format(
+            gglobs.Sensitivity[1], 1 / gglobs.Sensitivity[1]))
 
-    # sensitivity 2nd tube
-    if not gglobs.GMC_SingleTube:
-        fprint("Geiger Tube#2 Sensitivity:  ", "{:<5.5g} CPM/(µSv/h) (= {:0.4f} µSv/h/CPM)".format(gglobs.calibration2nd, 1 / gglobs.calibration2nd))
+        # sensitivity 2nd tube
+        gmcinfo += tmp.format("Configured Tube2 Sensitivity:", "{:<4.5g} CPM/(µSv/h) (= {:0.4f} µSv/h/CPM)".format(
+            gglobs.Sensitivity[2], 1 / gglobs.Sensitivity[2]))
+    else:
+        # sensitivity Def tube
+        gmcinfo += tmp.format("Configured Tube Sensitivity:", "{:<4.5g} CPM/(µSv/h) (= {:0.4f} µSv/h/CPM)".format(
+            gglobs.Sensitivity[0], 1 / gglobs.Sensitivity[0]))
 
-    # serial number
-    sn,  error, errmessage = getGMC_SERIAL()
-    # no printing of SN
-
-    fprintGMC_TimeMessage("called from: " + fncname)
+    # time check
+    gmcinfo += getGMC_TimeMessage("called from: " + fncname)
 
     # power state
-    fprint("Device Power State:", isGMC_PowerOn())
+    gmcinfo += tmp.format("Device Power State:", isGMC_PowerOn())
 
     # WiFi enabled counter
     if gglobs.GMC_WifiEnabled:
         fet = getFastEstTime()
-        if fet == 60 or fet == "60":
-            fprint("Fast Estimate Time:", fet, " sec. Okay")
-        else:
-            efprint("Fast Estimate Time:", fet, " seconds")
-            qefprint("CAUTION: anything different from 60 results in false data!")
-            qefprint("Correct in 'Set GMC Configuration'. See GeigerLog manual.")
+        gmcinfo += tmp.format("FET (Fast Estimate Time):", "{} seconds".format(fet))
+        if fet != 60:
+            gmcinfo += tmp.format("CAUTION: anything different from 60 results in false data!")
+            gmcinfo += tmp.format("Correct in 'Set GMC Configuration'. See GeigerLog manual.")
 
     if extended == True:
-        # baudrate as read from device
-        fprint("Baudrate read from device:", getGMC_BAUDRATE())
 
-        # No of bytes in CP* records
-        fprint("No. of bytes in CP* records:", gglobs.GMC_nbytes)
+        gmcinfo += "\n"
+        gmcinfo += tmp.format("Extended Info:", "")
+
+        # serial number
+        sn,  error, errmessage = getGMC_SERIAL()
+        # no fprinting of SN
+
+        # read the config
+        cfg, error, errmessage = getGMC_CFG()
+
+        # # baudrate as read from device
+        # not properly readable; inactivated
+        # gmcinfo += tmp.format("Baudrate read from device:", getGMC_BAUDRATE())
+
+        # # serial number
+        # sn,  error, errmessage = getGMC_SERIAL()
+        # # no printing of SN
 
         # voltage
         rec, error, errmessage = getGMC_VOLT()
-        if error < 0:   fprint("Device Battery Voltage:", "{}"      .format(errmessage))
-        else:           fprint("Device Battery Voltage:", "{} Volt" .format(rec)       )
+        if error < 0:   gmcinfo += tmp.format("Device Battery Voltage:", "{}"      .format(errmessage))
+        else:           gmcinfo += tmp.format("Device Battery Voltage:", "{} Volt" .format(rec)       )
 
         # Battery Type
-        fprint("Device Battery Type Setting:", getGMC_BatteryType())
+        gmcinfo += tmp.format("Device Battery Type Setting:", getGMC_BatteryType())
 
         # temperature taken out. Apparently not valid at all in 500 series
         # not working in the 300series
@@ -2734,23 +2936,43 @@ def fprintGMC_DeviceInfo(extended = False):
         # gyro
         rec, error, errmessage = getGMC_GYRO()
         if error < 0:
-            fprint("Device Gyro Data:", "'{}'".format(errmessage))
+            gmcinfo += tmp.format("Device Gyro Data:", "'{}'".format(errmessage))
         else:
-            fprint("Device Gyro data:", rec)
-            fprint("", "(only GMC-320 Re.3.01 and later)")
+            gmcinfo += tmp.format("Device Gyro data:", rec)
+            gmcinfo += tmp.format("", "(only GMC-320 Re.3.01 and later)")
 
         # Alarm state
-        fprint("Device Alarm State:", isGMC_AlarmOn())
+        gmcinfo += tmp.format("Device Alarm State:", isGMC_AlarmOn())
 
         # Speaker state
-        fprint("Device Speaker State:", isGMC_SpeakerOn())
+        gmcinfo += tmp.format("Device Speaker State:", isGMC_SpeakerOn())
+
+        # Light state
+        gmcinfo += tmp.format("Device Light State:", getLightStatus())
+
+        # Save Data Type
+        sdt, sdttxt = getGMC_HistSaveMode()
+        gmcinfo += tmp.format("Device Hist. Saving Mode:", sdttxt)
+
+        try:
+            # Device History Saving Mode - Threshold
+            ThM = ord(cfgKeyLow["ThresholdMode"][0])
+            if  ThM in (0, 1, 2):
+                ThresholdMode = ("CPM", "µSv/h", "mR/h")
+                gmcinfo += tmp.format("Device Hist. Threshold Mode:",   ThresholdMode[ThM])
+                gmcinfo += tmp.format("Device Hist. Threshold CPM:",    cfgKeyLow["ThresholdCPM"][0] )
+                gmcinfo += tmp.format("Device Hist. Threshold µSv/h:",  "{:0.3f}".format(cfgKeyLow["ThresholduSv"][0]))
+            else:
+                gmcinfo += tmp.format("Device Hist. Threshold Mode:",   "Not available on this device")
+        except Exception as e:
+            gmcinfo += tmp.format(str(e))
 
         # MaxCPM
         value = cfgKeyLow["MaxCPM"][0]
-        fprint("Max CPM (invalid if 65535!):", value)
+        gmcinfo += tmp.format("Device Max CPM:", "{} (invalid if equal to 65535!)".format(value))
 
         # Calibration settings
-        fprint("Device Calibration Points:", "       CPM  =   µSv/h   CPM / (µSv/h)      µSv/h/CPM")
+        gmcinfo += tmp.format("\nDevice Calibration Points:", "        CPM  =   µSv/h   CPM / (µSv/h)      µSv/h/CPM")
         for i in range(0, 3):
             calcpm = cfgKeyLow["CalibCPM_{}".format(i)][0]
             calusv = cfgKeyLow["CalibuSv_{}".format(i)][0]
@@ -2758,21 +2980,7 @@ def fprintGMC_DeviceInfo(extended = False):
             except: calfac      = gglobs.NAN
             try:    invcalfac   = calusv / calcpm
             except: invcalfac   = gglobs.NAN
-            fprint("   Calibration Point", "#{:}: {:6d}  = {:7.3f}       {:6.2f}          {:0.5f}".format(i + 1, calcpm, calusv, calfac, invcalfac))
-
-        # Save Data Type
-        sdt, sdttxt = getGMC_HistSaveMode()
-        fprint("Device Hist. Saving Mode:", sdttxt)
-
-        # Device History Saving Mode - Threshold
-        ThM = ord(cfgKeyLow["ThresholdMode"][0])
-        if  ThM in (0, 1, 2):
-            ThresholdMode = ("CPM", "µSv/h", "mR/h")
-            fprint("Device Hist. Threshold Mode:",   ThresholdMode[ThM])
-            fprint("Device Hist. Threshold CPM:",    cfgKeyLow["ThresholdCPM"][0] )
-            fprint("Device Hist. Threshold µSv/h:",  "{:0.3f}".format(cfgKeyLow["ThresholduSv"][0]))
-        else:
-            fprint("Device Hist. Threshold Mode:",   "Not available on this device")
+            gmcinfo += tmp.format("   Calibration Point", "#{:}: {:6d}  = {:7.3f}       {:6.2f}          {:0.5f}".format(i + 1, calcpm, calusv, calfac, invcalfac))
 
         # WiFi enabled counter
         if gglobs.GMC_WifiEnabled:
@@ -2780,35 +2988,37 @@ def fprintGMC_DeviceInfo(extended = False):
             skeys  = ("SSID", "Password", "Website", "URL", "UserID", "CounterID", "Period")
 
             # Web related High bytes in Config - as read out from device
-            ghc    = "Device WiFi Settings\n"
+            ghc    = "\nDevice GMCmap Settings (as read from the counter):\n"
             for key in skeys: ghc += sfmt.format("   " + key, cfgKeyHigh[key][1])
             ghc += sfmt.format("   WiFi:",           isGMC_WifiOn())
-            fprint(ghc[:-1])
+            gmcinfo += tmp.format(ghc[:-1], "")
 
             # Web related High bytes in GL Config
-            ghc    = "GeigerLog's WiFi Configuration:\n"
+            ghc    = "\nGeigerLog's GMCmap Settings (as read from file geigerlog.cfg):\n"
             for key in skeys: ghc += sfmt.format("   " + key, cfgKeyHigh[key][0])
-            # no WiFi setting
-            fprint(ghc[:-1])
+            ghc += sfmt.format("   WiFi:", "ON" if cfgKeyHigh[key][0] else "OFF")
+            gmcinfo += tmp.format(ghc[:-1], "")
 
         # Firmware settings
-        ghc = "GeigerLog's Firmware Configuration:\n"
+        ghc = "\nGeigerLog's Configuration for Counter's Firmware:\n"
         fmt = "   {:27s}{}\n"
         if gglobs.GMCDeviceDetected != "auto":
             ghc += fmt.format("Memory (bytes):",                "{:,}".format(gglobs.GMC_memory))
             ghc += fmt.format("SPIRpage Size (bytes):",         "{:,}".format(gglobs.GMC_SPIRpage))
             ghc += fmt.format("SPIRbugfix (True | False):",     "{:}" .format(gglobs.GMC_SPIRbugfix))
             ghc += fmt.format("Config Size (bytes):",           "{:}" .format(gglobs.GMC_configsize))
-            ghc += fmt.format("Calibr.1st (CPM/(µSv/h)):",      "{:}" .format(gglobs.calibration1st))
-            if not gglobs.GMC_SingleTube:
-                ghc += fmt.format("Calibr.2nd (CPM/(µSv/h)):",  "{:}" .format(gglobs.calibration2nd))
+            ghc += fmt.format("Calibr.1st (CPM/(µSv/h)):",      "{:}" .format(gglobs.Sensitivity[0]))
+            if gglobs.GMC_DualTube:
+                ghc += fmt.format("Calibr.2nd (CPM/(µSv/h)):",  "{:}" .format(gglobs.Sensitivity[2]))
             ghc += fmt.format("Voltagebytes (1 | 5):",          "{:}" .format(gglobs.GMC_voltagebytes))
             ghc += fmt.format("Endianness (big | little):",     "{:}" .format(gglobs.GMC_endianness))
-        fprint(ghc[:-1])
 
-    fprint("")
-    setDebugIndent(0)
-    setNormalCursor()
+        gmcinfo += ghc
+
+        # No of bytes in CP* records
+        gmcinfo += fmt.format("Bytes in CP* records:", gglobs.GMC_nbytes)
+
+    return gmcinfo
 
 
 #device
@@ -2823,7 +3033,7 @@ def doREBOOT():
     msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
     msg.setDefaultButton(QMessageBox.Cancel)
     msg.setEscapeButton(QMessageBox.Cancel)
-    retval = msg.exec_()
+    retval = msg.exec()
 
     if retval != 1024:   return
 
@@ -2860,6 +3070,9 @@ and press OK"""
 
 
 ###############################################################################
+###############################################################################
+###############################################################################
+###############################################################################
 
 def getGMC_DeviceProperties():
     """define a device and its parameters"""
@@ -2876,26 +3089,21 @@ def getGMC_DeviceProperties():
     # GMC-600Re 1.xx,   GMC-600 and 600+    Firmware: 1.xx
 
 
-    dprint("getGMC_DeviceProperties: of connected device: '{}'".format(gglobs.GMCDeviceDetected))
+    fncname = "getGMC_DeviceProperties: "
+    dprint(fncname + "of connected device: '{}'".format(gglobs.GMCDeviceDetected))
     setDebugIndent(1)
-
-    calibration2nd = gglobs.DefaultSens2nd
-
-
-    if   "GMC-500+Re"      in gglobs.GMCDeviceDetected:     gglobs.GMC_SingleTube = False  # 500+ with 2 tubes
-    if   "GMC-500Re 1.08"  in gglobs.GMCDeviceDetected:     gglobs.GMC_SingleTube = False  # 500 (without +) with 2 tubes owned by the_Mike
 
     #
     # valid for all counter       !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     #
     GMC_locationBug             = "GMC-500+Re 1.18, GMC-500+Re 1.21"
     GMC_FastEstTime             = 60
-    GMC_sensitivity             = 154                               # CPM/(µSv/h)
-    GMC_sensitivity2nd          = 2.08                              # CPM/(µSv/h)
-    GMC_WifiIndex               = None                              # None: no WiFi, 2:only 320Re 5, 3:old 500er, 600er, 4:new 500er, 600er
-
-    gglobs.GMC_SingleTube       = True                              # all except 500+ and Mikes's 500 (without +) with 2 tubes
-    gglobs.GMC_WifiEnabled      = True                              # all except 300 series
+    GMC_sensitivityDef          = 154                               # CPM/(µSv/h) - all counter except GMC600
+    GMC_sensitivity1st          = 154                               # CPM/(µSv/h) - only GMC 500 with 2 tubes
+    GMC_sensitivity2nd          = 2.08                              # CPM/(µSv/h) - only GMC 500 with 2 tubes
+    GMC_DualTube                = False                             # all except 500+ and 500(without +) with 2 tubes owned by the_Mike
+    GMC_WifiEnabled             = True                              # all except 300 series (set via GMC_WiFiIndex)
+    GMC_baudrate                = 115200                            # default for all counters, except for GMC300 Re3 and Re4, for which this is set to 57600
 
 
     if "GMC-300Re 3." in gglobs.GMCDeviceDetected :
@@ -2908,12 +3116,12 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 2048
         GMC_SPIRbugfix           = False
         GMC_configsize           = 256
-        GMC_sensitivity          = 154  # CPM/(µSv/h)
         GMC_voltagebytes         = 1
         GMC_endianness           = 'little'
         GMC_variables            = "CPM, CPS"
         GMC_nbytes               = 2
         GMC_WifiIndex            = None  # WiFi is invalid
+        GMC_baudrate             = 57600
 
 
     elif "GMC-300Re 4." in gglobs.GMCDeviceDetected:
@@ -2928,12 +3136,12 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 4096
         GMC_SPIRbugfix           = True
         GMC_configsize           = 256
-        GMC_sensitivity          = 154  # CPM/(µSv/h)
         GMC_voltagebytes         = 1
         GMC_endianness           = 'little'
         GMC_variables            = "CPM, CPS"
         GMC_nbytes               = 2
         GMC_WifiIndex            = None  # WiFi is invalid
+        GMC_baudrate             = 57600
 
 
     elif "GMC-320Re 3." in gglobs.GMCDeviceDetected:
@@ -2944,7 +3152,6 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 4096
         GMC_SPIRbugfix           = False
         GMC_configsize           = 256
-        GMC_sensitivity          = 154  # CPM/(µSv/h)
         GMC_voltagebytes         = 1
         GMC_endianness           = 'little'
         GMC_variables            = "CPM, CPS"
@@ -2960,7 +3167,6 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 4096
         GMC_SPIRbugfix           = True
         GMC_configsize           = 256
-        GMC_sensitivity          = 154  # CPM/(µSv/h)
         GMC_voltagebytes         = 1
         GMC_endianness           = 'little'
         GMC_variables            = "CPM, CPS"
@@ -2976,7 +3182,6 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 4096
         GMC_SPIRbugfix           = True
         GMC_configsize           = 256
-        GMC_sensitivity          = 154  # CPM/(µSv/h)
         GMC_voltagebytes         = 1
         GMC_endianness           = 'little'
         GMC_variables            = "CPM, CPS"
@@ -2986,21 +3191,19 @@ def getGMC_DeviceProperties():
 
     elif "GMC-500Re 1." in gglobs.GMCDeviceDetected:
         #######################################################################
-        # 500 - OHNE +
-        # GMC-500Re 1.08 : kein Fast Estimate Time (von user the_mike)
-        # GMC-500Re 1.08 : No '+' but 2 tubes,     (von user the_mike)
+        # 500 - OHNE '+'
+        # GMC-500Re 1.08 : No '+' but 2 tubes, kein Fast Estimate Time (von user the_mike)
         #######################################################################
         GMC_memory               = 2**20
         #GMC_SPIRpage            = 4096   # ist bug jetzt behoben oder auf altem Stand???
         GMC_SPIRpage             = 2048   # Workaround erstmal auf 2048 bytes
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 154    # CPM/(µSv/h)
         GMC_voltagebytes         = 5
         GMC_endianness           = 'big'
-        GMC_variables            = "CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd"
+        GMC_variables            = "CPM1st, CPS1st, CPM2nd, CPS2nd"
         GMC_nbytes               = 2
-        gglobs.GMC_SingleTube    = False
+        GMC_DualTube             = True
         GMC_WifiIndex            = 3      # 500er, 600er
 
 
@@ -3015,13 +3218,11 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 2048   # Workaround erstmal auf 2048 bytes
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 154    # CPM/(µSv/h)
-        GMC_sensitivity2nd       = 2.08   # CPM/(µSv/h)
         GMC_voltagebytes         = 5
         GMC_endianness           = 'big'
         GMC_variables            = "CPM1st, CPS1st, CPM2nd, CPS2nd"
         GMC_nbytes               = 4
-        gglobs.GMC_SingleTube    = False  # 500+ with 2 tubes
+        GMC_DualTube             = True   # 500+ with 2 tubes
         GMC_WifiIndex            = 3      # 500er, 600er
 
 
@@ -3032,16 +3233,15 @@ def getGMC_DeviceProperties():
         #######################################################################
         GMC_memory               = 2**20
         GMC_SPIRpage             = 4096  # ist bug jetzt behoben oder auf altem Stand???
+        # GMC_SPIRpage             = 2048  # ist bug jetzt behoben oder auf altem Stand???
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 154   # CPM/(µSv/h)
-        GMC_sensitivity2nd       = 2.08  # CPM/(µSv/h)
         GMC_voltagebytes         = 5
         GMC_endianness           = 'big'
         GMC_variables            = "CPM1st, CPS1st, CPM2nd, CPS2nd"
         GMC_nbytes               = 4
-        gglobs.GMC_SingleTube    = False # 500+ with 2 tubes
-        GMC_WifiIndex            = 3      # 500er, 600er
+        GMC_DualTube             = True  # 500+ with 2 tubes
+        GMC_WifiIndex            = 3     # 500er, 600er
 
 
     elif "GMC-500+Re 1." in gglobs.GMCDeviceDetected: # if not caught in 1.18, 1.21, 1.22
@@ -3052,19 +3252,17 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 2048   # Workaround erstmal auf 2048 bytes
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 154    # CPM/(µSv/h)
-        GMC_sensitivity2nd       = 2.08   # CPM/(µSv/h)
         GMC_voltagebytes         = 5
         GMC_endianness           = 'big'
-        GMC_variables            = "CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd"
+        GMC_variables            = "CPM1st, CPS1st, CPM2nd, CPS2nd"
         GMC_nbytes               = 2      # only 2 bytes ???????????????
-        gglobs.GMC_SingleTube    = False  # 500+ with 2 tubes
+        GMC_DualTube             = True   # 500+ with 2 tubes
         GMC_WifiIndex            = 3      # 500er, 600er
 
 
     elif "GMC-500+Re 2." in gglobs.GMCDeviceDetected: # to cover 2.00ff
         #######################################################################
-        #
+        # GMC-500+Re 2.28   latest as of 2021-10-20
         #######################################################################
         # same as: GMC-500+Re 1.2.
         # Latest Firmware: 2.24
@@ -3083,13 +3281,11 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 4096     # chosen default for now
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 154    # CPM / (µSv/h)
-        GMC_sensitivity2nd       = 2.08   # CPM / (µSv/h)
         GMC_voltagebytes         = 5
         GMC_endianness           = 'big'
         GMC_variables            = "CPM1st, CPS1st, CPM2nd, CPS2nd"
         GMC_nbytes               = 4
-        gglobs.GMC_SingleTube    = False  # 500+ with 2 tubes
+        GMC_DualTube             = True   # 500+ with 2 tubes
         GMC_WifiIndex            = 4      # 500+ version 2.24
 
 
@@ -3106,7 +3302,6 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 2048   # Workaround erstmal auf 2048 bytes
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 154    # CPM / (µSv/h)
         GMC_voltagebytes         = 1      # strange but working
         GMC_endianness           = 'big'
         GMC_variables            = "CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd"
@@ -3123,7 +3318,7 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 2048   # Workaround erstmal auf 2048 bytes
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 348  # CPM/(µSv/h)
+        GMC_sensitivityDef       = 348  # CPM/(µSv/h)
         GMC_voltagebytes         = 5
         GMC_endianness           = 'big'
         GMC_variables            = "CPM, CPS"
@@ -3140,7 +3335,7 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 2048   # Workaround erstmal auf 2048 bytes
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 348     # CPM/(µSv/h)
+        GMC_sensitivityDef       = 348     # CPM/(µSv/h)
         GMC_voltagebytes         = 5
         GMC_endianness           = 'big'
         GMC_variables            = "CPM, CPS"
@@ -3156,7 +3351,7 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 4096
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 348     # CPM/(µSv/h)
+        GMC_sensitivityDef       = 348     # CPM/(µSv/h)
         GMC_voltagebytes         = 5
         GMC_endianness           = 'big'
         GMC_variables            = "CPM, CPS"
@@ -3168,7 +3363,7 @@ def getGMC_DeviceProperties():
         #######################################################################
         # to integrate as of now unknown new (or old) devices
         #######################################################################
-        msg = "getGMC_DeviceProperties: New, unknown GMC device has been connected: {}".format(gglobs.GMCDeviceDetected)
+        msg = fncname + "New, unknown GMC device has been connected: {}".format(gglobs.GMCDeviceDetected)
         edprint(msg, debug=True)
         efprint(msg)
         qefprint("You may have to edit the configuration file geigerlog.cfg to adapt the settings to your counter")
@@ -3178,21 +3373,32 @@ def getGMC_DeviceProperties():
         GMC_SPIRpage             = 2048
         GMC_SPIRbugfix           = False
         GMC_configsize           = 512
-        GMC_sensitivity          = 154  # CPM/(µSv/h)
         GMC_voltagebytes         = 5
         GMC_endianness           = 'big'
         GMC_variables            = "CPM, CPS"
         GMC_nbytes               = 4
         GMC_WifiIndex            = 4      # new devices like 500er, 600er with firmware 2.x ??
 
+#################################################################################
+# Extra options for variables: (can be used in geigerlog.cfg file, but is not disclosed)
+#
+# Humid:    The option Humid provides the duration in ms (millisec) for reading
+#           all of the configured GMC variables. On a GMC500+ fluctuations
+#           between 15 and 200 ms were observed.
+#
+# Xtra:     The option Xtra provides the delta of the device time minus the
+#           computer time in seconds (with only 1 sec precision due to the
+#           GMC clock not giving higher resolution). The GMC-300 series in
+#           particular is notoriuous for its shifting clock, but lately a
+#           new GMC500+ with firmware 2.24 has also shown a clock shift of
+#           20 sec per day!
+#################################################################################
 
     # overwrite preset values if defined in the GeigerLog config file
     if gglobs.GMC_memory        == 'auto':         gglobs.GMC_memory       = GMC_memory
     if gglobs.GMC_SPIRpage      == 'auto':         gglobs.GMC_SPIRpage     = GMC_SPIRpage
     if gglobs.GMC_SPIRbugfix    == 'auto':         gglobs.GMC_SPIRbugfix   = GMC_SPIRbugfix
     if gglobs.GMC_configsize    == 'auto':         gglobs.GMC_configsize   = GMC_configsize
-    if gglobs.calibration1st    == 'auto':         gglobs.calibration1st   = GMC_sensitivity
-    if gglobs.calibration2nd    == 'auto':         gglobs.calibration2nd   = GMC_sensitivity2nd
     if gglobs.GMC_voltagebytes  == 'auto':         gglobs.GMC_voltagebytes = GMC_voltagebytes
     if gglobs.GMC_endianness    == 'auto':         gglobs.GMC_endianness   = GMC_endianness
     if gglobs.GMC_nbytes        == 'auto':         gglobs.GMC_nbytes       = GMC_nbytes
@@ -3200,12 +3406,23 @@ def getGMC_DeviceProperties():
     if gglobs.GMC_FastEstTime   == 'auto':         gglobs.GMC_FastEstTime  = GMC_FastEstTime
     if gglobs.GMC_locationBug   == 'auto':         gglobs.GMC_locationBug  = GMC_locationBug
     if gglobs.GMC_WifiIndex     == 'auto':         gglobs.GMC_WifiIndex    = GMC_WifiIndex
+    if gglobs.GMC_DualTube      == 'auto':         gglobs.GMC_DualTube     = GMC_DualTube
+    if gglobs.GMC_baudrate      == 'auto':         gglobs.GMC_baudrate     = GMC_baudrate
+    if gglobs.Sensitivity[0]    == 'auto':         gglobs.Sensitivity[0]   = GMC_sensitivityDef
+    if gglobs.Sensitivity[1]    == 'auto':         gglobs.Sensitivity[1]   = GMC_sensitivity1st # CPM1st may also be called for single tube counter
+    if gglobs.Sensitivity[2]    == 'auto':         gglobs.Sensitivity[2]   = GMC_sensitivity2nd # CPM1st may also be called for single tube counter
 
+    # # Tube #1 and #2 sensitivities only for the 2-tube counters
+    # if gglobs.GMC_DualTube:
+    #     if gglobs.Sensitivity[1] == 'auto':        gglobs.Sensitivity[1]   = GMC_sensitivity1st
+    #     if gglobs.Sensitivity[2] == 'auto':        gglobs.Sensitivity[2]   = GMC_sensitivity2nd
+
+    # WiFi only when GMC_WifiIndex is not None
+    if gglobs.GMC_WifiIndex == None:               gglobs.GMC_WifiEnabled  = False
+    else:                                          gglobs.GMC_WifiEnabled  = True
+
+    # check FET setting
     cfgKeyHigh["FastEstTime"][0] = str(gglobs.GMC_FastEstTime)
-
-    # WiFi only when WifiCol is not negative
-    if gglobs.GMC_WifiIndex == None:
-        gglobs.GMC_WifiEnabled = False
 
     # verify locationBug
     try:    ts = gglobs.GMC_locationBug.split(",") # to avoid crash due to wrong user entry
@@ -3214,11 +3431,43 @@ def getGMC_DeviceProperties():
     #print("ts:", ts)
     gglobs.GMC_locationBug     = ts
 
-
     setLoggableVariables("GMC", gglobs.GMC_variables)
 
     setDebugIndent(0)
 
-#### end getGMC_DeviceProperties ##############################################
+    #### end getGMC_DeviceProperties ##############################################
 
 
+def getResponseAT(command):
+
+    fncname = "getResponseAT: "
+
+    print()
+    dprint(fncname + "for command: {}".format(command))
+    setDebugIndent(1)
+
+    rec = gglobs.GMCser.write(command)  # rec = no of bytes written
+    # print("bytes written: ", rec, "for command:", command)
+
+    t0 = time.time()
+    print("waiting for response ", end="", flush=True)
+    while gglobs.GMCser.in_waiting == 0:
+        print(".", end="", flush=True)
+        time.sleep(0.2)
+    print(" received after {:0.1f} sec".format(time.time() - t0))    #  ca 5 sec
+
+    rec = b''
+    t0 = time.time()
+    while gglobs.GMCser.in_waiting > 0 or time.time() - t0 < 2:
+        bw = gglobs.GMCser.in_waiting
+        if bw > 0:
+            # print("reading {:3d} bytes".format(bw), end="  ")
+            newrec = gglobs.GMCser.read(bw)
+            # print(newrec)
+            rec += newrec
+        else:
+            print(".", end="", flush=True)
+        time.sleep(0.2)
+    print("\nfinal rec: ({} bytes) {}".format(len(rec), rec))
+
+    setDebugIndent(0)
