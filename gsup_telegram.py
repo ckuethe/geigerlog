@@ -9,7 +9,7 @@ def setupTelegram():
     fncname = "setupTelegram: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     title    = "Telegram Messenger Properties "
     msgbox   = QMessageBox()
@@ -31,7 +31,7 @@ def setupTelegram():
         playWav("err")
         msgbox.setText(msg)
         retval = msgbox.exec()
-        setDebugIndent(0)
+        setIndent(0)
         return
 
     try:
@@ -50,7 +50,7 @@ def setupTelegram():
         playWav("err")
         msgbox.setText(msg)
         retval = msgbox.exec()
-        setDebugIndent(0)
+        setIndent(0)
         return
 
     try:
@@ -80,7 +80,7 @@ def setupTelegram():
         playWav("err")
         msgbox.setText(msg)
         retval = msgbox.exec()
-        setDebugIndent(0)
+        setIndent(0)
         return
 
     retval = setTelegramProperties()
@@ -99,7 +99,7 @@ def setupTelegram():
 
         gglobs.TelegramLastUpdate = 0 # reset so it will be updated on next log
 
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def setTelegramProperties():
@@ -144,7 +144,6 @@ def setTelegramProperties():
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setFont(gglobs.fontstd)
     d.setWindowTitle("Telegram Messenger Properties")
-    # d.setWindowModality(Qt.WindowModal)
     d.setWindowModality(Qt.NonModal)
     d.setMinimumWidth(300)
 
@@ -189,7 +188,13 @@ def getTelegramMessage():
         for vname in gglobs.varsCopy:
             if gglobs.varLoggable[vname]:
                 myformat = "   {:13s}: {:0.3f}\n"
-                varvalues[vname] = np.nanmean(getDataInLimits(vname, DeltaT))
+
+                # next line sieht falsch aus????
+                # old: varvalues[vname] = np.nanmean(getDataInLimits(vname, DeltaT))
+                # new:
+                timedata, vardata, plotTimeDelta = getTimeCourseInLimits(vname, DeltaT)
+                varvalues[vname] = np.nanmean(vardata)
+
                 strdata += myformat.format(vname, varvalues[vname])
 
         # print(strdata)

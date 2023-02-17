@@ -69,11 +69,13 @@ def fprintSuSt():
     fprint("File       = {}".format(gglobs.currentDBPath))
     if os.access(gglobs.currentDBPath , os.R_OK):   fprint("Filesize   = {:10,.0f} Bytes".format(os.path.getsize(gglobs.currentDBPath)))
     else:                                           fprint("Filesize   = File not found!")
-    fprint("Records    = {:10,.0f}   total, {:10,.0f}   shown in Plot"  .format(size_total,     size_plot))
-    fprint("Time Span  = {:10s} total, {:10s} shown in Plot"            .format(getTimespanText(timespan_total), getTimespanText(timespan_plot)))
-    fprint("Avg. Cycle = {:>10s} total, {:>10s} shown in Plot"          .format(cycle_total,    cycle_plot))
+    fprint("Records    = {:10,.0f}   total,     {:10,.0f}   shown in Plot"  .format(size_total,     size_plot))
+    fprint("Time Span  = {:10s} total,     {:10s} shown in Plot"            .format(getTimespanText(timespan_total), getTimespanText(timespan_plot)))
+    fprint("Avg. Cycle = {:>10s} total avg, {:>10s} shown in Plot"          .format(cycle_total,    cycle_plot))
+
     fprint("")
-    fprint("Variable  [Unit]      Avg ±StdDev     Variance          Range            Recs  Last Value")
+    fprint("Variable  [Unit]       Avg ±StdDev    ±SDev%  Variance     Min ... Max    Recs    Last")
+    # like: Temp    : [°C]      1.435 ±0.788    ±54.9%    0.622 0.77367  5.6682    1775  1.4219
     for i, vname in enumerate(gglobs.varsCopy):
         if vname in gglobs.logSliceMod:         # only the vars shown in current plot
             line = gglobs.varStats[vname].strip()
@@ -221,7 +223,7 @@ def showStats():
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setFont(gglobs.fontstd)
     d.setWindowTitle("Statistics on Checked Variables")
-    d.setWindowModality(Qt.WindowModal) #Qt.ApplicationModal, Qt.NonModal
+    d.setWindowModality(Qt.WindowModal)
     d.setMinimumWidth(1100)
     d.setMinimumHeight(750)
 
@@ -328,9 +330,16 @@ def selectScatterPlotVars():
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setFont(gglobs.fontstd)
     d.setWindowTitle("Select Variables for Scatter Plot")
-    d.setWindowModality(Qt.WindowModal)
     d.setMinimumHeight(350)
     #d.setStyleSheet("QLabel { background-color:#DFDEDD; color:rgb(40,40,40); font-size:30px; font-weight:bold;}")
+
+    d.setWindowModality(Qt.WindowModal)       # default alles andere kann bedient werden
+    # d.setWindowModality(Qt.NonModal)          #         alles andere blockiert
+    # d.setWindowModality(Qt.ApplicationModal)  #         alles andere blockiert
+    # nothing set                               #         alles andere blockiert
+    # d.setModal(False)                         #         alles andere blockiert!
+    # d.setModal(True)                          #         alles andere blockiert
+
 
     layoutV = QVBoxLayout(d)
     layoutV.addLayout(layoutH0)
@@ -495,6 +504,17 @@ def plotScatter(vx, vy, vline, zero, FitFlag, FitSelector):
                     coeff = ["a", "b", "c", "d", "e", "f", "g", "h"]
                     pfit = np.polyfit(x, y, int(FitSelector))
                     vprint("plotScatter: pfit: ", pfit)
+
+                    # getting r-squared for linear fit
+                    correlation_matrix = np.corrcoef(x, y)
+                    # edprint(correlation_matrix)
+                    correlation_xy = correlation_matrix[0,1]
+                    # edprint(correlation_xy)
+                    r_squared = correlation_xy**2
+                    # edprint(r_squared)
+                    if int(FitSelector) == 1:
+                        labout.append("R²  : {:0.3f} ".format(r_squared))
+
                     for i,f in enumerate(np.flip(pfit)):
                         labout.append("({:d}) : {:s} = {: .4g}".format(i, coeff[i], f))
                     p  = np.poly1d(pfit)
@@ -551,7 +571,7 @@ def nextScatterPlot():
 
 
 def setLastValues(i, vname):
-    """update the values in the displayLastValues() dialoge box"""
+    """update the values in the displayLastValues() dialog box"""
 
     fncname = "setLastValues: "
     # start = time.time()
@@ -563,11 +583,13 @@ def setLastValues(i, vname):
         sval = "not mapped"
     else:
         if not np.isnan(lastval):
-            val  = "{:7.3f}".format(lastval)
+            # val  = "{:7.3f}".format(lastval)
+            val  = "{:8.3f}".format(lastval)
             if gglobs.GraphScale[vname].upper().strip() == "VAL":
                 sval = "---"
             else:
-                sval = "{:7.3f}".format(scaleVarValues(vname, lastval, gglobs.GraphScale[vname]))
+                # sval = "{:7.3f}".format(scaleVarValues(vname, lastval, gglobs.GraphScale[vname]))
+                sval = "{:8.3f}".format(scaleVarValues(vname, lastval, gglobs.GraphScale[vname]))
         else:
             val  = "---"
             sval = "---"
@@ -593,6 +615,8 @@ def setLastValues(i, vname):
         gglobs.exgg.vlabels[i] .setStyleSheet(ssheet)
         gglobs.exgg.svlabels[i].setStyleSheet(ssheet)
 
+    # edprint(fncname + "ssheet: ", ssheet)
+
     # takes < 0.2 ms
     # duration = (time.time() - start) * 1000
     # cdprint(fncname + "duration: {:0.3f} ms".format(duration))
@@ -606,9 +630,13 @@ def displayLastValues():
 
     fncname = "displayLastValues: "
 
-    if gglobs.displayLastValsIsOn:    return    # already showing
-    if gglobs.logConn    == None:     return    # no database
-    # if gglobs.lastLogValues == None:     return    # no values
+    if gglobs.displayLastValsIsOn:              # already showing
+        return
+
+    if gglobs.logConn    == None:               # no database
+        msg = "No data available"
+        gglobs.exgg.showStatusMessage(msg, timing=0, error=True)
+        return
 
     gglobs.displayLastValsIsOn = True
 
@@ -703,8 +731,9 @@ def displayLastValues():
 
 
 def fprintPlotData():
-    """Print Plot Data to Notepad.
-    Data are taken from the plot, not from the database!"""
+    """Print Plot Data to Notepad. Data are taken from the plot, not from the database!"""
+
+    fncname = "fprintPlotData: "
 
     t0 = gglobs.logTimeSlice
 
@@ -727,11 +756,32 @@ def fprintPlotData():
     for i in range(len(t0)):
         vcc = "{:>6d}, {:<19s}".format(i, str(mpld.num2date(t0[i]))[:19])   # Index, DateTime
         NonNoneCount = 0
-        for vname in gglobs.varsCopy:
+        for vi, vname in enumerate(gglobs.varsCopy):
             if gglobs.exgg.varDisplayCheckbox[vname].isChecked():
                 varvalue = gglobs.logSlice[vname][i]
+                # if vname == "CPM" or vname == "CPM1st" : rdprint(fncname, varvalue)
                 if not np.isnan(varvalue):  NonNoneCount += 1
-                vcc += ", {:>7.6g}".format(varvalue)
+                if vi < 8: # CPM et al
+                    if   isinstance(varvalue, int) or varvalue.is_integer():             # it is of integer value
+                        # cdprint(fncname + "it is of integer value ", varvalue)
+                        if      varvalue < 1E5:   vcc += ", {:>7.0f}".format(varvalue)   # less than 100 000
+                        else:                     vcc += ", {:>#7.6g}".format(varvalue)  # 100 000 or greater
+                    else:
+                        # cdprint(fncname + "it is NOT  of integer value ", varvalue)
+                        val = round(varvalue, 4)
+                        # if      val <= 0.9999:    vcc += ", {:>#7.4g}".format(val)
+                        # else:                     vcc += ", {:>#7.3g}".format(val)
+                        if      val <= 0.9999:    vcc += ", {:>#7.6g}".format(val)
+                        else:                     vcc += ", {:>#7.6g}".format(val)
+                else: # T, P, H, X
+                    if   isinstance(varvalue, int) or varvalue.is_integer():             # it is of integer value
+                        if      varvalue < 1E6:   vcc += ", {:>7.0f}".format(varvalue)   # less than 100 000
+                        else:                     vcc += ", {:>#7.6g}".format(varvalue)  # 100 000 or greater
+                    else:
+                        val = round(varvalue, 4)
+                        if      val <= 0.9999:    vcc += ", {:>#7.4g}".format(val)
+                        else:                     vcc += ", {:>#7.5g}".format(val)
+
         #print("vcc: ", vcc, ", NonNoneCount: ", NonNoneCount, ", printlinecount: ", printlinecount )
 
         if NonNoneCount > 0:
@@ -743,7 +793,7 @@ def fprintPlotData():
             printstring    = ""
             printlinecount = 0
             printlineMax  += 30
-            Qt_update()
+            QtUpdate()
 
         if gglobs.stopPrinting: break
 
@@ -756,6 +806,7 @@ def fprintPlotData():
     setNormalCursor()
 
 
+# not used
 def plotMonitor():
     """Plot the Monitor"""
 
@@ -808,7 +859,6 @@ def plotMonitor():
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setWindowTitle("Monitor")
     d.setWindowModality(Qt.WindowModal)          # multiple Windows open, all runs, all is clickable
-    # d.setWindowModality(Qt.NonModal)          #
     d.setLayout(layoutV)
 
     # show window
@@ -966,7 +1016,6 @@ def plotpgGraph():
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setWindowTitle("Monitor")
     d.setWindowModality(Qt.WindowModal)          # multiple Windows open, all runs, all is clickable
-    # d.setWindowModality(Qt.NonModal)          #
     d.setLayout(layoutV)
 
     stop = time.time()
@@ -975,3 +1024,106 @@ def plotpgGraph():
     # show window
     d.exec()
 
+
+def getNTPDateTime(NTPversion = 4):
+    """Call NTP server and return offset in seconds as reported by NTP"""
+
+
+    try:
+        import ntplib
+        ntplib_available = True
+    except:
+        edprint("ntplib not found. Cannot use NTP server!")
+        ntplib_available = False
+        return gglobs.NAN
+
+
+    # typical offset is in the order of 10 milli second (offset = +/- 0.010
+
+    # latest NTP version is now: 4;     working versions are 2, 3, 4 (not 1!)
+    # https://www.eecis.udel.edu/~mills/ntp/html/release.html
+    #
+    # ntplib: def request(self, host, version=2, port='ntp', timeout=5):
+    #
+    # NTP document by IETF:       https://tools.ietf.org/html/rfc5905
+    # see: page 23, Figure 7 for functions, and ff for details
+    #
+    # Reference Timestamp:
+    # Time when the system clock was last set or corrected, in NTP timestamp format.
+    #
+    # Origin Timestamp (org):
+    # Time at the client when the request departed for the server, in NTP timestamp format.
+    #
+    # Receive Timestamp (rec):
+    # Time at the server when the request arrived from the client, in NTP timestamp format.
+    #
+    # Transmit Timestamp (xmt):
+    # Time at the server when the response left for the client, in NTP timestamp format.
+    #
+    # Destination Timestamp (dst):
+    # Time at the client when the reply arrived from the server, in NTP timestamp format.
+
+    if not ntplib_available:
+        edprint("Cannot call NTP Server as ntplib is not available!")
+        return gglobs.NAN
+
+
+    NTP_SERVERS = [ #'pool.ntp.org',
+                    #'asia.pool.ntp.org',
+                    #~'oceania.pool.ntp.org',
+                    #'north-america.pool.ntp.org',
+                    #~'south-america.pool.ntp.org',
+                    #'europe.pool.ntp.org',
+                    'de.pool.ntp.org',
+                    #~'0.de.pool.ntp.org',
+                    #~'1.de.pool.ntp.org',
+                    #~'2.de.pool.ntp.org',
+                    #~'3.de.pool.ntp.org',
+                    #~'uk.pool.ntp.org',
+                    #~'0.uk.pool.ntp.org',
+                  ]
+
+    fncname     = "getNTPDateTime: "
+    vprint(fncname)
+    setIndent(1)
+    orig = recv = dest = offset = gglobs.NAN
+
+    client = ntplib.NTPClient()
+    for ntpserver in NTP_SERVERS:
+        ntps     = []
+        try:
+            response = client.request(ntpserver, version=NTPversion, timeout=0.2)
+        except Exception as e:
+            msg = fncname + "NTPversion:{} ".format(NTPversion)
+            exceptPrint(e, msg)
+            setIndent(0)
+            #return gglobs.NAN
+            continue
+
+        #print("response.orig_time: ", response.orig_time) # like: 1614266943.3662605
+
+        orig   = response.orig_time     # all times in seconds
+        recv   = response.recv_time
+        tx     = response.tx_time
+        dest   = response.dest_time
+        offset = response.offset
+
+        ntps.append( ["orig"     , orig - orig]) # always zero
+        ntps.append( ["recv"     , recv - orig])
+        ntps.append( ["tx  "     , tx   - orig])
+        ntps.append( ["dest"     , dest - orig])
+        ntps.append( ["offset"   , offset])
+        #ntps.append( ["calc offset"   , ((recv - orig) + (tx - dest)) / 2])
+
+        # vprint for each server
+        if gglobs.verbose:
+            for  a in ntps: vprint("NTP Version: {}  {:20s}  {:15s}  {:10.3f} ".format(NTPversion, ntpserver, a[0], a[1]))
+            print("")
+
+    setIndent(0)
+
+    return offset # offset in seconds
+
+
+# NTP
+###############################################################################

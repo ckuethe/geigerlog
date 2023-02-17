@@ -38,12 +38,37 @@ def DB_getLocaltime():
     """gets the localtime as both Julianday as well as timetag, like:
     res: (2458512.928904213, '2019-01-29 10:17:37') """
 
+    # sql = "select julianday('0001-01-01 00:00:00', 'localtime')"
+    # xsel = gglobs.currentConn.execute(sql)
+    # res  = xsel.fetchone()
+    # rdprint("DB_getLocaltime: sql: {}, res:".format(sql), res, type(res))
+
+    # sql = "select julianday('0001-01-01 00:00:00')"
+    # xsel = gglobs.currentConn.execute(sql)
+    # res  = xsel.fetchone()
+    # rdprint("DB_getLocaltime: sql: {}, res:".format(sql), res, type(res))
+
+    # sql = "select julianday('1970-01-01 01:00:00', 'localtime')"
+    # xsel = gglobs.currentConn.execute(sql)
+    # res  = xsel.fetchone()
+    # rdprint("DB_getLocaltime: sql: {}, res:".format(sql), res, type(res))
+
+    # sql = "select julianday('1970-01-01 01:00:00')"
+    # xsel = gglobs.currentConn.execute(sql)
+    # res  = xsel.fetchone()
+    # rdprint("DB_getLocaltime: sql: {}, res:".format(sql), res, type(res))
+
+
     sql = "select julianday('NOW', 'localtime'), DateTime('NOW', 'localtime')"
+    # sql = "select julianday('NOW', 'localtime'), DateTime('NOW', 'localtime'), strftime('%Y-%m-%d %H:%M:%S', 'localtime')" # strftime is NOT localtime
+    # sql = "select julianday('NOW', 'localtime'), DateTime('NOW', 'localtime'), strftime('%Y-%m-%d %H:%M:%S')" # strftime is NOT localtime; strftime mit localtime modifier geht icht
+
     xsel = gglobs.currentConn.execute(sql)
-    res = xsel.fetchone()
-    #print("DB_getLocaltime: sql: {}, res:".format(sql), res)
+    res  = xsel.fetchone()
+    # rdprint("DB_getLocaltime: sql: {}, res:".format(sql), res, type(res))
 
     return res[0], res[1]
+    # return res
 
 
 def DB_JulianToDate(juliandate):
@@ -69,37 +94,67 @@ def DB_DateToJulian(ddate):
     return res
 
 
-def DB_GetFilepathFromDB(DB_Connection):
-    """returns the filename with path used for this database"""
+def DB_openDatabase(DB_Connection, DB_FilePath):
+    """Open the database"""
 
-    fncname = "DB_GetFilepathFromDB: "
-    dprint(fncname + "DB_Connection: ", DB_Connection)
+    fncname = "DB_openDatabase: "
 
-    path = None
-    pmlist = DB_Connection.execute('PRAGMA database_list')
-    for id_, name, path in pmlist:
-        dprint(fncname + "id_, name, path:", id_, name, path)
-        if name == 'main' :
-            break
+    dprint(fncname + "DBpath: '{}'".format(DB_FilePath))
+    setIndent(1)
 
-    dprint(fncname + "path:", path)
+    DB_Connection = sqlite3.connect(DB_FilePath, isolation_level="EXCLUSIVE", check_same_thread = False)
+    # edprint("os.access(DB_FilePath, os.W_OK): ", os.access(DB_FilePath, os.W_OK))
 
-    return path
+    ### testing - use storage to memory #################################################################
+    # DB_Connection.close()
+    # DB_Connection = sqlite3.connect(":memory:", isolation_level="EXCLUSIVE", check_same_thread = False)
+    #####################################################################################################
+
+    gglobs.currentConn = DB_Connection
+
+    DB_createStructure(DB_Connection)       # does no harm if structure already exists
+
+    # find number of tables in file
+    res     = DB_Connection.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;")
+    tables  = res.fetchall()
+    ntables = len(tables)
+
+    # find number of views in file
+    res     = DB_Connection.execute("SELECT name FROM sqlite_master WHERE type='view' ORDER BY name;")
+    views   = res.fetchall()
+    nviews  = len(views)
+
+    # find number of rows in table data
+    res    = DB_Connection.execute("SELECT count(*) FROM  data")
+    rows   = res.fetchone()
+    dnrows = rows[0]
+
+    # find number of rows in table comments
+    res    = DB_Connection.execute("SELECT count(*) FROM  comments")
+    rows   = res.fetchone()
+    cnrows = rows[0]
+
+    vprint(fncname + "Database has {} tables, {} views, with {:n} rows in table data, {:n} rows in table comments".format(ntables, nviews, dnrows, cnrows))
+
+    setIndent(0)
+
+    return DB_Connection
+
 
 
 def DB_closeDatabase(DBtype):
-    """Close the database.
-    Note: any changes not committed will be lost!
-    """
+    """Close the database."""
+    # NOTE: any changes not committed will be lost!
+
     fncname = "DB_closeDatabase: "
     vprint(fncname + "Closing database: '{}'".format(DBtype))
-    setDebugIndent(1)
+    setIndent(1)
 
     if      DBtype == "Log": DB_Connection = gglobs.logConn
     else:                    DB_Connection = gglobs.hisConn
 
     if DB_Connection == None:
-        wprint(fncname + "Database is not open")
+        wprint(fncname + "Database was not open")
     else:
         try:
             DB_Connection.close()
@@ -108,73 +163,24 @@ def DB_closeDatabase(DBtype):
             srcinfo = fncname + "Exception: connection is: {}".format(DB_Connection)
             exceptPrint(e, srcinfo)
 
-    setDebugIndent(0)
+    setIndent(0)
 
 
-def DB_deleteDatabase(DBtype, DB_FilePath):
+def DB_deleteDatabase(DBtype, DB_FilePath):     # DBtype = "Log" or "His"
     """Try to close database at DB_Connection, then delete database file at DB_FilePath"""
-    """DBtype = "Log" or "His" """
 
     fncname = "DB_deleteDatabase: "
-    dprint(fncname + "Deleting {} DB file: '{}'".format(DBtype, DB_FilePath))
 
-    DB_closeDatabase  (DBtype)            # try to close DB
+    dprint(fncname + "Deleting {} DB file: '{}'".format(DBtype, DB_FilePath))
+    setIndent(1)
+
+    try:    DB_closeDatabase  (DBtype)    # try to close DB
+    except: pass
 
     try:    os.remove (DB_FilePath)       # try to remove DB file
     except: pass
 
-
-def DB_openDatabase(DB_Connection, DB_FilePath):
-    """Open the database"""
-
-    fncname = "DB_openDatabase: "
-    dprint(fncname + "DBpath: '{}'".format(DB_FilePath))
-    setDebugIndent(1)
-
-    needToCreateDB = False
-
-    if os.access(DB_FilePath, os.W_OK):
-        dprint(fncname + "Database file found")
-        DB_Connection = sqlite3.connect(DB_FilePath, isolation_level="EXCLUSIVE")
-
-        # find number of tables in file
-        res     = DB_Connection.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name;")
-        tables  = res.fetchall()
-        ntables = len(tables)
-
-        # find number of views in file
-        res     = DB_Connection.execute("SELECT name FROM sqlite_master WHERE type='view' ORDER BY name;")
-        views   = res.fetchall()
-        nviews  = len(views)
-
-        if ntables == 0 or nviews == 0:
-            needToCreateDB = True
-            vprint(fncname + "Database file is missing structure")
-        else:
-            # find number of rows in table data
-            res    = DB_Connection.execute("SELECT count(*) FROM  data")
-            rows   = res.fetchone()
-            dnrows = rows[0]
-            res    = DB_Connection.execute("SELECT count(*) FROM  comments")
-            rows   = res.fetchone()
-            cnrows = rows[0]
-            # note: format syntax: {:n} --> '.' as separator, {:,} --> ',' as separator
-            vprint(fncname + "Database has {} tables, {} views, with {:n} rows in table data, {:n} rows in table comments".format(ntables, nviews, dnrows, cnrows))
-
-        needToCreateDB = True # will always update the DB structure to include any new tables
-
-    else:
-        vprint(fncname + "DB file not found; creating DB with path: '{}'".format(DB_FilePath))
-        DB_Connection = sqlite3.connect(DB_FilePath, isolation_level="EXCLUSIVE")
-        needToCreateDB = True
-
-    if needToCreateDB: DB_createStructure(DB_Connection)
-
-    gglobs.currentConn      = DB_Connection
-
-    setDebugIndent(0)
-
-    return DB_Connection
+    setIndent(0)
 
 
 def DB_commit(DB_Connection):
@@ -182,9 +188,9 @@ def DB_commit(DB_Connection):
 
     try:
         DB_Connection.commit()
+        # ydprint("DB_commit done")
     except Exception as e:
-        srcinfo = "DB_commit: commit"
-        exceptPrint(e, srcinfo)
+        exceptPrint(e, "DB_commit: FAILURE commit")
 
 
 def DB_createStructure(DB_Connection):
@@ -193,7 +199,7 @@ def DB_createStructure(DB_Connection):
     fncname = "DB_createStructure: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     # execute all sql to create database structure
     for sql in sqlCreate:
@@ -208,7 +214,7 @@ def DB_createStructure(DB_Connection):
     dprint(fncname + "complete")
 
     DB_commit(DB_Connection)
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def DB_insertData(DB_Connection, datalist):
@@ -217,7 +223,7 @@ def DB_insertData(DB_Connection, datalist):
     fncname = "DB_insertData: "
 
     sql = sqlInsertData
-    #wprint(fncname + "SQL:", sql, ", Data: ", datalist[0:10])
+    # ydprint(fncname + "SQL:", sql, ", Data: ", datalist[0:10])
 
     try:
         DB_Connection.executemany(sql, datalist)
@@ -382,7 +388,7 @@ def DB_readParse(DB_Connection):
     else:               return True
 
 
-def DB_readDevice(DB_Connection):
+def DB_readTableDevice(DB_Connection):
     """Read the data from the database table device"""
 
     sql = """
@@ -394,7 +400,7 @@ def DB_readDevice(DB_Connection):
 
     res     = DB_Connection.execute(sql)
     rows    = res.fetchone()
-    #print("DB_readDevice: fetched 1 rows  with items: ", len(rows), rows)
+    #print("DB_readTableDevice: fetched 1 rows  with items: ", len(rows), rows)
 
     return rows
 
@@ -452,8 +458,8 @@ def DB_updateLogcycle(DB_Connection, value):
 
 
 def createByteMapFromDB(value):
-    """Read data from table bin as blob and print map of value into notePad
-    value is meant ot be FF (=empty value) or AA (=DateTime String)"""
+    """Read data from table bin as blob and print map of value into notePad.
+    Value is meant ot be FF (=empty value) or AA (=DateTime String)"""
 
     if gglobs.hisConn == None:
         gglobs.exgg.showStatusMessage("No data available")
@@ -461,7 +467,7 @@ def createByteMapFromDB(value):
 
     start = time.time()
 
-    fprint(header("Show History Binary Data as 0x{:02X} Map".format(value)))
+    fprint(header("Show History Binary Data as Map of 0xAA and 0xFF"))
     fprint("from: {}\n".format(gglobs.hisDBPath))
 
     hist    = DB_readBinblob(gglobs.hisConn)
@@ -472,14 +478,18 @@ def createByteMapFromDB(value):
 
     setBusyCursor()
 
+    ruler     = "Byte No|"
+    for i in range(127, 1024, 128):     ruler += "   {:4d}|".format(i)
+    ruler    += "\n"
+
     lenLine   = 1024
     lenChunk  = 16
     lenHist   = len(hist)
-    if value == 0xFF:   markline  = "Occurence of 0xFF value in History binary data is marked with single 'F' (FF=empty value)\n"
-    else:               markline  = "Occurence of 0xAA value in History binary data is marked with single 'A' (AA=DateTime String)\n"
-    lstlines  = markline
-    lstlines += "1 printed character maps a chunk of 16 bytes of data\n"
-    lstlines += "Byte No|" + "_______|" * 8 + "\n"
+    lstlines  = ""
+    lstlines += "One single printed character maps a chunk of 16 bytes of data\n"
+    lstlines += "'A' marks occurence of value 0xAA in chunk (AA => DateTime String)\n"
+    lstlines += "'F' marks occurence of value 0xFF in chunk (FF => empty value)\n"
+    lstlines += ruler
     counter   = 0
     batch     = 100
     for i in range(0, lenHist, lenLine):
@@ -492,18 +502,17 @@ def createByteMapFromDB(value):
         for j in range(0, lenLine, lenChunk):
             l = i + j
             if l >= lenHist: break
-            if value == 0xFF:
-                if 0xFF in hist[l:l + lenChunk]:  s = "F"
-                else:                             s = "."
-            else:
-                if 0xAA in hist[l:l + lenChunk]:  s = "A"
-                else:                             s = "."
+
+            if   0xAA in hist[l:l + lenChunk]:  s = "A"   # check first for AA, may miss FF
+            elif 0xFF in hist[l:l + lenChunk]:  s = "F"
+            else:                               s = "."
 
             lstline += s
 
         lstlines += lstline + "\n"
         counter  += 1
 
+    lstlines += ruler
     fprint(lstlines)
     vprint("timing 16b per char chunks: {:7.2f}ms".format((time.time() -start)*1000))
 
@@ -579,7 +588,7 @@ def createParseFromDB(lmax=12, full=True):
                 fprint(printstring[:-1])
                 printstring = ""
                 counter     = 0
-                Qt_update()
+                QtUpdate()
                 # print("counter_max: ", counter_max)
                 if counter_max < 5000: counter_max *= 2
 
@@ -624,13 +633,13 @@ def createLstFromDB(*args, lmax=12, full=True):
     histRC      = hist.rstrip(b'\xFF')       # after right-clip FF (removal of all trailing 0xff)
     histRClen   = len(histRC)                # total byte count
     ppagesize   = 1024                          # for the breaks in printing
-    data_origin = "Download Date: {} from device {}".format(* DB_readDevice(gglobs.hisConn))
+    data_origin = "Download Date: {} from device {}".format(* DB_readTableDevice(gglobs.hisConn))
 
     # header
     lstlines    = "#History Download - Binary Data in Human-Readable Form\n"
     lstlines   += "#{}\n".format(data_origin)
-    # lstlines   += "#Format: bytes_index[hex]=bytes_index[dec] : value[hex]=value[dec] |\n"
-    lstlines   += "#Format: | index[hex]=index[dec] : value[hex]=value[dec] |\n"
+    lstlines   += "  address    :value |  address    :value |  address    :value |  address    :value |\n"
+    lstlines   += "  hex=dec    hex=dec|  hex=dec    hex=dec|  hex=dec    hex=dec|  hex=dec    hex=dec|\n"
 
     # This takes the full hist data clipped for FF, independent of the
     # memory setting of the currently selected counter
@@ -672,7 +681,7 @@ def createLstFromDB(*args, lmax=12, full=True):
                 fprint(printstring[:-1])
                 printstring = ""
                 counter     = 0
-                Qt_update()
+                QtUpdate()
                 # print("counter_max: ", counter_max)
                 if counter_max < 8100: counter_max *= 2
             if gglobs.stopPrinting: break
@@ -734,7 +743,7 @@ sqlGetLogUnionAsString =   """
 # NOTE: when the argument to julianday is already julianday, sqlite does not change it!
 # Julianday: julianday(timestring [, modifier1, ...])
 #   timestring:   now:        now is a literal used to return the current date
-#   modifier:     localtime: 	Adjusts date to localtime, assuming the timestring was expressed in UTC
+#   modifier:     localtime:    Adjusts date to localtime, assuming the timestring was expressed in UTC
 sqlInsertData       = """INSERT INTO data       (dindex, Julianday, cpm, cps, cpm1st, cps1st, cpm2nd, cps2nd, cpm3rd, cps3rd, t, p, h, x) VALUES (?,julianday(?,?),?,?,?,?,?,?,?,?,?,?,?,?)"""
 sqlInsertComments   = """INSERT INTO comments   (ctype, cJulianday, cinfo)  VALUES (?, julianday(?, ?), ?)"""
 sqlInsertParse      = """INSERT INTO parse      (pindex, pinfo)             VALUES (?, ?)"""
@@ -851,8 +860,9 @@ def getShowCompactDataSql(varchckd):
         # print("i:{:2d}, vname: {:6s}, oldvname: {}".format(i, vname, oldvname))
         if varchckd[vname]:
             # cdprint("varchecked: i: {}, vname: {}".format(i, vname))
-            # filler [i]    = ", %7.7g"                                             #  1 ... 12 for the format
-            filler [i]    = ", %8s"                                                 #  1 ... 12 for the format
+            # filler [i]    = ", %7.6g"                                             #  1 ... 12 for the format
+            filler [i]    = ", %8.6g"                                             #  1 ... 12 for the format
+            # filler [i]    = ", %8s"                                                 #  1 ... 12 for the format
             filler [i+12] = """, ifnull({}, "nan")""".format(oldvname)              # 13 ... 24 for the values
 
             ruler        += ", {:>8s}".format(vname)
@@ -903,7 +913,7 @@ def getDataFromDatabase(DBtype):    # DBtype: 'Log' or 'His'
     fncname = "getDataFromDatabase: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     start = time.time()
 
@@ -950,7 +960,7 @@ def getDataFromDatabase(DBtype):    # DBtype: 'Log' or 'His'
         edprint(fncname + "get the db rows: Exception executing SQL: ", e, debug=True)
         edprint("SQL command: ", sql, debug=True)
         efprint("ERROR trying to read database: ", e)
-        setDebugIndent(0)
+        setIndent(0)
         # return np.empty([0, 0]), localvarchecked
         return np.empty([0, 0]), localvarSetForRun
 
@@ -996,7 +1006,7 @@ def getDataFromDatabase(DBtype):    # DBtype: 'Log' or 'His'
 # Clean up
     dprint(fncname + "{:8.2f}ms total for {} records with {} values each".format((time.time() - start) * 1000, nrows, ncols))
 
-    setDebugIndent(0)
+    setIndent(0)
 
     return dataArray, localvarSetForRun
 
@@ -1072,7 +1082,7 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
     fncname = "DB_convertCSVtoDB: "
 
     dprint(fncname + "CSV_FilePath: ", CSV_FilePath)
-    setDebugIndent(1)
+    setIndent(1)
 
     hilimit    = 30   # highest number of lines to print
     deltalimit = 30   # lines before hilimit to print
@@ -1082,9 +1092,12 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
 #   compare with geigerlog f'on getCSV()
 #    with open(CSV_FilePath, "r") as cfghandle: # read CSV file as list of str
 #        rlines = cfghandle.readlines()
-    with open(CSV_FilePath, "rb") as cfghandle: # read CSV file as bytes
-        byteline = cfghandle.read()
-        #print("byteline:", byteline)
+    try:
+        with open(CSV_FilePath, "rb") as cfghandle: # read CSV file as bytes
+            byteline = cfghandle.read()
+            #print("byteline:", byteline)
+    except Exception as e:
+        exceptPrint(e, fncname + "reading CSV file")
 
     strlines = ""
     for a in byteline.split(b"\n"):
@@ -1093,13 +1106,6 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
         strlines += rl + "\n"
 
     rlines = strlines.split("\n")
-
-#TESTING limiting count of lines
-    #linex = 8730                # breaks with 8670, i.e. line 8669
-    #rlines = rlines[:linex]
-    #for i in range(linex - 30, linex ):
-    #    print("rlines[{}] : ".format( i), rlines[i], end="")
-################################
 
     # reading lines like:(not shown: all have \n at the end!)   !!!!! not true: LF is gone at this stage
     # rlines[0]: #HEADER, File created from History Download Binary Data
@@ -1241,7 +1247,7 @@ def DB_convertCSVtoDB(DB_Connection, CSV_FilePath):
             pass
 
     DB_commit(DB_Connection)
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def getCSV(CSV_FilePath):

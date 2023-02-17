@@ -164,12 +164,12 @@ class SensorBME280:
         dmsg    = "Sensor {:8s} at address 0x{:02X} with ID 0x{:02x}".format(self.name, self.addr, self.id)
 
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
 
         # check for presence of an I2C device at I2C address
         if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
             # no device found
-            setDebugIndent(0)
+            setIndent(0)
             return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
         else:
             # device found
@@ -185,7 +185,7 @@ class SensorBME280:
             response = (True,  "Initialized " + dmsg)
             gdprint("Sensor {} at address 0x{:02X} has proper ID: 0x{:02X}".format(self.name, self.addr, self.id))
         else:
-            setDebugIndent(0)
+            setIndent(0)
             return (False, "Failure - Did find sensor, but ID: '{}' is not as expected: 0x{:02X}".format(answ, self.id))
 
         # soft reset
@@ -225,11 +225,11 @@ class SensorBME280:
         data      = []
         self.cal3 = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
-        setDebugIndent(0)
+        setIndent(0)
         return response
 
 
-    def SensorGetValues(self):
+    def SensorgetValues(self):
         """ get one measurement of Temp, Press, Humid"""
 
         # trigger measurement with: ctrl_meas
@@ -250,11 +250,11 @@ class SensorBME280:
         # on dongle ISS:  100 kHz BME280:(BME280 as only activated module)  duration:  2.9 ...  7.1 ms (avg: 3.8)
 
         start    = time.time()
-        fncname  = "SensorGetValues: " + self.name + ": "
+        fncname  = "SensorgetValues: " + self.name + ": "
         fail     = False
         response = (gglobs.NAN,) * 3
-        dprint(fncname)
-        setDebugIndent(1)
+        cdprint(fncname)
+        setIndent(1)
 
         # trigger measurement
         try:
@@ -269,7 +269,7 @@ class SensorBME280:
 
         if fail or len(answ) != readbytes:
             rdprint(fncname + tmsg + " failed, giving up")
-            setDebugIndent(0)
+            setIndent(0)
             return response
 
         # get raw data
@@ -286,7 +286,7 @@ class SensorBME280:
         # answ == [128, 0, 0, 128, 0, 0, 128, 0]: does happen in first 1 or even first 2 calls
         if fail or len(answ) != readbytes or answ == [128, 0, 0, 128, 0, 0, 128, 0]:
             rdprint(fncname + tmsg + " failed, giving up")
-            setDebugIndent(0)
+            setIndent(0)
             return response
 
         # convert raw data
@@ -298,7 +298,7 @@ class SensorBME280:
 
         duration = (time.time() - start) * 1000
         gdprint(fncname + "Values:  T:{:<6.3f}, P:{:<6.3f}, H:{:<6.3f} duration:{:<0.1f} ms".format(*response, duration))
-        setDebugIndent(0)
+        setIndent(0)
 
         return response
 

@@ -81,22 +81,22 @@ class SensorLM75:
         dmsg    = "Sensor {:8s} at address 0x{:02X} set for subtype {}".format(self.name, self.addr, self.subtype)
 
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
 
         # check for presence of an I2C device at I2C address
         if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
             # no device found
-            setDebugIndent(0)
+            setIndent(0)
             return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
         else:
             # device found
             gdprint("Found an I2C device at address 0x{:02X}".format(self.addr))
 
-        setDebugIndent(0)
+        setIndent(0)
         return (True,  "Initialized " + dmsg)
 
 
-    def SensorGetValues(self):
+    def SensorgetValues(self):
         """ Write to reg 00 and read the Temp """
 
         # The device can be set to operate in either mode: normal or shutdown. In normal operation
@@ -112,15 +112,15 @@ class SensorLM75:
         # answ      = gglobs.I2CDongle.ELVreadBytes(readbytes)      # reading
 
         # measurement duration:
-        #   mit dongle ISS:   SensorGetValues: Temp:25.125,  duration:  1.1 ...  2.1 ms   (avg: 1.4)  1.0x
-        #   mit dongle ELV:   SensorGetValues: Temp:25.125,  duration:  8.4 ...  9.0 ms   (avg: 8.7)  6.2x
-        #   mit dongle IOW:   SensorGetValues: Temp:23.750,  duration:  9.1 ... 17.7 ms   (avg:13.6)  9.7x
-        #   mit dongle FTD:   SensorGetValues: Temp:23.750,  duration: 31.7 ... 49.4 ms   (avg:33.1) 23.6x
+        #   mit dongle ISS:   SensorgetValues: Temp:25.125,  duration:  1.1 ...  2.1 ms   (avg: 1.4)  1.0x
+        #   mit dongle ELV:   SensorgetValues: Temp:25.125,  duration:  8.4 ...  9.0 ms   (avg: 8.7)  6.2x
+        #   mit dongle IOW:   SensorgetValues: Temp:23.750,  duration:  9.1 ... 17.7 ms   (avg:13.6)  9.7x
+        #   mit dongle FTD:   SensorgetValues: Temp:23.750,  duration: 31.7 ... 49.4 ms   (avg:33.1) 23.6x
 
         start = time.time()
-        fncname = "SensorGetValues: " + self.name + ": "
-        dprint(fncname)
-        setDebugIndent(1)
+        fncname = "SensorgetValues: " + self.name + ": "
+        cdprint(fncname)
+        setIndent(1)
 
         tmsg      = "getData"
         register  = 0x00
@@ -139,8 +139,8 @@ class SensorLM75:
             msg = BOLDRED + "Improper data returned: answ= '{}'".format(answ)
 
         duration = (time.time() - start) * 1000
-        gdprint(fncname + "Temp:{:<6.3f},  duration:{:<0.2f} ms  ".format(Temp, duration), msg)
-        setDebugIndent(0)
+        cdprint(fncname + "Temp:{:<6.3f},  duration:{:<0.2f} ms  ".format(Temp, duration), msg)
+        setIndent(0)
         return (Temp,)
 
 

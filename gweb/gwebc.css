@@ -1,7 +1,8 @@
 /* GeigerLog css file */
 
 html           {font-family:Helvetica; display:inline-block; margin:0px auto; text-align:center; font-size:20px;}
-body           {margin:5px;}
+*              {box-sizing:border-box;}
+body           {margin:0px;}
 h1, h2, h3     {color:#444444; font-weight:bold;}
 h1             {margin:10px auto  0px; font-size:30px; margin-bottom:5px;}
 h2             {margin:10px auto  0px; font-size:24px;}
@@ -10,7 +11,7 @@ h2.info        {font-weight:normal; max-width:640px; font-size:28px; text-align:
 h2.status      {font-weight:normal; font-size:28px;}
 b              {font-weight:900;}
 
-div            {max-width:640px; margin:auto;}
+div            {max-width:640px; margin:auto; border-collapse:collapse; border: none;}
 div.list       {font-family:monospace; text-align:left; margin-bottom:20px; color:black;}
 div.menu       {max-width:640px;}
 
@@ -25,6 +26,9 @@ button         {background-color:#88ccff; color:black; font-size:14px; height:36
 button:active  {background-color:#ccEEFF;}
 button:disabled  {background-color:#bbb;}
 
+/* #cpm, #cps, #usv, #temp, #press, #humid, #xtra, #varvalue {font-size:26px; font-weight:bold; background-color: lightblue;}  geht nich??? */
+/* #cpm, #cps, #usv, #temp, #press, #humid, #xtra, #varvalue {font-size:26px; font-weight:bold;} */
+
 
 .chunkinput {width:40px; height:34px; background:#f0f0f0; border:1px solid grey; border-radius:4px; color:black; text-align:center; padding:0px; font-size:14px; margin:0px;}
 .reload     {font-weight:900;}
@@ -38,5 +42,4 @@ button:disabled  {background-color:#bbb;}
 .narrow     {max-width:360px;}
 .left       {text-align:left;}
 .bold       {font-weight:bold;}
-
 

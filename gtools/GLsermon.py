@@ -441,8 +441,6 @@ def main():
                         else:
                             break
                         time.sleep(0.5)
-                        # raise Exception("testing input output error")
-                        # raise OSError("testing input output error")
 
                 except OSError as e:
                     print(fncname + "OSError: ERRNO:{} ERRtext:'{}'".format(e.errno, e.strerror))
@@ -504,7 +502,6 @@ def main():
                             f.write(msg)
 
             time.sleep(0.01) # to reduce CPU load
-            # raise Exception("Testing")
 
     except Exception as e:
         msg = "Main loop"

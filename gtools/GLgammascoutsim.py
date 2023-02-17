@@ -2,12 +2,12 @@
 # -*- coding: UTF-8 -*-
 
 """
-GLgammascoutsim.py - GeigerLog's Gamma-Scout simulator
+GLgammascoutsim.py - GeigerLog's Gamma-Scout Simulator
 
 use with GeigerLog to simulate responses of a Gamma-Scout device. See more in
 the header of file gdev_gscout.py located in the GeigerLog folder.
 
-MUST start as SUDO (!):  sudo ./GLgscoutsim.py
+MUST start as SUDO (!):  sudo ./GLgammascoutsim.py
 
 The communication between GL and the Pseudo device is logged into file
 GLgscoutsim.log
@@ -50,7 +50,7 @@ sudo chmod 777 /dev/ttyS90
 """
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 

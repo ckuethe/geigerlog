@@ -29,26 +29,42 @@ __author__          = "ullix"
 __copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
-__version__         = "1.3.0"             # version of next GeigerLog
-#__version__         = "1.3.0pre35"        #
+__version__         = "1.4"               # version of next GeigerLog
+__version__         = "1.4.0pre21"
 
 
 # constants
 NAN                 = float('nan')        # 'not-a-number'; used as 'missing value'
+GiB                 = 2**30               # 1 Gibi Byte = 1 073 741 824 Byte
                                           # A Julian Day is the number of days since
                                           # Nov 24, 4714 BC 12:00pm Greenwich time in the Gregorian calendar
-JULIANUNIX          = 2440587.5416666665  # julianday('1970-01-01 00:00:00') (UNIX time start)
-JULIAN111           = 1721425.5 - 1       # julianday('0001-01-01 00:00:00') (matplotlib time start)
+JULIANUNIX          = 2440587.5416666665  # julianday('1970-01-01 01:00:00') (UNIX time start) in UTC!
+                    # 2440587.5833333335  # in localtime (@DE 7.4.2022) why only 1 h difference when there should be 2h?
+JULIAN111           = 1721425.5 - 1       # julianday('0001-01-01 00:00:00') (matplotlib time start) in UTC
                                           # Why this minus 1? strange but needed
+                    # 2440587.5833333335  # in localtime (@DE 7.4.2022)
+GooColors           = ( '#ea4335',        # Google color red      (234, 67, 53)
+                        '#fbbc05',        # Google color yellow   (251, 188, 5)
+                        '#34a853',        # Google color green    (52, 168, 83)
+                        '#4285f4',        # Google color blue     (66, 133, 244)
+                      )
 
 # counters
 xprintcounter       = 0                   # the count of dprint, vprint, and wprint commands
+LogReadings         = 0                   # number of readings since last logging start; prints as index in log
+LogReadingsFail     = 0                   # number of FAILED readings since last logging start
 
 # messages
 python_version      = ""                  # msg wrong Python version
-startupProblems     = ""                  # msg configuration file missing or incorrect
+startupProblems     = ""                  # msg configuration file missing or incorrect, Python problems, ...
 configAlerts        = ""                  # msg ALERTs when reading config
 notePadSearchText   = ""                  # last entered search text
+ThreadMsg           = ""                  # cannot fprint() from threads; must do it from loop
+SnapRecord          = ""                  # record to be used in snapLogValue(self)
+LogHeaderText       = ""                  # The header for the LogPad: Time     M     S     M1    S1 ...
+
+# data storage
+picbytes            = None                # holder for the graph
 
 # pointers
 app                 = None                # points to app
@@ -66,7 +82,7 @@ monitorfig          = None                # points to the fig of Monitor
 monitorax           = None                # points to the ax of Monitor
 myarr               = None                # arrow of Monitor
 monitorFigNo        = None
-
+LogThread           = None                # Thread handle logging
 
 # sql database
 currentConn         = None                # connection to CURRENT database
@@ -75,51 +91,67 @@ hisConn             = None                # connection to HISTORY database
 
 # flags
 debug               = False               # helpful for debugging, use via command line
-debugIndent         = ""                  # to indent printing
+debugIndent         = ""                  # to indent printing by insering blanks
 verbose             = False               # more detailed printing, use via command line
 werbose             = False               # more verbose than verbose
 devel               = False               # set some conditions for development CAREFUL !!!
-devel1              = False               # =devel  + ADDITIONAL condition: load default db: default.logdb
-devel2              = False               # =devel1 + ADDITIONAL condition: make connections
-devel3              = False               # =devel2 + ADDITIONAL condition: quicklog
+traceback           = False               # to allow printout of Traceback under devel=True
+
+autoLogFile         = "default.logdb"     # name of LogFile to be used
+autoDevConnect      = False               # auto connect all activated devices
+autoLogStart        = False               # auto start with current LogFile
+autoLogLoad         = False               # auto load named LogFile
+autoQuickStart      = False               # auto Quick Start
+
 forcelw             = False               # True: line breaks on lines longer than screen
-redirect            = False               # on True redirects output from stdout and stderr to file stdlogPath
 stopPrinting        = False               # to stop long prints of data
-runLogCycleIsBusy   = False               # flag is set when function runLoggingCycle() is busy
 LogClickSound       = False               # when true make a click sound on call to runLoggingCycle
 startflag           = False               # for start by Web
 stopflag            = False               # for stop by Web
+quickflag           = False               # for quick starting from the web
 plotIsBusy          = False               # makePlot is ongoing
 saveplotIsBusy      = False               # makePlot is ongoing
-flagGetGraph        = False               # signals to get the graph as bytes
-picbytes            = None                # holder for the graph
-forceSaving         = False               # save all data that are available even if saving were otherwise delayed
+getGraphAsPic       = False               # signals to get the graph as png pic in bytes
+needGraphUpdate     = False               # does the graph need update with new log data
+needGarbageColl     = False               # do a garbage collection
+logMemDataDeque     = None                # becomes deque - the datalist to be saved to memory
+logLogPadDeque      = None                # becomes deque - the text to be shown on LogPad after a Log roll
+needDisplayUpdate   = False               # Flag to signal need to show display vars
+logCycleButtonFlag  = ""                  # switches cycle button during a log call On and off, ""= do nothing
+LogThreadStopFlag   = False               # flag to signal stop for logging
+LogThreadStartTime  = None                # time stampe of logging thread started
+LogFileAppendBlocked = False              # if true, then block writing to log file
 
 #special flags
 testing             = False               # if true then some testing constructs will be activated CAREFUL !!!
-graphdemo           = False               # if true then handling of line properties of selected var will be modified for demo
-stattest            = False               # when True then display statistics on Normal in Poisson test
+stattest            = False               # if true then also display statistics on Normal in Poisson test
+graphemph           = False               # if true then line properties will be modified for demo emphasis
+timing              = False               # if true then allows info on timing to be written to Manu vars
+
 test1               = False               # to run a specific test
 test2               = False               # to run a specific test
 test3               = False               # to run a specific test
 test4               = False               # to run a specific test
 
-# dir & file
+# dir & file paths
 dataDirectory       = "data"              # the data subdirectory to the program directory
-gresDirectory       = "gres"              # where the icons and sounds reside
+gresDirectory       = "gres"              # location of the icons and sounds
+webDirectory        = "gweb"              # location of html and js files
+toolsDirectory      = "gtools"            # location of tools
 progName            = None                # program name geigerlog (or geigerlog.py)
 progPath            = None                # path to program geigerlog file
-dataPath            = None                # path to data dir
+dataPath            = None                # path to data dir  (created in GL main)
 gresPath            = None                # path to icons and sounds dir
+webPath             = None                # path to web fles html, js
 proglogPath         = None                # path to program log file geigerlog.proglog
 stdlogPath          = None                # path to program log file geigerlog.stdlog
 configPath          = None                # path to configuration file geigerlog.cfg
 
-logFilePath         = None                # file path of the log file
-hisFilePath         = None                # file path of the his file
+logFilePath         = None                # file path of the log CSV file
+hisFilePath         = None                # file path of the his CSV file
 logDBPath           = None                # file path of the log database file
 hisDBPath           = None                # file path of the his database file
-currentDBPath       = None                # file path of the current DB file for log or his
+currentDBPath       = None                # file path of the current DB file for either log or his
 
 binFilePath         = None                # file path of the bin file (GMC device)
 datFilePath         = None                # file path of the bin file (Gamma Scout device)
@@ -127,13 +159,26 @@ AMFilePath          = None                # file path of the bin file (AmbioMon 
 
 activeDataSource    = None                # can be 'Log' or 'His'
 
+# Data arrays and values
+logTime             = None                # array: Time data from total file
+logTimeDiff         = None                # array: Time data as time diff to first record in days
+logTimeFirst        = None                # value: Time of first record of total file
+
+logTimeSlice        = None                # array: selected slice out of logTime
+logTimeDiffSlice    = None                # array: selected slice out of logTimeDiff
+logSliceMod         = None
+
+logDBData           = None                # 2dim numpy array with the log data
+hisDBData           = None                # 2dim numpy array with the his data
+currentDBData       = None                # 2dim numpy array with the currently plotted data
+
 fileDialogDir       = None                # the default for the FileDialog starts
 
 HistoryDataList     = []                  # where the DB data are stored by makeHist
 HistoryParseList    = []                  # where the parse comments are stored by makeHist
 HistoryCommentList  = []                  # where the DB comments are stored by makeHist
 
-manual_filename     = "auto"              # name of the included manual file, like "GeigerLog-Manual-v0.9.93pre17.pdf"
+manual_filename     = "auto"              # name of the included GeigerLog Manual, like "GeigerLog-Manual-v0.9.93pre17.pdf"
                                           # on 'auto' GL searches for a file beginning with 'GeigerLog-Manual'
 
 # GUI options
@@ -147,6 +192,57 @@ hipix               = False               # if true the AA_UseHighDpiPixmaps wil
 hidpiActivation     = True                # The PyQt5 commands hidpi and hipix will be applied
 hidpiScaleMPL       = 100                 # 100 is the default dpi for matplotlib
 
+
+# Logging settings
+logging             = False                # flag for logging
+logCycle            = 1                    # time in seconds between calls in logging
+runLogCycleDurs     = [0, 0, 0]            # the durations within runlogcycle, [fetchDur, saveDur, totalDur]
+
+
+# History Options
+keepFF              = False                # Flag in startup-options
+                                           # Keeps all hexadecimal FF (Decimal 255) values as a
+                                           # real value and not an 'Empty' one. See manual in chapter
+                                           # on parsing strategy
+fullhist            = False                # On False break history recording when 8k FF is read
+                                           # On True always read the whole history from memory
+
+# Graphic Options
+allowGraphUpdate    = True                 # to block updates on reading data
+
+Xleft               = None                 # time min if entered
+Xright              = None                 # time max if entered
+Xunit               = "Time"               # time unit; can be Time, auto, second, minute, hour, day
+XunitCurrent        = Xunit                # current time unit
+
+Ymin                = None                 # CPM min if entered
+Ymax                = None                 # CPM max if entered
+Yunit               = "CPM"                # CPM unit; can be CPM, CPS, µSv/h
+YunitCurrent        = Yunit                # current count unit
+
+Y2min               = None                 # Ambio min if entered
+Y2max               = None                 # Ambio max if entered
+Y2unit              = "Amb"                # Ambio unit °C or °F
+Y2unitCurrent       = Yunit                # current Ambio unit
+
+avgChecked          = False                # Plot the lines Average, +/- 95% confidence, and Legend with average +/- StdDev value
+mavChecked          = False                # Plot the Moving Average line, and Legend with MovAvg length ins seconds and data points
+fitChecked          = False                # Plot a fit to the data of the selected variable
+mav_initial         = 600                  # length of Moving Average period in seconds
+mav                 = mav_initial          # currently selected mav period
+
+# Plotstyle                                # placeholder; don't change here - is set in config
+linestyle           = 'solid'              # overwritten by varsCopy
+linecolor           = 'blue'               # overwritten by varsCopy
+linewidth           = '1.0'                # configurable in geigerlog.cfg
+markersymbol        = 'o'                  # configurable in geigerlog.cfg
+markersize          = '15'                 # configurable in geigerlog.cfg
+
+#Graph Y-Limits                            # to calculate cursor position for left, right Y-axis
+y1_limits           = (0, 1)               # (bottom, top) of y left
+y2_limits           = (0, 1)               # (bottom, top) of y right
+
+
 # Network
 # from IEEE specification:
 #   "The length of an SSID should be a maximum of 32 characters (32 octets, normally ASCII
@@ -158,43 +254,50 @@ hidpiScaleMPL       = 100                 # 100 is the default dpi for matplotli
 #   WiFiPassword: max: 63 octets:  pp3456789:pp3456789:pp3456789:pp3456789:pp3456789:pp3456789:pp3
 WiFiSSID            = None                # WiFi SSID
 WiFiPassword        = None                # WiFi Password
+GeigerLogIP         = None                # IP of computer running GeigerLog
 
 #
 # WEB
 #
 # Monitor WebServer
-MonServer           = None                # holds instance of http-server
-MonServerAutostart  = True                # MonServer will be autostarted
-MonServerActive     = False               # MonServer is activated
-MonServerIP         = None                # MonServer IP default
-MonServerPort       = None                # Port number on which MonServer listens
-MonServerWebPage    = None                # the last web page displayed
-MonServerRefresh    = [1, 10, 3]          # the refresh timings for the web pages Monitor, Data, Graph in sec
+MonServer               = None                # holds instance of (SSL-)http-server
+MonServerAutostart      = True                # on True MonServer will be autostarted
+MonServerIsActive       = False               # MonServer must first be activated
+MonServerPorts          = "auto"              # list of Port numbers from which MonServer selects port to listen; auto defaults to one of 8080, ..., 8089
+MonServerPort           = None                # the port number MonServer listens to
+MonServerWebPage        = None                # the last web page displayed; for GL to return to
+MonServerRefresh        = [1, 10, 3]          # the refresh timings for the web pages Monitor, Data, Graph in sec
+MonServerThresholds     = (0.9, 6.0)          # Dose Rate Thresholds in µSv/h -- green-to-yellow and yellow-to-red
+                                              # For reasons to chose these levels see GeigerLog manual, chapter:
+                                              # "On what grounds do we set the radiation safety levels?"
+MonServerColors         = ( GooColors[2],     # Gauge color green   - ok
+                            GooColors[1],     # Gauge color yellow  - warning
+                            GooColors[0],     # Gauge color red     - danger
+                          )
+MonServerThread         = None                # Monitor Threads
+MonServerMsg            = ""                  # any message created within Do_get()
+MonServerUTCcorr        = "auto"              # the correction to apply to compensate for UTC (Germany, summertime: -2*3600 sec)
+MonServerSSL            = False               # using SSL (https://) or not (http://)
+MonServerPlotLength     = 10                  # last X min of records to show in line plots
+MonServerPlotTop        = 0                   # the variable number of the top plot     (0=CPM, ..., 11=Xtra)
+MonServerPlotBottom     = 1                   # the variable number of the bottom plot  (0=CPM, ..., 11=Xtra)
+MonServerPlotConfig     = "auto"              # combines Plot- Length, Top, Bottom
+MonServerDataConfig     = "auto"              # combines Data table averageing periods in minutes
 
-
-# DOSE RATE
-# For reasons to chose these levels see GeigerLog manual, chapter:
-# "On what grounds do we set the radiation safety levels?"
-#
-DoseRateThreshold   = (0.9, 6.0)          # µSv/h Threshold green-to-yellow and yellow-to-red
-DoseRateColors      = ( '#00C853',        # Google color green
-                        '#ffe500',        # Google color yellow
-                        '#EA4335',        # Google color red
-                      )
-
-
-MWSThread           = None
-MWSThreadTarget     = None
-MWSThreadStop       = None
 
 # Radiation World Map
-RWMmapActivation    = False               # Radiation World Map Activation
-RWMmapUpdateCycle   = 60                  # Radiation World Map Update Cycle in minutes
-RWMmapVarSelected   = "CPM"               # name of the variable used to update Radiation world Map
-RWMmapLastUpdate    = None                # time of the last update of Radiation World Map
+RWMmapActivation        = False               # Radiation World Map Activation
+RWMmapUpdateCycle       = 60                  # Radiation World Map Update Cycle in minutes
+RWMmapVarSelected       = "CPM"               # name of the variable used to update Radiation world Map
+RWMmapLastUpdate        = None                # time of the last update of Radiation World Map
 
-gmcmapUserID        = None                # User Id for GMC's gmcmap
-gmcmapCounterID     = None                # Counter Id for GMC's gmcmap
+gmcmapUserID            = None                # User Id for GMC's gmcmap
+gmcmapCounterID         = None                # Counter Id for GMC's gmcmap
+gmcmapWebsite           = "www.gmcmap.com"
+gmcmapURL               = "log2.asp"
+gmcmapUserID            = "anyUserId"
+gmcmapCounterID         = "anyCounterID"
+gmcmapPeriod            = 2
 
 # # Telegram
 # TelegramToken       = None                # Telegram Token
@@ -204,15 +307,10 @@ gmcmapCounterID     = None                # Counter Id for GMC's gmcmap
 # TelegramBot         = None                # pointer to instance of Telegram Bot
 # TelegramChatID      = None                # Telegram Bot Chat ID
 
-
-## Serial ports
+#
+# Python's pyserial enums
+#
     # import serial :
-    # pyserial Parity parameters
-    #   serial.PARITY_NONE    = N
-    #   serial.PARITY_EVEN    = E
-    #   serial.PARITY_ODD     = O
-    #   serial.PARITY_MARK    = M
-    #   serial.PARITY_SPACE   = S
     #
     # finding pyserial supported parameters:
     # myser = serial.Serial()
@@ -222,18 +320,26 @@ gmcmapCounterID     = None                # Counter Id for GMC's gmcmap
     #                   19200, 38400, 57600, 115200, 230400, 460800, 500000, 576000, 921600,
     #                   1000000, 1152000, 1500000, 2000000, 2500000, 3000000, 3500000, 4000000
     # myser.BYTESIZES : 5, 6, 7, 8
-    # myser.PARITIES  : 'N', 'E', 'O', 'M', 'S'
     # myser.STOPBITS  : 1, 1.5, 2
+    # myser.PARITIES  : 'N', 'E', 'O', 'M', 'S'
+    #                     serial.PARITY_NONE    = N
+    #                     serial.PARITY_EVEN    = E
+    #                     serial.PARITY_ODD     = O
+    #                     serial.PARITY_MARK    = M
+    #                     serial.PARITY_SPACE   = S
 
+#
+# USB-To-Serial chips:
+#
 # EmfDev: "GMC wird immer CH340 chip benutzen"
     # from: http://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=9784
     # EmfDev:
-    #   Yes we are using the CH340 chip so far with all GMC-300+ and 500+ devices. And just check with our
-    #   latest one also has the VID:PID=0x1a86:0x7523
+    #   Yes we are using the CH340 chip so far with all GMC-300+ and 500+ devices.
+    #   And just check with our latest one also has the VID:PID=0x1a86:0x7523
     # gmc300E+ (von Jan 21)   device:       /dev/ttyUSB0    description:  USB Serial    vid:  0x1a86     pid:  0x7523
-    # gmc300E+ (von ???   )   device:       /dev/ttyUSB0    description:  USB2.0-Serial vid:  0x1A86     pid:  0x7523
+    # gmc300E+ (von ???   )   device:       /dev/ttyUSB0    description:  USB2.0-Serial vid:  0x1a86     pid:  0x7523
     # gmc500+  (2018?)        device:       /dev/ttyUSB0    description:  USB2.0-Serial vid:  0x1a86     pid:  0x7523
-    # all 3 devices: chip = CH340C
+    # --> all 3 devices: chip = CH340C
     # manufacturer: http://wch-ic.com/   http://wch-ic.com/products/CH340.html
     # Nanjing Qinheng Microelectronics Co., Ltd.
     # Main brand： WinChipHead (WCH)
@@ -247,35 +353,36 @@ GSbaudrates         = [2400, 9600, 460800]
 
 # Serial port for GMC devices
 GMCser              = None                # GMC serial port pointer
-GMC_baudrate        = 115200              # will be overwritten by a setting in geigerlog.cfg file
-GMC_usbport         = '/dev/ttyUSB0'      # will be overwritten by a setting in geigerlog.cfg file
-GMC_timeout         = "auto"              # will be overwritten by a setting in geigerlog.cfg file
-GMC_timeout_write   = "auto"              # will be overwritten by a setting in geigerlog.cfg file
-GMC_ttyS            = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
+GMC_usbport         = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+GMC_baudrate        = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+GMC_timeoutR        = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+GMC_timeoutW        = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+GMC_ID              = (None, None)        # Model, SerialNumber of device
 
 # Serial port for I2C devices
-I2Cser              = None                # not used! is used Domgle-specific
-I2Cbaudrate         = 115200              # is used as fixed value
-I2Cusbport          = '/dev/ttyUSB1'      # will be overwritten in code
-I2Ctimeout          = 3                   # will be overwritten by a setting in geigerlog.cfg file
-I2Ctimeout_write    = 1                   # will be overwritten by a setting in geigerlog.cfg file
-I2CttyS             = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
+# I2Cser            = None                # not used! is used Domgle-specific
+I2Cusbport          = "auto"              # will be overwritten in code
+I2Cbaudrate         = "auto"              # is used as fixed value
+I2CtimeoutR         = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+I2CtimeoutW         = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+I2C_ID              = (None, None)        # not in use!!!   (Model, SerialNumber) of device
 
 # Serial port for Gamma-Scout devices
 # NOTE: some responses of Gamma-Scout take almost 1 sec, timeout setting must be well above 1 sec limit!
 GSser               = None                # Gamma-Scount serial port pointer
-GSbaudrate          = 9600                # will be overwritten by a setting in geigerlog.cfg file
-GSusbport           = '/dev/ttyUSB2'      # will be overwritten by a setting in geigerlog.cfg file
-GStimeout           = 3                   # will be overwritten by a setting in geigerlog.cfg file
-GStimeout_write     = 3                   # will be overwritten by a setting in geigerlog.cfg file
-GSttyS              = "ignore"            # to 'ignore' or 'include' '/dev/ttySN', N=1,2,3,... ports on USB Autodiscovery
-GSstopbits          = 1                   # generic in pyserial;     will not change in code
-GSbytesize          = 7                   # specific to Gamma-Scout; will not change in code
-GSparity            = "E"                 # specific to Gamma-Scout; will not change in code
+GSusbport           = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+GSbaudrate          = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+GStimeoutR          = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+GStimeoutW          = "auto"              # will be overwritten by a setting in geigerlog.cfg file
+GS_ID               = (None, None)        # Model, SerialNumber of device
 
+GSstopbits          = "auto"              # 1:   generic in pyserial;     will not change in code
+GSbytesize          = "auto"              # 7:   specific to Gamma-Scout; will not change in code
+GSparity            = "auto"              # E:   specific to Gamma-Scout; will not change in code
 
+##
 ## SENSITIVITY
-
+##
 ###############################################################################
 ## Beginning with version GeigerLog 1.0 the 'Calibration' is replaced with
 ## 'Sensitivity', which is defined as the inverse of the previous definitions,
@@ -302,50 +409,56 @@ GSparity            = "E"                 # specific to Gamma-Scout; will not ch
 # sensitive than the M4011!”
 #
 # Others report even poorer values for the SI3BG:
-# https://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=5554, Reply #17
+# https://www.gqel
+# ectronicsllc.com/forum/topic.asp?TOPIC_ID=5554, Reply #17
 # "The new correction factor for the primarily gamma tube is .881CPM/uSv/h or 1.135."
 # This means sensitivity of that (2nd) tube = 1.135 µSv/h/CPM
 
 
 # Default Sensitivity
-# Up to 4 tubes can be configured. They are defined here and may be redefined in config.
-# They may be used in any device, but in the GMC counters their meaning is fixed:
-# Tube #0 : used with CPM, CPS
-# Tube #1 : used with CPM1st, CPS1st
-# Tube #2 : used with CPM2nd, CPS2nd
-# Tube #3 : used with CPM3rd, CPS3rd
+# A total of 4 tubes are configured. They are strictly associated with the variables. So when
+# a variable XYZ is configured for any device, then the sensitivity for variable XYZ will be used.
+# In GMC counters their meaning is special.
 #
-# Special associations in a GMC counter:
-# Tube #0       Default tube in all GMC counters;
-#               in a GMC-500+ counter this gives the sum of 1st and 2nd tube (meaningless value).
-# Tube #1       in all GMC counters exactly the same as tube #0 except in a GMC-500+;
-#               in a GMC-500+ counter this is the 1st or high sensitivity tube.
-# Tube #2       in all GMC counters exactly the same as tube #1 except in a GMC-500+;
-#               in a GMC-500+ counter this is the 2nd or low-sensitivity tube.
-# Tube #3       not used in GMC counters.
-
-
-# Sensitivity of the tubes
-DefaultSens         = [None] * 4
-Sensitivity         = [None] * 4
+# Tube No   used for variables    Special associations in a GMC counter
+# --------------------------------------------------------------------------------------------
+# Tube #0   CPM, CPS              Default tube in all GMC counters;
+#                                 In a GMC-500+ counter the counts are the sum of 1st and
+#                                 2nd tube, which is a meaningless value.
+#
+# Tube #1   CPM1st, CPS1st        In all GMC counters exactly the same as tube #0, except: in a
+#                                 GMC-500+ counter this is the 1st or high-sensitivity tube.
+#
+# Tube #2   CPM2nd, CPS2nd        In all GMC counters exactly the same as tube #0, except: in a
+#                                 GMC-500+ counter this is the 2nd or low-sensitivity tube.
+#
+# Tube #3   CPM3rd, CPS3rd        not used in GMC counters.
+#
+DefaultSens         = [None] * 4          # the start-up defaults
+Sensitivity         = [None] * 4          # can be changed during a run
 
 DefaultSens[0]      = 154                 # CPM/(µSv/h)   (= 0.0065 in units of µSv/h/CPM)
 DefaultSens[1]      = 154                 # CPM/(µSv/h)   (= 0.0065 in units of µSv/h/CPM)
 DefaultSens[2]      = 2.08                # CPM/(µSv/h)   (= 0.48   in units of µSv/h/CPM)
 DefaultSens[3]      = 154                 # CPM/(µSv/h)   (= 0.0065 in units of µSv/h/CPM)
 
-# set Sensitivity[Tube No]
-for i in range(4):
-    Sensitivity[i]  = DefaultSens[i]
+# set Sensitivity[Tube No] to the default values
+for i in range(4):  Sensitivity[i]  = DefaultSens[i]
 
 
-# GMC
+##########################################################################################
+# DEVICES CONFIGURATION DETAILS
+##########################################################################################
+
+#
+# GMC_DEVICE
+#
 # details will be set after reading the version of the counter from the device
 GMCDeviceName       = None                # to be detected in init; generic name like: "GMC Device"
-GMCDeviceDetected   = "None"              # will be replaced after connection with full specific
+GMCDeviceDetected   = "Undefined"         # will be replaced after connection with full specific
                                           # name as detected, like 'GMC-300Re 4.20',
-                                          # had been 14 chars fixed, can now be longer
-GMC_variables       = "auto"              # which variables are natively supported
+                                          # had been 14 chars fixed, can now be any length
+GMC_Variables       = "auto"              # which variables are supported
 GMCLast60CPS        = None                # storing last 60 sec of CPS values
 GMCEstFET           = None                # storing last 60 sec of CPS values for estimating the FET effect
 
@@ -354,21 +467,24 @@ GMC_memory          = "auto"              # Can be configured for 64kB or 1 MB i
 GMC_SPIRpage        = "auto"              # size of page to read the history from device
 GMC_SPIRbugfix      = "auto"              # if True then reading SPIR gives one byte more than requested  (True for GMC-300 series)
 GMC_locationBug     = "auto"              # --> ["GMC-500+Re 1.18","GMC-500+Re 1.21"], see the FIRMWARE BUGS topic in the configuration file
-GMC_FastEstTime     = "auto"              # if != 60 then false data will result
 GMC_endianness      = "auto"              # big- vs- little-endian for calibration value storage
 GMC_configsize      = "auto"              # 256 bytes in 300series, 512 bytes in 500/600 series
 GMC_voltagebytes    = "auto"              # 1 byte in the 300 series, 5 bytes in the 500/600 series
-GMC_nbytes          = "auto"              # the number of bytes ( 2 or 4) from the CPM and CPS calls, as well as the calls to 1st and 2nd tube
+GMC_Bytes           = "auto"              # the number of bytes ( 2 or 4) from the CPM and CPS calls, as well as the calls to 1st and 2nd tube
 GMC_cfg             = None                # Configuration bytes of the counter. 256 bytes in 300series, 512 bytes in 500, 600 series
 GMC_WifiIndex       = 0                   # the index column in cfgKeyHigh applicable for the current device
 GMC_WifiEnabled     = False               # does the counter have WiFi or not
 GMC_WiFiIsON        = False               # is WiFi switched ON at the counter (if the counter is wifi enabled)
 GMC_DualTube        = "auto"              # all are single tube, except 500, 500+, which ares double tube
+GMC_FETenabled      = "auto"              # only 500 and 600 series seems enabled
+GMC_FastEstTime     = "auto"              # if != 60 then false data will result
 GMC_savedatatype    = "Unknown - will become known once the device is connected"
-GMC_savedataindex   = 1
+GMC_savedataindex   = 1                   # index to save every second, ... minute, etc (1 == every second)
+GMC_maxdur          = 0                   # longest duration of a single CP* call
 
-
+#
 # AudioCounter
+#
 AudioDevice         = None                # audiocard; to be set in init to (None, None) (could be USB, 9 and other)
 AudioLatency        = "auto"              # to be set in init to (1.0, 1.0) sec latency
 AudioPulseMax       = None                # +/- 32768 as maximum pulse height for 16bit signal
@@ -384,19 +500,18 @@ AudioLastCpm        = 0                   # audio clicks CPM
 AudioLastCps        = 0                   # audio clicks CPS
 AudioLast60CPS      = None                # np array storing last 60 sec of CPS values
 AudioThreadStop     = False               # True to stop the audio thread
-AudioSensitivity    = "auto"              # sensitivity of the used tube
 AudioMultiPulses    = None                # stores the concatenated audio data for plotting
 AudioRecording      = None                # stores the Recording
 AudioPlotData       = None                # stores the data to be plotted
 AudioOei            = None                # the eia storage label
 AudioVariables      = "auto"              #
 
-
+#
 # RadMon
+#
 RMServerIP          = "auto"              # MQTT server IP, to which RadMon sends the data
 RMServerPort        = "auto"              # Port of the MQTT server, defaults to 1883
 RMServerFolder      = "auto"              # The MQTT folder as defined in the RadMon+ device
-RMSensitivity       = "auto"              # sensitivity of the used tube
 RMVariables         = "auto"              # a list of the variables to log, like: CPM3rd, Temp, Press, Humid,
 RMTimeout           = 5                   # waiting for "successful connection" confirmation
 RMCycleTime         = 1                   # cycle time of the RadMon device
@@ -410,10 +525,10 @@ rm_press            = None                # temporary storage for Pressure
 rm_hum              = None                # temporary storage for Humidity
 rm_rssi             = None                # temporary storage for RSSI
 
-
+#
 # AmbioMon
+#
 AmbioServerIP       = "auto"              # server Domain name or IP to which AmbioMon connects
-AmbioSensitivity    = "auto"              # sensitivity of the used tube
 AmbioDataType       = "auto"              # "LAST" or "AVG" for lastdata or lastavg
 AmbioTimeout        = "auto"              # waiting for successful connection
 AmbioVariables      = "auto"              # a list of the variables to log
@@ -427,10 +542,10 @@ AmbioFrequency      = 1500                # frequency of driving HV generator
 AmbioPwm            = 0.5                 # Pulse Width Modulation of HV generator
 AmbioSav            = "Yes"               # Switching into saving mode (Yes/No)
 
-
+#
 # Gamma-Scout
-GSSensitivity       = "auto"              # auto will become 108 for the LND712 tube in GS init
-GStype              = None                # to be set in GS init as: Old, Classic, Online
+#
+GS_DeviceDetected   = None                # to be set in GS init as: Old, Classic, Online
 GSFirmware          = None                # to be set in GS init
 GSSerialNumber      = None                # to be set in GS init
 GSDateTime          = None                # to be set when setting DateTime
@@ -438,12 +553,14 @@ GSusedMemory        = 0                   # to be set when calling History
 GSMemoryTotal       = 65280               # max memory acc to manual, page 16, but when mem was 64450 (830 bytes free), interval was already 7d!
 GSCalibData         = None                # the Gamma-Scout internal calibration data
 GScurrentMode       = None                # "Normal", "PC", "Online"
-GStesting           = False               # required to run GS under simulation; used only in module gdev_gscout.py,
+gstesting           = False               # required to run GS under simulation; used only in module gdev_gscout.py,
 GSVariables         = "auto"
 
-
-# I2C
+#
+# I2C (connected per Dongle)
+#
 I2C_IOWDriverLoaded = False                # Is the driver loaded? relevant only for IOW dongle
+I2CDeviceDetected   = "Undefined"          # name like ELV..., IOW..., ISS...
 I2CDongle           = None                 # becomes instance of the I2C Dongle
 I2CDongleCode       = None                 # becomes name of the I2C Dongle, like ISS, ELV, IOW
 I2CVariables        = None                 # is set with the config of the sensors
@@ -453,14 +570,17 @@ Sensors             = None                 # is set by gedev_i2c
 
 # I2C Sensors
 I2CSensor           = {}                   # collector for sensors
-I2CSensor["LM75"]   = [False, 0x48, None]  # use the Sensor LM75   (T) at addr 0x48
-I2CSensor["BME280"] = [False, 0x76, None]  # use the Sensor BME280 (T, P, H) at addr 0x76
-I2CSensor["SCD30"]  = [False, 0x61, None]  # use the Sensor SCD30  (CO2 by NDIR) at addr 0x61
-I2CSensor["SCD41"]  = [False, 0x62, None]  # use the Sensor SCD41  (CO2 by Photoacoustic) at addr 0x62
-I2CSensor["TSL2591"]= [False, 0x29, None]  # use the Sensor TSL2591(Light) at addr 0x29
+I2CSensor["LM75"]   = [False, 0x48, None]  # Sensor LM75   (T)              at addr 0x48
+I2CSensor["BME280"] = [False, 0x76, None]  # Sensor BME280 (T, P, H)        at addr 0x76
+I2CSensor["SCD30"]  = [False, 0x61, None]  # Sensor SCD30  (CO2 by NDIR)    at addr 0x61
+I2CSensor["SCD41"]  = [False, 0x62, None]  # Sensor SCD41  (CO2 by Photoacoustic) at addr 0x62
+I2CSensor["TSL2591"]= [False, 0x29, None]  # Sensor TSL2591(Light vis + IR) at addr 0x29
+I2CSensor["BH1750"]   = [False, 0x23, None]  # Sensor BH1750  (Light vis)      at addr 0x23
+I2CSensor["GDK101"] = [False, 0x18, None]  # Sensor GDK102 (CPM)            at addr 0x18
 
-
+#
 # LabJack
+#
 LabJackActivation   = False                # Not available if False
 LJimportLJP         = False                # LabJackPython module was imported
 LJimportU3          = False                # LabJack' U3 module was imported
@@ -474,127 +594,108 @@ LJEI1050version     = "not in use"         # version of EI1050
 LJimportEI1050      = False                # LabJack' EI1050 module was imported
 LJEI1050status      = None                 # Status of probe EI1050
 
-
-# MiniMonCounter
+#
+# MiniMon
+#
 MiniMonActivation   = False                # Not available if False
 MiniMonOS_Device    = "auto"               # OS device, like /dev/hidraw3
 MiniMonInterval     = "auto"               # interval between forced savings
 MiniMonVariables    = "auto"               # default is Temp, Xtra
 
-
+#
 # Simul Device
+#
 SimulActivation     = False                # Not available if False
 SimulMean           = "auto"               # mean value of the Poisson distribution as CPSmean=10
-SimulSensitivity    = "auto"               # sensitivity of the used tube
+SimulStdDev         = "auto"               # StdDev relevant only when NORMAL is used
 SimulDeadtime       = "auto"               # units: µs
 SimulPredictive     = False                # not making a CPM prediction
 SimulPredictLimit   = 25                   # CPM must reach at least this count before making prediction
 SimulVariables      = "auto"               # default is CPM3rd, CPS3rd
 
-
+#
 # Manu
+#
 ManuActivation      = False                # Not available if False
-ManuSensitivity     = "auto"               # sensitivity of the used tube
-ManuVariables       = "auto"               # default is "CPM3rd, CPS3rd"
-ManuValues          = 0                    # number of variables used in Manu (<= 12)
-ManuValue           = [NAN] * 12           # up to 12 manually entered values
+ManuVariables       = "auto"               # default is "Temp, Press, Humid, Xtra"
+ManuValue           = [NAN]*12             # up to 12 manually entered values for variables
 
-
+#
 # WiFiServer
+#
 WiFiServerActivation     = False           # Not available if False
 WiFiServerIP             = "auto"          # server Domain name or IP to which WiFiServer connects
 WiFiServerPort           = "auto"          # the port for IP:Port
-WiFiServerFolder         = "auto"          # thr folder for IP:Port/folder; default: geigerlog
-WiFiServerSensitivity    = "auto"          # sensitivity of the used tube
+WiFiServerFolder         = "auto"          # the folder for IP:Port/folder; default: GL
+WiFiServerUrl            = "auto"          # the URL formed by IP:Port/folder
 WiFiServerDataType       = "auto"          # "LAST" or "AVG" for lastdata or lastavg
 WiFiServerTimeout        = "auto"          # waiting for successful connection
 WiFiServerVariables      = "auto"          # a list of the variables to log
+WiFiServerTotalDur       = 0               # duration of getUrlResponse call
+WiFiServerTrials         = 0               # max number of repeats in getUrlResponse call
 
-
+#
 # WiFiClient
+#
 WiFiClientActivation     = False           # Not available if False
-WiFiClientIP             = "auto"          # server Domain name or IP on which GL listens
 WiFiClientPort           = "auto"          # server port on which GL listens
-WiFiClientSensitivity    = "auto"          # sensitivity of the used tube
 WiFiClientType           = "Generic"       # options are "Generic" or "GMC"
 WiFiClientVariables      = "auto"          # a list of the variables to log
 
+WiFiClientServer         = None            # handle for the http webserver
+WiFiClientThread         = None            # the thread
+WiFiClientValues         = None            # the values read by WiFiClient
 
+#
+# Raspi
+#
+isRaspi                  = False           # is a Raspi or not
+
+#
+# RaspiPulse
+#
+RaspiPulseActivation     = False           # Not available if False
+RaspiPulseMode           = "auto"          # numbering mode: BCM or board
+RaspiPulsePin            = "auto"          # hardware pin for interrupt in BCM numbering
+RaspiPulseEdge           = "auto"          # options are "GPIO.RISING" or "GPIO.FALLING"
+RaspiPulsePullUpDown     = "auto"          # options are "GPIO.PUD_DOWN" or "GPIO.PUD_UP"
+RaspiPulseVariables      = "auto"          # a list of the variables to log
+
+RaspiPulseHasGPIO        = None            # Flag to signal loaded GPIO
+RaspiPulseCountTotal     = NAN
+RaspiPulseCPMDeque       = NAN             # 60 NANs, len=60, space for 60 sec CPS data, CPM only after 60 sec
+RaspiPulseLastCycleStart = None
+RaspiPulseDurCntsv       = NAN
+RaspiPulseOvertime       = NAN
+RaspiPulseCountDeque     = None
+
+
+#
+# RaspiI2C
+#
+RaspiI2CActivation      = False           # Not available if False
+RaspiI2CSensor          = "LM75B"         # there is no other option so far
+RaspiI2CHandle          = None            # handle for smbus
+RaspiI2CAdress          = 0x48            # LM75B Options: 0x48 | 0x49 | 0x4A | 0x4B | 0x4C | 0x4D | 0x4E | 0x4F
+RaspiI2CSensorRegister  = 0x00            # the register to read for Temperature
+RaspiI2CTempDeque       = None            # the temperature store for the last 60 sec
+RaspiI2CVariables       = "auto"          # a list of the variables to log
+
+
+
+#
 #ESP32
-ESP32Serial         = None                 # for the ESP32
+#
+ESP32Serial             = None            # for the ESP32
 
-
-# Logging settings
-logging             = False                # flag for logging
-logCycle            = 3                    # time in seconds between calls in logging
-
-# History Options
-keepFF              = False                # Flag in startup-options
-                                           # Keeps all hexadecimal FF (Decimal 255) values as a
-                                           # real value and not an 'Empty' one. See manual in chapter
-                                           # on parsing strategy
-fullhist            = False                # If False breaks history recording when 8k FF is read
-                                           # if True reads the whole history from memory
-
-# Graphic Options
-allowGraphUpdate    = True                 # to block updates on reading data
-
-Xleft               = None                 # time min if entered
-Xright              = None                 # time max if entered
-Xunit               = "Time"               # time unit; can be Time, auto, second, minute, hour, day
-XunitCurrent        = Xunit                # current time unit
-
-Ymin                = None                 # CPM min if entered
-Ymax                = None                 # CPM max if entered
-Yunit               = "CPM"                # CPM unit; can be CPM, CPS, µSv/h
-YunitCurrent        = Yunit                # current count unit
-
-Y2min               = None                 # Ambio min if entered
-Y2max               = None                 # Ambio max if entered
-Y2unit              = "Amb"                # Ambio unit °C or °F
-Y2unitCurrent       = Yunit                # current Ambio unit
-
-avgChecked          = False                # Plot the lines Average, +/- 95% confidence, and Legend with average +/- StdDev value
-mavChecked          = False                # Plot the Moving Average line, and Legend with MovAvg length ins seconds and data points
-fitChecked          = False                # Plot a fit to the data of the selected variable
-mav_initial         = 60                   # length of Moving Average period in seconds
-mav                 = mav_initial          # currently selected mav period
-printMavComments    = False                # print to NotePad the Moving Average Comments
-
-# Plotstyle                                # placeholder; don't change here - is set in config
-linestyle           = 'solid'              # overwritten by varsCopy
-linecolor           = 'blue'               # overwritten by varsCopy
-linewidth           = '1.0'                # configurable in geigerlog.cfg
-markersymbol        = 'o'                  # configurable in geigerlog.cfg
-markersize          = '15'                 # configurable in geigerlog.cfg
-
-#Graph Y-Limits                            # to calculate cursor position for left, right Y-axis
-y1_limits           = (0, 1)               # (bottom, top) of y left
-y2_limits           = (0, 1)               # (bottom, top) of y right
-
-# Data arrays and values
-logTime             = None                 # array: Time data from total file
-logTimeDiff         = None                 # array: Time data as time diff to first record in days
-logTimeFirst        = None                 # value: Time of first record of total file
-
-logTimeSlice        = None                 # array: selected slice out of logTime
-logTimeDiffSlice    = None                 # array: selected slice out of logTimeDiff
-logSliceMod         = None
-
-sizePlotSlice       = None                 # value: size of plotTimeSlice
-
-logDBData           = None                 # 2dim numpy array with the log data
-hisDBData           = None                 # 2dim numpy array with the his data
-currentDBData       = None                 # 2dim numpy array with the currently plotted data
 
 #
-# DEVICES
+# Supported Devices and Attribs
 #
-# supported devices with all attribs
 #   Detected Names      : more specific names, like 'GMC-500+Re 1.22'
-#   Varnames            : a list (pytype: list) of varnames set for this device, like:
-#                         ['CPM', 'CPS', 'CPM1st', 'CPS1st', 'Temp', 'Press', 'Humid', 'Xtra']
-#   Activation Status   : True if set in config file
+#   Varnames            : a Python list of varnames set for this device, like:
+#                            ['CPM', 'CPS', 'Temp', 'Press', 'Humid', 'Xtra']
+#   Activation Status   : True if set to active in config file
 #   Connection Status   : True if connected
 Devices = {
            # Device-        Detected-    Var-        Activation-  Connection-
@@ -610,9 +711,11 @@ Devices = {
             "LabJack"    : [None,        None,       False,       False],    # 7
             "MiniMon"    : [None,        None,       False,       False],    # 8
             "Simul"      : [None,        None,       False,       False],    # 9
-            "Manu"       : [None,        None,       False,       False],    # 10
-            "WiFiClient" : [None,        None,       False,       False],    # 11
-            "WiFiServer" : [None,        None,       False,       False],    # 12
+            "WiFiClient" : [None,        None,       False,       False],    # 10
+            "WiFiServer" : [None,        None,       False,       False],    # 11
+            "RaspiI2C"   : [None,        None,       False,       False],    # 12
+            "RaspiPulse" : [None,        None,       False,       False],    # 13
+            "Manu"       : [None,        None,       False,       False],    # 14 - keep at last position to allow overwriting
           }
 
 # columns Naming
@@ -631,11 +734,12 @@ DevicesConnected    = 0                   # count of connected devices; determin
 # colors at:  https://matplotlib.org/users/colors.html
 # linestyles: "solid", "dotted"
 # NOTE: Medium Names became necessary for the database when the (Short) names for T, P, H, X were changed to Temp, etc
-varsDefault = { # do not modify this - use copy varsCopy !!!!
-#                                                        Units
-#            (Short)     Long             Very short     CP* can be µSv/h     Style            Style       Medium
-#            Names,      Names,           Names          T °C can be °F       Color            Line        Names
-#            key         0                1              2                    3                4           5
+# do not modify this - use copy varsCopy !!!!
+varsDefault = {
+           #                                             Units
+           # Names,      Names,           Names          T: °C can be °F      Color            Line        Names
+           # Short       Long             Very short     CP* can be µSv/h     Style            Style       Medium
+           # key         0                1              2                    3                4           5
             "CPM"    : ["CPM",           "M",           "CPM",               "blue",          "solid",     "CPM"    ],    # 1
             "CPS"    : ["CPS",           "S",           "CPS",               "magenta",       "solid",     "CPS"    ],    # 2
             "CPM1st" : ["CPM1st",        "M1",          "CPM",               "deepskyblue",   "solid",     "CPM1st" ],    # 3
@@ -647,7 +751,7 @@ varsDefault = { # do not modify this - use copy varsCopy !!!!
             "Temp"   : ["Temperature",   "T",           "°C",                "red",           "solid",     "T"      ],    # 9
             "Press"  : ["Pressure",      "P",           "hPa",               "black",         "solid",     "P"      ],    # 10
             "Humid"  : ["Humidity",      "H",           "%",                 "green",         "solid",     "H"      ],    # 11
-            "Xtra"   : ["Xtra",          "X",           "x",                 "#8AE234",       "solid",     "X"      ],    # 12 color: lighter green
+            "Xtra"   : ["Xtra",          "X",           "x",                 "#00ff00",       "solid",     "X"      ],    # 12 color: full green
           }
 
 # Index,       DateTime,     CPM,     CPS,  CPM1st,  CPS1st,  CPM2nd,  CPS2nd,  CPM3rd,  CPS3rd,  Temp,   Press,   Humid,   Xtra
@@ -655,38 +759,35 @@ varsDefault = { # do not modify this - use copy varsCopy !!!!
 datacolsDefault         = 1 + len(varsDefault) # total of 13: DateTime plus 12 vars (index excluded; is not data),
 varsCopy                = varsDefault.copy()   # need a copy to allow reset as colorpicker may change color
 
-varAllFalse             = {}
-varAllEmpty             = {}
-devAllNone              = {}
-
-lastLogValues           = {}                 # last log values received from devices
-
-LogReadings             = 0                  # number of readings since last logging start; prints as index in log
-runLogCycleDelta        = (0, "")            # the time delta in sec between start and finish of runLoggingCycle, and timing message
-
+varAllFalse              = {}
+varAllEmpty              = {}
+varAllZero               = {}
+lastLogValues            = {}                 # last log values received from devices
 for vname in varsCopy:
     varAllFalse  [vname] = False              # set all False
     varAllEmpty  [vname] = ""                 # set all empty
+    varAllZero   [vname] = 0                  # set all to zero
     lastLogValues[vname] = NAN                # set all values to NAN
 
+devAllNone               = {}
 for devname in Devices:
-    devAllNone[devname] = None               # set all None
+    devAllNone[devname]  = None               # set all None
 
 # HOUSEKEEPING for VARIABLES
 varsSetForCurrent       = varAllFalse.copy()  # variable is active in the current data set
+varsSetForLogNew        = varAllFalse.copy()  # variable is active for current devices
 varsSetForLog           = varAllFalse.copy()  # variable is active in the current Log
 varsSetForHis           = varAllFalse.copy()  # variable is active in the current His
 
 varChecked4PlotLog      = varAllFalse.copy()  # is variable checked for showing in plot for Log
 varChecked4PlotHis      = varAllFalse.copy()  # is variable checked for showing in plot for History
 
-varMap                  = varAllFalse.copy()  # holds mapping of the variables
-
+varMapCount             = varAllZero .copy()  # holds counts of mapping of the variables
 varStats                = varAllEmpty.copy()  # info on avg, StdDev etc; will be set in gsup_plot, used for SuSt and tip for vars
 
-DevVarsAsText           = devAllNone.copy()   # determined in switchAllConnections, Devices with associated variables
+DevVarsAsText           = devAllNone .copy()  # determined in switchAllConnections, Devices with associated variables
 
-varMappedCount          = 0                   # determined in switchAllConnections; at least 1 needed for logging
+varMapCountTotal        = 0                   # determined in switchAllConnections; at least 1 needed for logging
 
 
 # SCALING
@@ -702,45 +803,56 @@ for vname in varsCopy:  ValueScale[vname] = "VAL"
 GraphScale           = {}
 for vname in varsCopy:  GraphScale[vname] = "VAL"
 
-
+#
 # HELP DETAILS
-
+#
 helpOptions = """
 Usage:  geigerlog [Options] [Commands]
 
 Options:
     -h, --help          Show this help and exit.
     -d, --debug         Run with printing debug info.
-                        Default is debug = False
+                        Default is NOT printing debug info.
     -v, --verbose       Be more verbose.
-                        Default is verbose = False.
+                        Default is NOT printing verbose info.
     -w, --werbose       Be much more verbose.
-                        Default is werbose = False.
+                        Default is NOT printing werbose info.
+    -l, --logfile       Defines the log file name to be used
+                        with commands 'load' and 'start'.
+    -s  --style name    Sets the style; see also GeigerLog manual
+                        and Command: 'showstyles'. Default is set
+                        by your system.
     -V, --Version       Show version status and exit.
-    -P, --Portlist      Show available USB-to-Serial ports
-                        and exit.
-    -R  --Redirect      Redirect stdout and stderr to
-                        file geigerlog.stdlog (for debugging).
-    -s  --style name    Sets the style; see also manual and
-                        Command: 'showstyles'.
-                        Default is set by your system
+    -P, --Portlist      Show all USB-to-Serial ports and exit.
 
 Commands:
     showstyles          Show a list of styles available on
                         your system and exit. For usage details see manual.
-    keepFF              GMC counter only: Keeps all hexadecimalFF (Decimal 255)
-                        values as a real value and not an 'Empty' one. See
+    keepFF              GMC counters only: Keeps all hexadecimalFF (Decimal 255)
+                        values as a real value and not as 'Empty' one. See
                         manual in chapter on parsing strategy.
+    connect             After starting do "Connect Devices".
+    load                After starting load the log file. If no log file is
+                        defined by option '-l' use "default.logdb".
+    start               After starting do "Connect Devices", then load log file,
+                        then start logging.
+                        If no log file is defined by option '-l' use
+                        "default.logdb"
+    quick               After starting do "Connect Devices", then do "Quick Log".
 
-By default, data files will be read-from / written-to the data directory
-"data", which is a subdirectory to the program directory.
 
-To watch debug and verbose output, start the program from the
+By default data files will be read-from / written-to the directory "data" as a
+subdirectory to the program directory. This can be changed in the configuration
+file 'geigerlog.cfg'.
+
+To watch debug, verbose, and werbose output, start the program from the
 command line in a terminal. The output will print to the terminal.
 
-With the Redirect option all output - including Python error
-messages - will go only into the redirect file geigerlog.stdlog.
+For Debugging redirect output with:
+            'geigerlog -dvw devel trace 2>> data/geigerlog.proglog'
 """
+
+
 
 helpQuickstart = """
 <!doctype html>
@@ -759,13 +871,13 @@ Then connect GeigerLog with the devices via menu: <b>Device -> Connect Devices</
 click the <b>Connect</b> toolbar icon.
 
 <h3>Plug and Play</h3>
-<p>With a proper setup all devices should be auto-configurable by GeigerLog. However, this may fail on
-new hardware. In this case read about <b>USB Autodiscovery</b> in chapter Appendix B of the manual.
+<p>With a proper hardware setup all devices are auto-configurable by GeigerLog. On any problems
+read chapter "Appendix B – Connecting Device and Com­puter using a Serial Connection" of the GeigerLog manual.
 
 <h3>Start Logging</h3>
 <p>This will create a database file to store newly acquired data from the devices.</p>
 <ol>
-<li>GMC device only: Switch device power on<br>(menu: <b>Device -> GMC Series -> Switch Power ON</b>))</li>
+<li>Only on GMC devices: Switch device power on<br>(menu: <b>Device -> GMC Series -> Switch Power ON</b>))</li>
 <li>Load a log file<br>(menu: <b>Log -> Get Log File or Create New One</b>)<br>
 In the Get Log File dialog enter a new filename and press Enter,
 or select an existing file to <b>APPEND</b> new data to this file.</li>
@@ -773,7 +885,7 @@ or select an existing file to <b>APPEND</b> new data to this file.</li>
 </ol>
 
 <h3>Get History</h3>
-<p>This will create a database file to store all data downloaded from the internal storage of a device.</p>
+<p>(Only if the device has this option.) This will create a database file to store all data downloaded from the internal storage of a device.</p>
 <ol>
 <li>Get history from device<br>(menu: <b>History -> &lt;Your device&gt; -> Get History from Device</b>)</li>
 <li>Enter a new filename (e.g. enter 'myfile' and press Enter) or select an existing file
@@ -814,7 +926,6 @@ which prohibits use on GeigerLog. It should identify itself as 'GMC-500+Re 1.18'
 The Geiger counter will then identify itself as 'GMC-500+Re 1.21'.</p>
 <p>-------------------------------------------------------------------------------</p>
 <p><b>Device: GMC-500 / 600 series</b></p>
-
 <p>Some firmware versions, at least 1.18 and 1.21, have a bug (called 'location bug') which
 results in errors in the parsing of the <b>history</b> file. It is advised to upgrade at least to
 the 1.22 firmware!</p>
@@ -967,13 +1078,13 @@ here; the links will guide you to sites with more extensive specifications.<br><
 <p><br>The numbers reflect a <b>very</b> different view of the two countries towards radiation health effects!</p>
 """
 
-
+# use doubled curly brackets {} within CSS code
 helpAbout = """
 <!doctype html>
 <style>
-    h3              { color: darkblue; margin:5px 0px 5px 0px; padding:0px; }
-    p, ol, ul, li   { margin:4px 0px 10px 0px; padding:0px; font-size:15px;}
-    td, th          { padding: 0px 30px 0px 0px;}
+    h3              {{ color: darkblue; margin:5px 0px 5px 0px; padding:0px;}}
+    p, ol, ul, li   {{ margin:4px 0px 10px 0px; padding:0px; font-size:15px;}}
+    td, th          {{ padding: 0px 30px 0px 0px;}}
 </style>
 
 <p><span style='color:darkblue; font:bold; font-size:x-large;'>GeigerLog</span>
@@ -989,9 +1100,7 @@ light-intensity, and CO2, and is prepared for future sensors.
 
 <p>In its present state it can e.g. be deployed as a monitor for a remote
 weather station, com&shy;ple&shy;mented with a Geiger counter to monitor radioactivity,
-and a sensor to moni&shy;tor CO2.
-
-<p>It can be connected by wire or wireless by WiFi.
+and a sensor to moni&shy;tor CO2, with a connection by wire or wireless by WiFi.
 
 <h3><br>Monitoring GeigerLog</h3>
 
@@ -1045,6 +1154,13 @@ acting as a server.</p>
 <p><b>WiFiClient Devices:</b>
 <br>GeigerLog acts as a server to which devices can connect and deliver data.</p>
 
+<p><b>RaspiI2C Devices:</b>
+<br>Only when GeigerLog is running on a Raspi: GeigerLog uses the Raspi I2C options to communicate wth
+I2C devices connected to a Raspi.</p>
+
+<p><b>RaspiPulse Devices:</b>
+<br>Only when GeigerLog is running on a Raspi: GeigerLog counts pulses on a Raspi GPIO pin.</p>
+
 <p style='text-align:center;'>-------------------------------------------------------------------</p>
 
 <p>The most recent version of GeigerLog as well as an up-to-date
@@ -1054,10 +1170,10 @@ https://sourceforge.net/projects/geigerlog/</a>.</p>
 
 <p>References:</p>
 <table>
-<tr><td>&nbsp;&nbsp;Author:                         </td> <td>%s</td></tr>
-<tr><td>&nbsp;&nbsp;Version GeigerLog:&nbsp;&nbsp;  </td> <td>%s</td></tr>
-<tr><td>&nbsp;&nbsp;Copyright:                      </td> <td>%s</td></tr>
-<tr><td>&nbsp;&nbsp;License:                        </td> <td>%s see included
+<tr><td>&nbsp;&nbsp;Author:                         </td> <td>{}</td></tr>
+<tr><td>&nbsp;&nbsp;Version GeigerLog:&nbsp;&nbsp;  </td> <td>{}</td></tr>
+<tr><td>&nbsp;&nbsp;Copyright:                      </td> <td>{}</td></tr>
+<tr><td>&nbsp;&nbsp;License:                        </td> <td>{}, see included
 file 'COPYING' and <a href="http://www.gnu.org/licenses">http://www.gnu.org/licenses</a></td></tr>
 </table>
 <br>

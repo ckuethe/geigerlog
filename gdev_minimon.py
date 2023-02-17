@@ -3,43 +3,6 @@
 
 """
 gdev_minimon.py - GeigerLog commands to handle the MiniMon device
-
-MiniMon is a CO2 monitor available from multiple distributors, e.g. also from
-TFA Drostman. On Amazon as https://www.amazon.de/gp/product/B00TH3OW4Q/
-Or: https://www.co2meter.com/products/co2mini-co2-indoor-air-quality-monitor
-
-The original may be: https://www.zyaura.com/product-detail/zgm053u/
-Download a manual from: https://www.zyaura.com/support-download/manual-zgm053u/
-
-Datasheet:
-http://co2meters.com/Documentation/AppNotes/AN146-RAD-0401-serial-communication.pdf
-
-Software:
-https://hackaday.io/project/5301-reverse-engineering-a-low-cost-usb-co-monitor
-https://github.com/heinemml/CO2Meter/blob/master/CO2Meter.py
-
-
-The USB ID by lsusb is:     ID 04d9:a052 Holtek Semiconductor, Inc.
-
-uderv rules:
-see details also on line 300ff:
-put into folder '/etc/udev/rules.d' a file named '90-co2mini.rules' with this content:
-
-    # To activate use command:   sudo udevadm control --reload-rules
-    # then unplug and replug MiniMon
-
-    ACTION=="remove", GOTO="minimon_end"
-
-    # Use this line if you have several MiniMons.
-    # The name /dev/minimon will be attached with numbers depending on the hidraw dev it is linked to, like: /dev/minimon1, /dev/minimon2, etc
-    #SUBSYSTEMS=="usb", KERNEL=="hidraw*", ATTRS{idVendor}=="04d9", ATTRS{idProduct}=="a052", GROUP="plugdev", MODE="0660", SYMLINK+="co2mini%n", GOTO="minimon_end"
-
-    # Use this line if you have only a single MiniMon
-    # The name /dev/minimon will never change
-    SUBSYSTEMS=="usb", KERNEL=="hidraw*", ATTRS{idVendor}=="04d9", ATTRS{idProduct}=="a052", GROUP="plugdev", MODE="0660", SYMLINK+="minimon", GOTO="minimon_end"
-
-    LABEL="minimon_end"
-
 """
 
 ###############################################################################
@@ -65,68 +28,171 @@ __credits__         = [""]
 __license__         = "GPL3"
 
 
-import fcntl
+
+# MiniMon is a CO2 monitor available from multiple distributors, e.g. also from
+# TFA Drostman. On Amazon as https://www.amazon.de/gp/product/B00TH3OW4Q/
+# or: https://www.co2meter.com/products/co2mini-co2-indoor-air-quality-monitor
+#
+# The original may be: https://www.zyaura.com/product-detail/zgm053u/
+# Download a manual from: https://www.zyaura.com/support-download/manual-zgm053u/
+#
+# Datasheet:
+# http://co2meters.com/Documentation/AppNotes/AN146-RAD-0401-serial-communication.pdf
+#
+# Software:
+# https://hackaday.io/project/5301-reverse-engineering-a-low-cost-usb-co-monitor
+# https://github.com/heinemml/CO2Meter/blob/master/CO2Meter.py
+#
+#
+# The USB ID by lsusb is:     ID 04d9:a052 Holtek Semiconductor, Inc.
+#
+# uderv rules:
+# see more details at the end under: MiniMon  Version 1.0
+# put into folder '/etc/udev/rules.d' a file named '90-co2mini.rules' with this content:
+#
+#     # To activate use command:   sudo udevadm control --reload-rules
+#     # then unplug and replug MiniMon
+#
+#     ACTION=="remove", GOTO="minimon_end"
+#
+#     # Use this line if you have several MiniMons.
+#     # The name /dev/minimon will be attached with numbers depending on the hidraw dev it is linked to, like: /dev/minimon1, /dev/minimon2, etc
+#     #SUBSYSTEMS=="usb", KERNEL=="hidraw*", ATTRS{idVendor}=="04d9", ATTRS{idProduct}=="a052", GROUP="plugdev", MODE="0660", SYMLINK+="co2mini%n", GOTO="minimon_end"
+#
+#     # Use this line if you have only a single MiniMon
+#     # The name /dev/minimon will never change
+#     SUBSYSTEMS=="usb", KERNEL=="hidraw*", ATTRS{idVendor}=="04d9", ATTRS{idProduct}=="a052", GROUP="plugdev", MODE="0660", SYMLINK+="minimon", GOTO="minimon_end"
+#
+#     LABEL="minimon_end"
+
+
+# import fcntl
 from   gsup_utils       import *
 
 
 def initMiniMon():
     """Start the MiniMon"""
 
-    global fp, key, values, MiniMonThread, MiniMonThreadStop, old_alldata, old_time
+    global fileHandleMiniMon, key, values, MiniMonThread, MiniMonThreadStop, old_alldata, old_time
 
     fncname ="initMiniMon: "
 
-    dprint(fncname + "Initializing MiniMon")
-    setDebugIndent(1)
+    if 'linux' not in sys.platform:             # Py3:'linux', Py2:'linux2'
+        return "MiniMon runs aon Linux only!"
 
-    errmsg  = "" # what errors can be here?
+    dprint(fncname + "Initializing MiniMon")
+    setIndent(1)
+
     gglobs.Devices["MiniMon"][DNAME] = "MiniMon"
 
-    if gglobs.MiniMonVariables  == "auto": gglobs.MiniMonVariables = "Temp, Xtra"   # Temp=Temperatur, Xtra=CO2, (Humid=Humidity)
-    if gglobs.MiniMonOS_Device  == "auto": gglobs.MiniMonOS_Device = "/dev/minimon" # requires udev rule
-    if gglobs.MiniMonInterval   == "auto": gglobs.MiniMonInterval  = 60             # force saving after  60 seconds
+    if gglobs.MiniMonVariables == "auto": gglobs.MiniMonVariables = "Temp, None, Xtra"  # Temp=Temperatur, Humidity=ignored, Xtra=CO2
+    if gglobs.MiniMonOS_Device == "auto": gglobs.MiniMonOS_Device = "/dev/minimon"      # requires udev rule
+    if gglobs.MiniMonInterval  == "auto": gglobs.MiniMonInterval  = 60                  # force saving after 60 seconds
 
+    gglobs.MiniMonVariables = correctVariableCaps(gglobs.MiniMonVariables)              # not needed, but for consistency
+    setLoggableVariables("MiniMon", gglobs.MiniMonVariables)                            # cleanup var names
+    gglobs.Devices["MiniMon"][VNAME] = gglobs.Devices["MiniMon"][VNAME][0:3]            # list of no more than 3 variables
+
+    # does the dev exist and is writable?
     if not os.access(gglobs.MiniMonOS_Device , os.W_OK):
-        msg = "Could not find MiniMon device - is it connected and powered?"
-        edprint(msg)
-        setDebugIndent(0)
-        return msg
+        errmsg = "Could not find MiniMon device - is it connected and powered?"
+        edprint(errmsg)
+        setIndent(0)
+        return errmsg
 
+    # try opening the connection to the MiniMon device ('dev/minimon' if using udev entry)
     try:
-        fp = open(gglobs.MiniMonOS_Device, "a+b",  0)
+        fileHandleMiniMon = open(gglobs.MiniMonOS_Device, "a+b",  0)
     except Exception as e:
-        msg = "Could not open MiniMon device - is it connected and powered?"
-        exceptPrint(e, msg)
-        setDebugIndent(0)
-        return msg
+        errmsg = "Could not open MiniMon device - is it connected and powered?"
+        exceptPrint(e, errmsg)
+        setIndent(0)
+        return errmsg
 
+    # try setting the HIDIOCSFEATURE_9
     # key needed for decryption in readMiniMonData
     key                 = [0xc4, 0xc6, 0xc0, 0x92, 0x40, 0x23, 0xdc, 0x96]
     HIDIOCSFEATURE_9    = 0xC0094806
     set_report3         = b"\x00" + bytearray(key)
 
-    fcntl.ioctl(fp, HIDIOCSFEATURE_9, set_report3)
-    #fp.close() # Caution:  MUST NOT close the connection!!! Why???
+    try:
+        import fcntl
+    except Exception as e:
+        errmsg = "Could not import fcntl"
+        exceptPrint(e, errmsg)
+        setIndent(0)
+        return errmsg
 
-    setLoggableVariables("MiniMon", gglobs.MiniMonVariables)
+    try:
+        fcntl.ioctl(fileHandleMiniMon, HIDIOCSFEATURE_9, set_report3)
+    except Exception as e:
+        errmsg = "Could not set FEATURE of MiniMon device - is it connected and powered?"
+        exceptPrint(e, errmsg)
+        setIndent(0)
+        return errmsg
 
-    # set to start defaults
+    # init to defaults
     values      = {}
-    old_alldata = {"Temp" : float('nan'), "Humid" : float('nan'), "Xtra" : float('nan')}
     old_time    = 0
 
-    MiniMonThreadStop = False
+    # set the 'old_alldata' to all NAN
+    old_alldata = {}
+    for vname in gglobs.Devices["MiniMon"][VNAME]:
+        if vname != "None":  old_alldata.update({vname: gglobs.NAN})
+    # edprint(fncname + "old_alldata: ", old_alldata)
 
-    MiniMonThread = threading.Thread(target = MiniMonThreadTarget)
-    #MiniMonThread.daemon = True
-    #edprint("MiniMonThread.daemon: ", MiniMonThread.daemon) # MiniMonThread.daemon: False
+    # start threading
+    MiniMonThreadStop    = False        # flag must be set before starting thread
+    MiniMonThread        = threading.Thread(target = MiniMonThreadTarget)
+    MiniMonThread.daemon = True
     MiniMonThread.start()
-
-    setDebugIndent(0)
+    # edprint("MiniMonThread.daemon: ", MiniMonThread.daemon)
 
     gglobs.Devices["MiniMon"][CONN] = True
 
-    return errmsg
+    setIndent(0)
+
+    return ""
+
+
+def terminateMiniMon():
+    """Stop the MiniMon"""
+
+    global fileHandleMiniMon, MiniMonThread, MiniMonThreadStop
+
+    fncname ="terminateMiniMon: "
+
+    dprint(fncname)
+    setIndent(1)
+
+    dprint(fncname + "stopping thread")
+    MiniMonThreadStop = True
+    MiniMonThread.join() # "This blocks the calling thread until the thread
+                         #  whose join() method is called is terminated."
+
+    # verify that thread has ended, but wait not longer
+    # than 3 sec (takes 0.006...0.016 ms)
+    start = time.time()
+    dur   = 0
+    while MiniMonThread.is_alive():
+        dur = 1000 * (time.time() - start)
+        if dur > 3000: break
+
+    dprint(fncname + "thread-status: is_alive: {}, waiting took: {:0.1f} ms".format(MiniMonThread.is_alive(), dur))
+
+    # closing the MiniMon device
+    # origin: initMiniMon: fileHandleMiniMon = open(gglobs.MiniMonOS_Device, "a+b",  0)
+    try:
+        fileHandleMiniMon.close()
+        dprint(fncname + "Device '{}' closed".format(gglobs.MiniMonOS_Device))
+    except Exception as e:
+        errmsg = fncname + "Could not close device {} - terminating anyway".format(gglobs.MiniMonOS_Device)
+        exceptPrint(e, errmsg)
+
+    gglobs.Devices["MiniMon"][CONN] = False
+
+    dprint(fncname + "Terminated")
+    setIndent(0)
 
 
 def MiniMonThreadTarget():
@@ -134,15 +200,20 @@ def MiniMonThreadTarget():
 
     global values, MiniMonThreadStop
 
+    ### local function ############################################
     def printlostmsg():
-        global values, MiniMonThreadStop
-        # must NOT use fprint - because thread - but use print ok
+        """used when the MiniMon connection was lost"""
+        # must NOT use fprint - because thread - but using print ok
 
-        msg = "Lost connection to MiniMon device; stopping MiniMon. Continue after reconnection"
-        dprint(msg, debug=True)
+        global values, MiniMonThreadStop
+
         MiniMonThreadStop = True
+        msg = "Lost connection to MiniMon device; stopping MiniMon.\nReconnect all devices in order to continue!"
         values = {}
         values["error"] = msg
+        Queueprint(msg)
+        dprint(msg.replace("\n", " "), debug=True)
+    ### END local function ########################################
 
     fncname = "MiniMonThreadTarget: "
 
@@ -152,13 +223,13 @@ def MiniMonThreadTarget():
         if os.access(gglobs.MiniMonOS_Device , os.R_OK):
             #dprint(fncname + "os:  {} is readable".format(gglobs.MiniMonOS_Device))
             try:
-                fpr = fp.read(8)
-                extractMiniMonData(fpr)
+                brecMM = fileHandleMiniMon.read(8)       # len: 8, like: b'\xcd\xe4\x1f \xf0F\xbf*'
+                extractMiniMonData(brecMM)
 
             except Exception as e:
                 stre = str(e)
-                exceptPrint("readMiniMonData: " + stre, "Failure in: data = list(fp.read(8))")
-                if "[Errno 5]" in stre: # [Errno 5] = input/output error
+                exceptPrint("readMiniMonData: " + stre, "Failure in: data = list(fileHandleMiniMon.read(8))")
+                if "[Errno 5]" in stre:          # [Errno 5] = input/output error
                     printlostmsg()
 
         else:
@@ -173,7 +244,7 @@ def MiniMonThreadTarget():
         time.sleep(tsleep)
 
 
-def extractMiniMonData(fpr):
+def extractMiniMonData(brecMM):
     """
     Function that reads one record from the device, decodes it, validates the
     checksum and, if valid, overwrites 'values' with the new data.
@@ -181,15 +252,14 @@ def extractMiniMonData(fpr):
 
     global values, MiniMonThreadStop
 
-    fncname = "readMiniMonData: "
+    fncname = "extractMiniMonData: "
 
-    data  = list(fpr)
+    data  = list(brecMM)
     #print(fncname + "original  data: {}  hexlist: {}".format(decList(data), hexList(data)))
 
     if data[4] != 0x0d:
         # see: https://github.com/heinemml/CO2Meter/issues/4
-        # newer devices don't encrypt the data, if byte 4 != 0x0d assume
-        # encrypted data
+        # newer devices don't encrypt the data, if byte 4 != 0x0d assume encrypted data
         # could result in wrong data sometimes?!
         data = decrypt(key, data)
 
@@ -208,39 +278,10 @@ def extractMiniMonData(fpr):
     # ok, good data
     else:
         op = data[0]
-        if op in [0x50, 0x42, 0x41]:              # co2=0x50==80, temp=0x42==66, humid=0x41==65
+        if op in [0x50, 0x42, 0x41]:                    # co2: 0x50==80, temp: 0x42==66, humid: 0x41==65
             val         = data[1] << 8 | data[2]
             values[op]  = val
-            wprint(fncname + f"op: {op:3d}, val: {val:5d}   values: {sortDict(values)}")
-
-
-def terminateMiniMon():
-    """Stop the MiniMon"""
-
-    global MiniMonThread, MiniMonThreadStop
-
-    fncname ="terminateMiniMon: "
-
-    dprint(fncname)
-    setDebugIndent(1)
-
-    dprint(fncname + "stopping thread")
-    MiniMonThreadStop = True
-    MiniMonThread.join() # "This blocks the calling thread until the thread
-                         #  whose join() method is called is terminated."
-
-    # verify that thread has ended, but wait not longer
-    # than 5 sec (takes 0.006...0.016 ms)
-    start = time.time()
-    while MiniMonThread.is_alive() and (time.time() - start) < 5:
-        pass
-
-    dprint(fncname + "thread-status: is alive: {}, waiting took: {:0.1f} ms".format(MiniMonThread.is_alive(), 1000 * (time.time() - start)))
-
-    gglobs.Devices["MiniMon"][CONN] = False
-
-    dprint(fncname + "Terminated")
-    setDebugIndent(0)
+            # mdprint(fncname + "op: {:3d}, val: {:5d}   values: {}".format(op, val, sortDict(values)))
 
 
 def getInfoMiniMon(extended = False):
@@ -248,10 +289,10 @@ def getInfoMiniMon(extended = False):
 
     MiniMonInfo  = "Configured Connection:        {}\n".format(gglobs.MiniMonOS_Device)
 
-    if not gglobs.Devices["MiniMon"][CONN]: return MiniMonInfo + "Device is not connected"
+    if not gglobs.Devices["MiniMon"][CONN]: return MiniMonInfo + "<red>Device is not connected</red>"
 
-    MiniMonInfo += "Connected Device:             '{}'\n"    \
-                   "Configured Variables:         {}\n".     \
+    MiniMonInfo += "Connected Device:             {}\n"    \
+                   "Configured Variables:         {}\n".   \
                    format(gglobs.Devices["MiniMon"][DNAME], gglobs.MiniMonVariables)
 
     if extended:
@@ -268,7 +309,11 @@ def getValuesMiniMon(varlist):
     start = time.time()
 
     fncname = "getValuesMiniMon: "
-    alldata = {"Temp" : float('nan'), "Humid" : float('nan'), "Xtra" : float('nan')}
+
+    alldata = {}
+    for vmm in gglobs.Devices["MiniMon"][VNAME]:       # list of varnames
+        # edprint(fncname + "vmm: ", vmm)
+        if vmm != "None": alldata.update({vmm: gglobs.NAN})
 
     new_time = time.time()
 
@@ -278,43 +323,45 @@ def getValuesMiniMon(varlist):
         values = {}
 
     else:
-        for vname in varlist:
-            if   vname in ("Temp"):
+        for i, vname in enumerate(varlist):
+            # edprint(fncname + "i: ", i, "  vname: ", vname)
+
+            if vname == "None": continue
+
+            if   i == 0:
             # Temperature
                 if 0x42 in values:
                     temp  = round(values[0x42] / 16.0 - 273.15, 2)   # 0x42 = 66
                     temp  = scaleVarValues(vname, temp, gglobs.ValueScale[vname])
                     alldata.update(  {vname: temp})
 
-            elif vname in ("Humid"):
+            elif i == 1:
             # Humidity
                 if 0x41 in values:
                     humid = round(values[0x41] / 100.0        , 2)   # 0x41 = 65 # !not 0x44! as in original code
                     humid = scaleVarValues(vname, humid, gglobs.ValueScale[vname])
                     alldata.update(  {vname: humid})
 
-            elif vname in ("Xtra"):
+            else: # i == 2
             # CO2
                 if 0x50 in values:
                     co2   = values[0x50]                             # 0x50 = 80
                     co2   = scaleVarValues(vname, co2, gglobs.ValueScale[vname])
                     alldata.update(  {vname: co2})
 
-    if (new_time - old_time) >= gglobs.MiniMonInterval or gglobs.forceSaving:
+    if (new_time - old_time) >= gglobs.MiniMonInterval:
         # saving now even if no values have changed
         old_time = new_time
 
     else:
-        # do not save if all values are NAN or same as last reading
-        if (np.isnan(alldata["Temp"])  or old_alldata["Temp"]  == alldata["Temp"])  and \
-           (np.isnan(alldata["Humid"]) or old_alldata["Humid"] == alldata["Humid"]) and \
-           (np.isnan(alldata["Xtra"])  or old_alldata["Xtra"]  == alldata["Xtra"]):
+        # do not save if all values are same as last reading
+        if alldata == old_alldata:
                 alldata = {}
         else:
                 old_alldata = alldata
                 old_time    = new_time
 
-    printLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
 
@@ -356,238 +403,239 @@ def decList(d):
 
 
 
-# *****************************************************************************
-# ************  MiniMon  Version 1.0 ******************************************
-# *****************************************************************************
+# # *****************************************************************************
+# # ************  MiniMon  Version 1.0 ******************************************
+# # *****************************************************************************
+# #
+# # is a Python3 program to read data for CO2, Temperature, and Humidity (if
+# # available) from a "CO2 Monitor" distributed by various suppliers.
+# #
+# # The program was adapted to Python3 by ullix.
+# #
+# # The original version is by: Henryk Plötz, (2015):
+# # https://hackaday.io/project/5301-reverse-engineering-a-low-cost-usb-co-monitor/log/17909-all-your-base-are-belong-to-us
+# #
+# # MiniMon was verified to work on a device distributed by TFA Drostmann,
+# # obtained from Amazon:
+# # https://www.amazon.de/gp/product/B00TH3OW4Q/ref=ppx_yo_dt_b_asin_title_o02_s00?ie=UTF8&psc=1
+# #
+# # The device is used with the HIDRAW driver, which is the kernel interface for
+# # Raw Access to USB and Bluetooth Human Interface Devices.
+# #
+# # Find out to which driver-address your MiniMon-device has connected by issuing
+# # from the command line, before and after you connect the MiniMon-device to your
+# # computer:
+# #                        ls -al /dev/hidraw*
+# #
+# # The newly appearing one is the one to choose, e.g. /dev/hidraw1
+# #
+# # Start MiniMon program with:   ./minimon.py deviceaddr
+# #                          e.g. ./minimon.py /dev/hidraw1
+# #
+# #
+# # Depending on permissions settings on your computer, you may may have to start
+# # as sudo (root). To overcome this, put a udev rule on your computer by putting
+# # into folder '/etc/udev/rules.d' a file named '90-co2mini.rules' with this
+# # 3-line content:
+# #
+# #   ACTION=="remove", GOTO="co2mini_end"
+# #   SUBSYSTEMS=="usb", KERNEL=="hidraw*", ATTRS{idVendor}=="04d9", ATTRS{idProduct}=="a052", GROUP="plugdev", MODE="0660", SYMLINK+="co2mini%n", GOTO="co2mini_end"
+# #   LABEL="co2mini_end"
+# #
+# # Then restart your computer or issue the command:
+# #                       sudo udevadm control --reload-rules
+# #
+# # Then unplug and replug your MiniMon-device.
+# #
+# # This will a) allow the group plugdev (change as appropriate, or put your user
+# # into that group) access to the device node and b) symlink the hidraw devices
+# # of all connected CO₂ monitors.
+# #
+# # You will now always find your MiniMon-device at /dev/co2miniN, with N being
+# # a number 0, 1, 2, ...
+# #
+# # The data will be logged to a CSV (Comma Separated Values) file 'minmonlog.csv'
+# # in your current directory. If you want a different one, change this in the
+# # code (approx line 85ff).
+# #
+# # A timestamp is added to the data:
+# #           2020-06-01 16:08:27     CO2: 502 ppm,   T: 28.04 °C
+# #
+# #
+# # Example output in a normal office setting:
+# #    CO2: 501 ppm,  T: 26.29 °C
+# #    CO2: 501 ppm,  T: 26.29 °C
+# #    CO2: 501 ppm,  T: 26.29 °C
+# #    CO2: 502 ppm,  T: 26.29 °C
+# #    CO2: 502 ppm,  T: 26.29 °C
+# #    CO2: 502 ppm,  T: 26.29 °C
+# #
+# # after exhaling towards the backside of the MiniMon-device, you may find this
+# # output, while the display on the device itself only shows 'Hi' with the
+# # red LED on
+# #    CO2: 9723 ppm,  T: 26.85 °C
+# #    CO2: 9723 ppm,  T: 26.85 °C
+# #    CO2: 9723 ppm,  T: 26.85 °C
+# #    CO2: 9723 ppm,  T: 26.85 °C
+# #    CO2: 9723 ppm,  T: 26.85 °C
+# #    CO2: 7824 ppm,  T: 26.85 °C
+# #    CO2: 7824 ppm,  T: 26.85 °C
+# #    CO2: 7824 ppm,  T: 26.85 °C
+# #
+
+
+
+# def appendToFile(path, writestring):
+#     """Write-Append data; add linefeed"""
 #
-# is a Python3 program to read data for CO2, Temperature, and Humidity (if
-# available) from a "CO2 Monitor" distributed by various suppliers.
-#
-# The program was adapted to Python3 by ullix.
-#
-# The original version is by: Henryk Plötz, (2015):
-# https://hackaday.io/project/5301-reverse-engineering-a-low-cost-usb-co-monitor/log/17909-all-your-base-are-belong-to-us
-#
-# MiniMon was verified to work on a device distributed by TFA Drostmann,
-# obtained from Amazon:
-# https://www.amazon.de/gp/product/B00TH3OW4Q/ref=ppx_yo_dt_b_asin_title_o02_s00?ie=UTF8&psc=1
-#
-# The device is used with the HIDRAW driver, which is the kernel interface for
-# Raw Access to USB and Bluetooth Human Interface Devices.
-#
-# Find out to which driver-address your MiniMon-device has connected by issuing
-# from the command line, before and after you connect the MiniMon-device to your
-# computer:
-#                        ls -al /dev/hidraw*
-#
-# The newly appearing one is the one to choose, e.g. /dev/hidraw1
-#
-# Start MiniMon program with:   ./minimon.py deviceaddr
-#                          e.g. ./minimon.py /dev/hidraw1
-#
-#
-# Depending on permissions settings on your computer, you may may have to start
-# as sudo (root). To overcome this, put a udev rule on your computer by putting
-# into folder '/etc/udev/rules.d' a file named '90-co2mini.rules' with this
-# 3-line content:
-#
-#   ACTION=="remove", GOTO="co2mini_end"
-#   SUBSYSTEMS=="usb", KERNEL=="hidraw*", ATTRS{idVendor}=="04d9", ATTRS{idProduct}=="a052", GROUP="plugdev", MODE="0660", SYMLINK+="co2mini%n", GOTO="co2mini_end"
-#   LABEL="co2mini_end"
-#
-# Then restart your computer or issue the command:
-#                       sudo udevadm control --reload-rules
-#
-# Then unplug and replug your MiniMon-device.
-#
-# This will a) allow the group plugdev (change as appropriate, or put your user
-# into that group) access to the device node and b) symlink the hidraw devices
-# of all connected CO₂ monitors.
-#
-# You will now always find your MiniMon-device at /dev/co2miniN, with N being
-# a number 0, 1, 2, ...
-#
-# The data will be logged to a CSV (Comma Separated Values) file 'minmonlog.csv'
-# in your current directory. If you want a different one, change this in the
-# code (approx line 85ff).
-#
-# A timestamp is added to the data:
-#           2020-06-01 16:08:27     CO2: 502 ppm,   T: 28.04 °C
-#
-#
-# Example output in a normal office setting:
-#    CO2: 501 ppm,  T: 26.29 °C
-#    CO2: 501 ppm,  T: 26.29 °C
-#    CO2: 501 ppm,  T: 26.29 °C
-#    CO2: 502 ppm,  T: 26.29 °C
-#    CO2: 502 ppm,  T: 26.29 °C
-#    CO2: 502 ppm,  T: 26.29 °C
-#
-# after exhaling towards the backside of the MiniMon-device, you may find this
-# output, while the display on the device itself only shows 'Hi' with the
-# red LED on
-#    CO2: 9723 ppm,  T: 26.85 °C
-#    CO2: 9723 ppm,  T: 26.85 °C
-#    CO2: 9723 ppm,  T: 26.85 °C
-#    CO2: 9723 ppm,  T: 26.85 °C
-#    CO2: 9723 ppm,  T: 26.85 °C
-#    CO2: 7824 ppm,  T: 26.85 °C
-#    CO2: 7824 ppm,  T: 26.85 °C
-#    CO2: 7824 ppm,  T: 26.85 °C
-#
+#     with open(path, 'at', encoding="UTF-8", errors='replace', buffering = 1) as f:
+#         f.write((writestring + "\n"))
 
 
+# if __name__ == "__main__":
+#     """if the minimon is called directly without GeigerLog"""
 
-def appendToFile(path, writestring):
-    """Write-Append data; add linefeed"""
+#     ##########################################
+#     # Define the full path to your log file
+#     logFile = "./minimonlog.csv"
+#     ##########################################
 
-    with open(path, 'at', encoding="UTF-8", errors='replace', buffering = 1) as f:
-        f.write((writestring + "\n"))
+#     # Key retrieved from /dev/random, guaranteed to be random ;)
+#     key = [0xc4, 0xc6, 0xc0, 0x92, 0x40, 0x23, 0xdc, 0x96]
 
+#     if len(sys.argv) < 2:
+#         print("ERROR: you must provide a hidraw device name. Start like:\n"\
+#               "\t./gdev_minimon.py /dev/minimon"
+#               "\nor\t./gdev_minimon.py /dev/hidraw1"
+#              )
+#         sys.exit()
 
-if __name__ == "__main__":
-    """if the minimon is called directly without GeigerLog"""
+#     devname = sys.argv[1]
+#     fileHandleMiniMon = open(devname, "a+b",  0)
 
-    ##########################################
-    # Define the full path to your log file
-    logFile = "./minimonlog.csv"
-    ##########################################
+#     HIDIOCSFEATURE_9 = 0xC0094806
+#     set_report3 = b"\x00" + bytearray(key)
 
-    # Key retrieved from /dev/random, guaranteed to be random ;)
-    key = [0xc4, 0xc6, 0xc0, 0x92, 0x40, 0x23, 0xdc, 0x96]
+#     fcntl.ioctl(fileHandleMiniMon, HIDIOCSFEATURE_9, set_report3)
 
-    if len(sys.argv) < 2:
-        print("ERROR: you must provide a hidraw device name. Start like:\n"\
-              "\t./gdev_minimon.py /dev/minimon"
-              "\nor\t./gdev_minimon.py /dev/hidraw1"
-             )
-        sys.exit()
+#     values = {}
+#     co2 = temp = humid = float('nan')
+#     counter = 0
+#     appendToFile(logFile, "#DateTime,              CO2, Temperature")
+#     while True:
+#         counter += 1
+#         #print(counter, " -"*50)
 
-    devname = sys.argv[1]
-    fp = open(devname, "a+b",  0)
+#         data    = list(fileHandleMiniMon.read(8))
+#         #print(f"raw data:  ", decList(data))
 
-    HIDIOCSFEATURE_9 = 0xC0094806
-    set_report3 = b"\x00" + bytearray(key)
+#         if data[4] != 0x0d:
+#             # see: https://github.com/heinemml/CO2Meter/issues/4
+#             # some (newer?) devices don't encrypt the data, if byte 4 != 0x0d
+#             # assume encrypted data
+#             # ??? might result in wrong data sometimes?!!!
+#             decrypted = decrypt(key, data)
+#         else:
+#             decrypted = data
 
-    fcntl.ioctl(fp, HIDIOCSFEATURE_9, set_report3)
+#         if decrypted[4] != 0x0d or (sum(decrypted[:3]) & 0xff) != decrypted[3]:
+#             print (hexList(data), " => ", hexList(decrypted),  "Checksum error")
 
-    values = {}
-    co2 = temp = humid = float('nan')
-    counter = 0
-    appendToFile(logFile, "#DateTime,              CO2, Temperature")
-    while True:
-        counter += 1
-        #print(counter, " -"*50)
+#         else:
+#             op  = decrypted[0]
+#             val = decrypted[1] << 8 | decrypted[2]
 
-        data    = list(fp.read(8))
-        #print(f"raw data:  ", decList(data))
+#             values[op] = val
+#             #print("values: ", values)
 
-        if data[4] != 0x0d:
-            # see: https://github.com/heinemml/CO2Meter/issues/4
-            # some (newer?) devices don't encrypt the data, if byte 4 != 0x0d
-            # assume encrypted data
-            # ??? might result in wrong data sometimes?!!!
-            decrypted = decrypt(key, data)
-        else:
-            decrypted = data
+#             # Output all data, mark just received value with asterisk
+#             #print( ", ".join( "%s%02X: %04X %5i" % ([" ", "*"][op==k], k, v, v) for (k, v) in sorted(values.items())), "  ",)
 
-        if decrypted[4] != 0x0d or (sum(decrypted[:3]) & 0xff) != decrypted[3]:
-            print (hexList(data), " => ", hexList(decrypted),  "Checksum error")
+#             if 0x50 in values:      co2   = values[0x50]                    # 0x50 = 80
+#             if 0x42 in values:      temp  = values[0x42] / 16.0 - 273.15    # 0x42 = 66
+#             if 0x41 in values:      humid = values[0x41] / 100.0            # 0x41 = 65 Note: old value 0x44 is wrong! (if no H sensor, then this will be 0
 
-        else:
-            op  = decrypted[0]
-            val = decrypted[1] << 8 | decrypted[2]
-
-            values[op] = val
-            #print("values: ", values)
-
-            # Output all data, mark just received value with asterisk
-            #print( ", ".join( "%s%02X: %04X %5i" % ([" ", "*"][op==k], k, v, v) for (k, v) in sorted(values.items())), "  ",)
-
-            if 0x50 in values:      co2   = values[0x50]                    # 0x50 = 80
-            if 0x42 in values:      temp  = values[0x42] / 16.0 - 273.15    # 0x42 = 66
-            if 0x41 in values:      humid = values[0x41] / 100.0            # 0x41 = 65 Note: old value 0x44 is wrong! (if no H sensor, then this will be 0
-
-            logstring = "{:s}, {:5.0f}, {:6.2f}, {:6.2f}".format(stime(), co2, temp, humid)
-            appendToFile(logFile, logstring)
-            print(logstring)
+#             logstring = "{:s}, {:5.0f}, {:6.2f}, {:6.2f}".format(stime(), co2, temp, humid)
+#             appendToFile(logFile, logstring)
+#             print(logstring)
 
 
-"""
-            key |value| chk  CR
-decrypted:   66  18 175   3  13   0   0   0 #
-decrypted:  109  12 189  54  13   0   0   0
-decrypted:  110  53 251 158  13   0   0   0
-decrypted:  113   2 170  29  13   0   0   0
-decrypted:   80   2 171 253  13   0   0   0 #
-decrypted:   87  31 145   7  13   0   0   0
-decrypted:   86  44  74 204  13   0   0   0
-decrypted:   65   0   0  65  13   0   0   0 #
-decrypted:   67  14  50 131  13   0   0   0
-decrypted:   66  18 175   3  13   0   0   0 #
-decrypted:  109  12 189  54  13   0   0   0
-decrypted:  110  53 251 158  13   0   0   0
-decrypted:  113   2 170  29  13   0   0   0
-decrypted:   80   2 171 253  13   0   0   0 #
-decrypted:   79  33 137 249  13   0   0   0
-decrypted:   82  44  71 197  13   0   0   0
-decrypted:   65   0   0  65  13   0   0   0 #
-decrypted:   67  14  51 132  13   0   0   0
-decrypted:   66  18 175   3  13   0   0   0 #
-decrypted:  109  12 189  54  13   0   0   0
-decrypted:  110  53 251 158  13   0   0   0
-decrypted:  113   2 170  29  13   0   0   0
-decrypted:   80   2 171 253  13   0   0   0 #
-decrypted:   87  31 143   5  13   0   0   0
-decrypted:   86  44  76 206  13   0   0   0
-decrypted:   65   0   0  65  13   0   0   0 #
-decrypted:   67  14  50 131  13   0   0   0
-decrypted:   66  18 175   3  13   0   0   0 #
-decrypted:  109  12 189  54  13   0   0   0
-decrypted:  110  53 251 158  13   0   0   0
-decrypted:  113   2 170  29  13   0   0   0
-decrypted:   80   2 171 253  13   0   0   0 #
-decrypted:   79  33 129 241  13   0   0   0
-decrypted:   82  44  64 190  13   0   0   0
-decrypted:   65   0   0  65  13   0   0   0 #
-decrypted:   67  14  53 134  13   0   0   0
-decrypted:   66  18 175   3  13   0   0   0 #
-decrypted:  109  12 189  54  13   0   0   0
-decrypted:  110  53 251 158  13   0   0   0
-decrypted:  113   2 170  29  13   0   0   0
-decrypted:   80   2 171 253  13   0   0   0 #
-decrypted:   87  31 144   6  13   0   0   0
-decrypted:   86  44  76 206  13   0   0   0
-decrypted:   65   0   0  65  13   0   0   0 #
-decrypted:   67  14  53 134  13   0   0   0
-decrypted:   66  18 175   3  13   0   0   0 #
+# """
+#             key |value| chk  CR
+# decrypted:   66  18 175   3  13   0   0   0 #
+# decrypted:  109  12 189  54  13   0   0   0
+# decrypted:  110  53 251 158  13   0   0   0
+# decrypted:  113   2 170  29  13   0   0   0
+# decrypted:   80   2 171 253  13   0   0   0 #
+# decrypted:   87  31 145   7  13   0   0   0
+# decrypted:   86  44  74 204  13   0   0   0
+# decrypted:   65   0   0  65  13   0   0   0 #
+# decrypted:   67  14  50 131  13   0   0   0
+# decrypted:   66  18 175   3  13   0   0   0 #
+# decrypted:  109  12 189  54  13   0   0   0
+# decrypted:  110  53 251 158  13   0   0   0
+# decrypted:  113   2 170  29  13   0   0   0
+# decrypted:   80   2 171 253  13   0   0   0 #
+# decrypted:   79  33 137 249  13   0   0   0
+# decrypted:   82  44  71 197  13   0   0   0
+# decrypted:   65   0   0  65  13   0   0   0 #
+# decrypted:   67  14  51 132  13   0   0   0
+# decrypted:   66  18 175   3  13   0   0   0 #
+# decrypted:  109  12 189  54  13   0   0   0
+# decrypted:  110  53 251 158  13   0   0   0
+# decrypted:  113   2 170  29  13   0   0   0
+# decrypted:   80   2 171 253  13   0   0   0 #
+# decrypted:   87  31 143   5  13   0   0   0
+# decrypted:   86  44  76 206  13   0   0   0
+# decrypted:   65   0   0  65  13   0   0   0 #
+# decrypted:   67  14  50 131  13   0   0   0
+# decrypted:   66  18 175   3  13   0   0   0 #
+# decrypted:  109  12 189  54  13   0   0   0
+# decrypted:  110  53 251 158  13   0   0   0
+# decrypted:  113   2 170  29  13   0   0   0
+# decrypted:   80   2 171 253  13   0   0   0 #
+# decrypted:   79  33 129 241  13   0   0   0
+# decrypted:   82  44  64 190  13   0   0   0
+# decrypted:   65   0   0  65  13   0   0   0 #
+# decrypted:   67  14  53 134  13   0   0   0
+# decrypted:   66  18 175   3  13   0   0   0 #
+# decrypted:  109  12 189  54  13   0   0   0
+# decrypted:  110  53 251 158  13   0   0   0
+# decrypted:  113   2 170  29  13   0   0   0
+# decrypted:   80   2 171 253  13   0   0   0 #
+# decrypted:   87  31 144   6  13   0   0   0
+# decrypted:   86  44  76 206  13   0   0   0
+# decrypted:   65   0   0  65  13   0   0   0 #
+# decrypted:   67  14  53 134  13   0   0   0
+# decrypted:   66  18 175   3  13   0   0   0 #
 
-raw data:   112 228 238  32 252  70 191  42
-raw data:   170 228 254  32 106  70 191  98
-raw data:   246 228 246  32  14  70 191  66
-raw data:    88 228  78  33  94  70 191 242
-raw data:    91 228  87  33  36  70 191  34
-raw data:    63 228 110  33 137  70 191   2
-raw data:   198 228 102  32 142  70 191   2
-raw data:    62 228  95  32 128  70 191 234
-raw data:    44 228 119  32  90  70 191  74
-raw data:   112 228 238  32 252  70 191  42
-raw data:   170 228 254  32 106  70 191  98
-raw data:   246 228 246  32  14  70 191  66
-raw data:    88 228  78  33  94  70 191 242
-raw data:    91 228  87  33  36  70 191  34
-raw data:    63 228 110  33 137  70 191   2
-raw data:   198 228 102  32 142  70 191   2
-raw data:   246 228  31  32 241  70 191 114
-raw data:   253 228  23  32  91  70 191 218
-raw data:   112 228 238  32 252  70 191  42
-raw data:   170 228 254  32 106  70 191  98
-raw data:   246 228 246  32  14  70 191  66
-raw data:    88 228  78  33  94  70 191 242
-raw data:    83 228  87  33  36  70 191  58
-raw data:    63 228 110  33 137  70 191   2
-raw data:   198 228 102  32 142  70 191   2
-raw data:    22 228  95  32 128  70 191 194
-raw data:    36 228 119  32  90  70 191  66
+# raw data:   112 228 238  32 252  70 191  42
+# raw data:   170 228 254  32 106  70 191  98
+# raw data:   246 228 246  32  14  70 191  66
+# raw data:    88 228  78  33  94  70 191 242
+# raw data:    91 228  87  33  36  70 191  34
+# raw data:    63 228 110  33 137  70 191   2
+# raw data:   198 228 102  32 142  70 191   2
+# raw data:    62 228  95  32 128  70 191 234
+# raw data:    44 228 119  32  90  70 191  74
+# raw data:   112 228 238  32 252  70 191  42
+# raw data:   170 228 254  32 106  70 191  98
+# raw data:   246 228 246  32  14  70 191  66
+# raw data:    88 228  78  33  94  70 191 242
+# raw data:    91 228  87  33  36  70 191  34
+# raw data:    63 228 110  33 137  70 191   2
+# raw data:   198 228 102  32 142  70 191   2
+# raw data:   246 228  31  32 241  70 191 114
+# raw data:   253 228  23  32  91  70 191 218
+# raw data:   112 228 238  32 252  70 191  42
+# raw data:   170 228 254  32 106  70 191  98
+# raw data:   246 228 246  32  14  70 191  66
+# raw data:    88 228  78  33  94  70 191 242
+# raw data:    83 228  87  33  36  70 191  58
+# raw data:    63 228 110  33 137  70 191   2
+# raw data:   198 228 102  32 142  70 191   2
+# raw data:    22 228  95  32 128  70 191 194
+# raw data:    36 228 119  32  90  70 191  66
 
-"""
+# """
+

@@ -45,7 +45,7 @@ class SensorSCD30:
     firmware   = "not set"  # my device: 3.66 (same as example from manual)
     measIntvl  = 5          # Measurement Interval in sec (default = 2)
     frc        = None       # Forced Recalibration value (FRC). Default is 400 [ppm]
-    
+
 
     def __init__(self, addr):
         """Init SensorSCD30 class"""
@@ -60,13 +60,13 @@ class SensorSCD30:
         dmsg    = "Sensor {:8s} at address 0x{:02X}".format(self.name, self.addr)
 
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
 
         ## check for presence of an I2C device at I2C address
         presence = gglobs.I2CDongle.DongleIsSensorPresent(self.addr)
         if not presence:
             # no device found
-            setDebugIndent(0)
+            setIndent(0)
             return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
         else:
             # device found
@@ -107,7 +107,7 @@ class SensorSCD30:
         dprint(fncname + "SCD30MeasurementStart")
         gdprint(self.SCD30MeasurementStart())
 
-        setDebugIndent(0)
+        setIndent(0)
 
         return (True,  "Initialized " + dmsg)
 
@@ -391,7 +391,7 @@ class SensorSCD30:
         return ready
 
 
-    def SensorGetValues(self):
+    def SensorgetValues(self):
         """Read the CO2, Temp and Humid values if available"""
 
         # 1.4.5 Read measurement
@@ -427,11 +427,11 @@ class SensorSCD30:
 
 
         start   = time.time()
-        fncname = "SensorGetValues: " + self.name + ": "
+        fncname = "SensorgetValues: " + self.name + ": "
         sgvdata = (gglobs.NAN,) * 3
 
-        dprint(fncname)
-        setDebugIndent(1)
+        cdprint(fncname)
+        setIndent(1)
 
         dataReady = self.SCD30DataReady()
 
@@ -462,7 +462,7 @@ class SensorSCD30:
                 data_bytes = np.array(answ[12:14] + answ[15:17], dtype=np.uint8)
                 humid = float(data_bytes.view(dtype='>f')[0])
 
-                if co2 > 300:   sgvdata = (co2, temp, humid)    # first value is most often CO2==0; should be >400, but give it room
+                if co2 > 300:   sgvdata = (round(co2, 0), round(temp, 3), round(humid, 3))    # first value is most often CO2==0; should be >400, but give it room
 
                 msg = True, fncname + "CO2:{:6.3f}, Temp:{:6.3f}, Humid:{:6.3f}".format(co2, temp, humid)
             else:
@@ -473,10 +473,9 @@ class SensorSCD30:
             msg = False, fncname + "Data NOT ready, or failure to get status, or wrong bytecount"
 
         duration = (time.time() - start) * 1000
-        # ms g     = msg[1] + "  dur:{:0.2f} ms".format(duration)
         if msg[0]:      gdprint(msg[1] + "  dur:{:0.2f} ms".format(duration))
 
-        setDebugIndent(0)
+        setIndent(0)
         return sgvdata
 
 

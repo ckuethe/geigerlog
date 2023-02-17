@@ -23,14 +23,12 @@ GLpipcheck.py - To check Pip version status of GeigerLog requirements
 ###############################################################################
 
 """
-# single line: install
-python -m pip install -U pip setuptools pyqt5 pyqt5-qt pyqt5-sip matplotlib numpy scipy pyserial paho-mqtt sounddevice soundfile pip-check
+using pip venv in Windows: https://discuss.python.org/t/pip-missing-from-my-python-download/13750
 
-# single line: uninstall (keep pip!)
-python -m pip uninstall      setuptools pyqt5 pyqt5-qt pyqt5-sip matplotlib numpy scipy pyserial paho-mqtt sounddevice soundfile pip-check
-
+# requirements.txt
 # possible content of a requirements.txt file:
-# install with:   python -m pip install -r requirements.txt
+# install with:
+#       python -m pip install -r requirements.txt
 # requirements.txt:
     pip         >=  21.0.1
     setuptools  >=  54.0.0
@@ -79,11 +77,16 @@ __author__          = "ullix"
 __copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
-__version__         = "1.2"
+__version__         = "1.4"
 
 
 import sys, subprocess
 import getopt                       # parse command line for options and commands
+
+# Apparently this got reverted back to the original:
+# Find    all available versions of package 'anypackage':      python3 -m pip --use-deprecated=legacy-resolver install anypackage==
+# now again works as:
+# Find    all available versions of package 'anypackage':      python3 -m pip install anypackage==
 
 howto = """
 Mini-HOWTO: --------------------------------------------------------------------------------------------------------------------
@@ -96,7 +99,7 @@ Install and/or update package 'anypackage':                  python3 -m pip inst
 
 Install and/or update multiple packages at once:             python3 -m pip install -U anypackage 2ndpackage 3rdpackage ...
         NOTE:
-        If command fails, nothing at all may be installed!
+        If command fails, nothing at all may have been installed!
         Continue with single-package installations.
 
 Install package 'anypackage' in exactly version 1.2.3:       python3 -m pip install "anypackage == 1.2.3"
@@ -114,7 +117,7 @@ Install all packages as specified in GLrequirements.txt      python3 -m pip inst
 
 Remove  package 'anypackage':                                python3 -m pip uninstall anypackage
 
-Find    all available versions of package 'anypackage':      python3 -m pip --use-deprecated=legacy-resolver install anypackage==
+Find    all available versions of package 'anypackage':      python3 -m pip install anypackage==
 
 
 ---------------------------------------------------------------------------------------------------------------------------------
@@ -136,10 +139,12 @@ req_installs = {
                }
 
 opt_installs = {
-                # "pyserial"              : ["latest"     , "REQUIRED for GMC, Gamma-Scout, I2C Series"   , False],
+                "RPi.GPIO"              : ["latest"     , "REQUIRED for RaspiPulse Series"              , False],
+                "smbus"                 : ["latest"     , "REQUIRED for RaspiI2C Series"                , False],
                 "paho-mqtt"             : ["latest"     , "REQUIRED for RadMon Series"                  , False],
                 "LabJackPython"         : ["latest"     , "REQUIRED for LabJack Series"                 , False],
-                # "python-telegram-bot"   : ["latest"     , "REQUIRED for Telegram Messenger"             , False],
+                # "python-telegram-bot"   : ["latest"     , "REQUIRED for Telegram Messenger"           , False],
+                "psutil"                : ["latest"     , "REQUIRED for Devel Mode System monitoring"   , False],
                 "pip-check"             : ["latest"     , "Recommended Pip tool"                        , False],
                }
 
@@ -274,8 +279,9 @@ def main():
     pipdict = {}
     for pl in piplist:
         snr = removeSpaces(pl).split(" ", 1)
-        #print("snr: ", snr)
-        pipdict.update({snr[0].strip(): snr[1].strip()})
+        # print("snr: ", snr)
+        if len(snr) > 1: pipdict.update({snr[0].strip(): snr[1].strip()})
+
     showPackages("REQUIRED")
     showPackages("OPTIONAL")
 

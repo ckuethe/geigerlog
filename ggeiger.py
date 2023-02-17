@@ -32,39 +32,63 @@ from   gsup_utils  import *
 import gsup_sql
 import gsup_tools
 import gsup_plot
+
 import gweb_monserv
+import gweb_radworld
 
 import gstat_poisson
 import gstat_fft
 import gstat_convfft
 import gstat_synth
 
-if gglobs.Devices["GMC"][ACTIV]  :      import gdev_gmc         # both needed
-if gglobs.Devices["GMC"][ACTIV]  :      import gdev_gmc_hist    # both needed
-if gglobs.Devices["Audio"][ACTIV]:      import gdev_audio       #
-if gglobs.Devices["RadMon"][ACTIV]:     import gdev_radmon      # RadMon -  then imports "paho.mqtt.client as mqtt"
-if gglobs.Devices["AmbioMon"][ACTIV]:   import gdev_ambiomon    #
-if gglobs.Devices["GammaScout"][ACTIV]: import gdev_gscout      #
-if gglobs.Devices["I2C"][ACTIV]:        import gdev_i2c         # I2C  -    then imports dongles and sensor modules
-if gglobs.Devices["LabJack"][ACTIV]:    import gdev_labjack     # LabJack - then imports the LabJack modules
-if gglobs.Devices["Simul"][ACTIV]:      import gdev_simul       #
-if gglobs.Devices["Manu"][ACTIV]:       import gdev_manu        #
-if gglobs.Devices["MiniMon"][ACTIV]:    import gdev_minimon     #
-if gglobs.Devices["WiFiClient"][ACTIV]: import gdev_wificlient  #
-if gglobs.Devices["WiFiServer"][ACTIV]: import gdev_wifiserver  #
+if gglobs.Devices["GMC"]        [ACTIV]: import gdev_gmc         # both needed
+if gglobs.Devices["GMC"]        [ACTIV]: import gdev_gmc_hist    # both needed
+if gglobs.Devices["Audio"]      [ACTIV]: import gdev_audio       #
+if gglobs.Devices["RadMon"]     [ACTIV]: import gdev_radmon      # RadMon -  then imports "paho.mqtt.client as mqtt"
+if gglobs.Devices["AmbioMon"]   [ACTIV]: import gdev_ambiomon    #
+if gglobs.Devices["GammaScout"] [ACTIV]: import gdev_gscout      #
+if gglobs.Devices["I2C"]        [ACTIV]: import gdev_i2c         # I2C  -    then imports dongles and sensor modules
+if gglobs.Devices["LabJack"]    [ACTIV]: import gdev_labjack     # LabJack - then imports the LabJack modules
+if gglobs.Devices["Simul"]      [ACTIV]: import gdev_simul       #
+if gglobs.Devices["MiniMon"]    [ACTIV]: import gdev_minimon     #
+if gglobs.Devices["WiFiClient"] [ACTIV]: import gdev_wificlient  #
+if gglobs.Devices["WiFiServer"] [ACTIV]: import gdev_wifiserver  #
+if gglobs.Devices["RaspiI2C"]   [ACTIV]: import gdev_raspii2c    #
+if gglobs.Devices["RaspiPulse"] [ACTIV]: import gdev_raspipulse  #
+if gglobs.Devices["Manu"]       [ACTIV]: import gdev_manu        #
 
 
+# Modality
+# Qt: A modal dialog is a dialog that blocks input to other visible windows in the same application.
+#
+# Modale Dialoge sperren den Rest der Anwendung (oder sogar der Benutzeroberfläche), solange der Dialog angezeigt wird.
+# Nichtmodale Dialoge erlauben auch Eingaben in der Applikation außerhalb des Dialogs.
+#
+# vergleiche Menu Show IP und MonServer: gleiche Programmierung, anderes Verhalten???
+#
+#   d.setWindowModality(Qt.WindowModal)
+#   d.setWindowModality(Qt.ApplicationModal)    # The window is modal to the application and blocks input to all windows.
+#   d.setWindowModality(Qt.NonModal)            # The window is not modal and does not block input to other windows.
 
 class ggeiger(QMainWindow):
 
     def __init__(self):
-        super(ggeiger, self).__init__()
+        """init the ggeiger class"""
+
+        fncname = "ggeiger__init__: "
+
+        # super(ggeiger, self).__init__()   # needed for Py2
+        super().__init__()                  # ok for Py3
         gglobs.exgg = self
 
         # hold the updated variable values in self.updateDisplayVariableValue()
         self.vlabels  = [None] * len(gglobs.varsCopy)
         self.svlabels = [None] * len(gglobs.varsCopy)
 
+        #
+        # getting font(s)
+        #
+        #
         # default font type
         # custom_font = QFont()
         # custom_font.setWeight(18);
@@ -74,41 +98,17 @@ class ggeiger(QMainWindow):
         # # set the font for *any* widget created in this QApplication:
         # QApplication.instance().setFont(QFont("Deja Vue"))
         # QApplication.instance().setFont(QFont("Helvetica"))
-
-
+        #
         # edprint(QFont.family())
-        edprint(QApplication.instance().font())
-        edprint(QApplication.font())
+        # edprint(QApplication.instance().font())
+        # edprint(QApplication.font())
         self.window().setFont(QFont("Sans Serif"))
+        #
+        # platform dependent!
+        # cdprint("Platform: ", platform.platform())
+            # Raspi: Bullseye      Platform: Linux-5.15.32-v8+-aarch64-with-glibc2.31
+            # Intel: Ubuntu 16.04: Platform: Linux-4.15.0-142-generic-x86_64-with-glibc2.23
 
-
-        # font standard
-        """
-        # font standard
-                #self.fontstd = QFont()
-                #self.fontstd = QFont("Deja Vue", 10)
-                #self.fontstd = QFont("pritzelbmpr", 10)
-                #self.fontstd = QFont("Courier New", 10)
-                #self.fontstd.setFamily('Monospace')         # options: 'Lucida'
-                #self.fontstd.StyleHint(QFont.TypeWriter)    # options: QFont.Monospace, QFont.Courier
-                #self.fontstd.StyleHint(QFont.Monospace)     # options: QFont.Monospace, QFont.Courier
-                #self.fontstd.setStyleStrategy(QFont.PreferMatch)
-                #self.fontstd.setFixedPitch(True)
-                #self.fontstd.setPointSize(11) # 11 is too big
-                #self.fontstd.setWeight(60)                  # options: 0 (thin) ... 99 (very thick); 60:ok, 65:too fat
-
-                gglobs.fontstd = self.fontstd
-        """
-
-        # self.fatfont = QFontDatabase.systemFont(QFontDatabase.FixedFont) #
-        # self.fatfont = QFontDatabase.systemFont(QFontDatabase.FixedFont) #
-        self.fatfont = QFont("Deja Vue")
-        # self.fatfont.setWeight(99)            # options: 0 (thin) ... 99 (very thick); 60:ok, 65:too fat
-        self.fatfont.setWeight(65)            # options: 0 (thin) ... 99 (very thick); 60:ok, 65:too fat
-        # self.fatfont.setPointSize(12)
-        self.fatfont.setPointSize(11)
-
-        #print("Platform: ", platform.platform())
         if "WINDOWS" in platform.platform().upper():
             dprint("WINDOWS: Setting QFontDatabase.FixedFont")
             self.fontstd = QFontDatabase.systemFont(QFontDatabase.FixedFont) # worked! got Courier New
@@ -116,18 +116,39 @@ class ggeiger(QMainWindow):
 
         elif "LINUX" in platform.platform().upper():
             dprint("LINUX: Setting QFontDatabase.FixedFont")
-            self.fontstd = QFontDatabase.systemFont(QFontDatabase.FixedFont) # worked! got DejaVu Sans Mono
-            #self.fontstd = QFont("Mono") # alternative
+            self.fontstd = QFont("Mono", 9)
+            # self.fontstd = QFont("Mono", 10)
 
         else:
             dprint("Other System: Setting QFontDatabase.FixedFont")
             self.fontstd = QFontDatabase.systemFont(QFontDatabase.FixedFont) # result ?
             #self.fontstd = QFont("Courier New") # alternative
 
+        #
+        # # font standard
+        #         #self.fontstd = QFont()
+        #         #self.fontstd = QFont("Deja Vue", 10)
+        #         #self.fontstd = QFont("pritzelbmpr", 10)
+        #         #self.fontstd = QFont("Courier New", 10)
+        #         #self.fontstd.setFamily('Monospace')         # options: 'Lucida'
+        #         #self.fontstd.StyleHint(QFont.TypeWriter)    # options: QFont.Monospace, QFont.Courier
+        #         #self.fontstd.StyleHint(QFont.Monospace)     # options: QFont.Monospace, QFont.Courier
+        #         #self.fontstd.setStyleStrategy(QFont.PreferMatch)
+        #         #self.fontstd.setFixedPitch(True)
+        #         #self.fontstd.setPointSize(11) # 11 is too big
+        #         #self.fontstd.setWeight(60)                  # options: 0 (thin) ... 99 (very thick); 60:ok, 65:too fat
+        #         gglobs.fontstd = self.fontstd
+        #
+        # self.fontstd = QFontDatabase.systemFont(QFontDatabase.FixedFont) # did NOT work on Raspi!
         self.fontstd.setFixedPitch(True)
-        self.fontstd.setWeight(60)
-
+        self.fontstd.setWeight(45)          # "Qt uses a weighting scale from 0 to 99" NOTE: >60 wirkt matschig
+                                            # options: 0 (thin) ... 99 (very thick); 60:ok, 65:fat
         gglobs.fontstd = self.fontstd
+
+        # self.fatfont used for HEADINGS: Data, Device, Graph
+        self.fatfont = QFont("Deja Vue")
+        self.fatfont.setWeight(65)
+        self.fatfont.setPointSize(11)
 
     # window
     # icon
@@ -137,8 +158,11 @@ class ggeiger(QMainWindow):
         self.setWindowIcon(gglobs.iconGeigerLog)
 
         # this is used for Web sites
-        with open(iconpath, 'rb') as file_handle:
-            gglobs.iconGeigerLogWeb = file_handle.read()
+        try:
+            with open(iconpath, 'rb') as file_handle:
+                gglobs.iconGeigerLogWeb = file_handle.read()
+        except Exception as e:
+            exceptPrint(e, fncname + "reading binary from iconpath")
 
     #title
         wtitle = "GeigerLog v{}".format(gglobs.__version__)
@@ -147,18 +171,26 @@ class ggeiger(QMainWindow):
 
     # screen
         screen_available = QDesktopWidget().availableGeometry()
-        sw = min(gglobs.window_width  -  2, screen_available.width() )      # Frame of 1 pixel left and right
+        # sw = min(gglobs.window_width  -   2, screen_available.width() )   # Frame of 1 pixel left and right
+        # sw = min(gglobs.window_width  -  10, screen_available.width() )   # Frame of 5 pixel left and right
+        sw = min(gglobs.window_width  - 12, screen_available.width() )      # Frame of 6 pixel left and right
         sh = min(gglobs.window_height - 29, screen_available.height())      # Frame top + bottom + Window bar of 29 pixel
-        x  = max(screen_available.width() - sw, 0)                          # should be >0 anyway
-        y  = screen_available.y()
+        xpos  = max(screen_available.width() - sw, 0)                       # should be >0 anyway
+        ypos  = screen_available.y()
 
-        if "WINDOWS" in platform.platform().upper(): y += 33                # some correction needed at least on Virtual Win8.1
-        if "ARMV"    in platform.platform().upper(): y += 33                # some correction needed at least on Manu 4
+        if "WINDOWS" in platform.platform().upper(): ypos += 33             # some correction needed at least on Virtual Win8.1
+        if "ARMV"    in platform.platform().upper(): ypos += 33             # some correction needed at least on Manu 4
+        if "AARCH64" in platform.platform().upper(): ypos += 33             # some correction needed at least on Raspi64
 
-        self.setGeometry(x, y, sw, sh)                                      # position window in upper right corner of screen
-        #~dprint("screen Geometry: ", QDesktopWidget().screenGeometry())    # total hardware screen
-        #~dprint("screen Available:", QDesktopWidget().availableGeometry()) # available screen
+        self.setGeometry(xpos, ypos, sw, sh)                                # position window in upper right corner of screen
 
+#         edprint("Screen Geometry: ", QDesktopWidget().screenGeometry())    # total hardware screen
+#         edprint("Screen Available:", QDesktopWidget().availableGeometry()) # available screen
+#         edprint("Screen as set: ", (x, y, sw, sh)  )
+#
+#         geom             = self.geometry()
+#         geom_frame       = self.frameGeometry()
+#         edprint("Current window size:", "{}x{} including window frame (w/o frame: {}x{})".format(geom_frame.width(), geom_frame.height(), geom.width(), geom.height()))
 
     #figure and its toolbar
         # a figure instance to plot on
@@ -176,7 +208,7 @@ class ggeiger(QMainWindow):
         self.canvas.mpl_connect('motion_notify_event', self.updatecursorposition) # where the cursor is
         self.canvas.mpl_connect('button_press_event' , self.onclick)              # send a mouse click
         self.canvas.setContentsMargins(10,10,10,10)
-        self.canvas.setMinimumHeight(500)
+        self.canvas.setMinimumHeight(450)
 
         # this is the figure Navigation widget; it takes the Canvas widget and a parent
         self.navtoolbar = NavigationToolbar(self.canvas, self)
@@ -256,13 +288,17 @@ class ggeiger(QMainWindow):
         addMenuTip(self.DeviceDisconnectAction, 'Disconnect the computer from the devices')
         self.DeviceDisconnectAction.triggered.connect(lambda : self.switchAllConnections("OFF"))
 
-        self.DeviceCalibAction = QAction("Geiger Tubes ...", self, enabled = True)
-        addMenuTip(self.DeviceCalibAction, "Set sensitivities for all Geiger tubes temporarily")
-        self.DeviceCalibAction.triggered.connect(self.setTemporaryTubeSensitivities)
-
         self.DeviceMappingAction = QAction('Show Device Mappings', self, enabled = True)
         addMenuTip(self.DeviceMappingAction, 'Show the mapping of variables of the activated devices')
         self.DeviceMappingAction.triggered.connect(self.showDeviceMappings)
+
+        self.DevicePortSettingAction = QAction('Show Device Port Settings', self, enabled = True)
+        addMenuTip(self.DevicePortSettingAction, 'Show the port settings for all activated devices')
+        self.DevicePortSettingAction.triggered.connect(lambda : showPortSettings())
+
+        self.DeviceCalibAction = QAction("Geiger Tubes ...", self, enabled = True)
+        addMenuTip(self.DeviceCalibAction, "Set sensitivities for all Geiger tubes temporarily")
+        self.DeviceCalibAction.triggered.connect(self.setTemporaryTubeSensitivities)
 
     # build the Device menu
         deviceMenu = self.menubar.addMenu('&Device')
@@ -274,11 +310,12 @@ class ggeiger(QMainWindow):
 
         deviceMenu.addSeparator()
         deviceMenu.addAction(self.DeviceMappingAction)
+        deviceMenu.addAction(self.DevicePortSettingAction)
         deviceMenu.addAction(self.DeviceCalibAction)
 
         deviceMenu.addSeparator()
 
-    # now following any device specific submenus
+    # now following all device specific submenus
 
     # submenu GMC
         if gglobs.Devices["GMC"][ACTIV]  :
@@ -295,9 +332,9 @@ class ggeiger(QMainWindow):
             addMenuTip(self.GMCConfigEditAction, 'View, Edit and Set the GMC device configuration')
             self.GMCConfigEditAction.triggered.connect(lambda: gdev_gmc.editGMC_Configuration())
 
-            self.GMCConfigAction = QAction('Show Configuration Memory', self, enabled=False)
-            addMenuTip(self.GMCConfigAction, 'Show the GMC device configuration memory as binary in human readable format')
-            self.GMCConfigAction.triggered.connect(gdev_gmc.fprintGMC_ConfigMemory)
+            self.GMCConfigMemoryAction = QAction('Show Configuration Memory', self, enabled=False)
+            addMenuTip(self.GMCConfigMemoryAction, 'Show the GMC device configuration memory as binary in human readable format')
+            self.GMCConfigMemoryAction.triggered.connect(gdev_gmc.fprintGMC_ConfigMemory)
 
             self.GMCONAction = QAction('Switch Power ON', self, enabled=False)
             addMenuTip(self.GMCONAction, 'Switch the GMC device power to ON')
@@ -307,40 +344,53 @@ class ggeiger(QMainWindow):
             addMenuTip(self.GMCOFFAction, 'Switch the GMC device power to OFF')
             self.GMCOFFAction.triggered.connect(lambda: self.switchGMCPower("OFF"))
 
-            self.GMCAlarmONAction = QAction('Switch Alarm ON', self, enabled=False)
-            addMenuTip(self.GMCAlarmONAction, 'Switch the GMC device alarm ON')
-            self.GMCAlarmONAction.triggered.connect(lambda: gdev_gmc.switchGMC_DeviceAlarm("ON"))
+            # self.GMCAlarmONAction = QAction('Switch Alarm ON', self, enabled=False)
+            # addMenuTip(self.GMCAlarmONAction, 'Switch the GMC device alarm ON')
+            # self.GMCAlarmONAction.triggered.connect(lambda: gdev_gmc.switchGMC_DeviceAlarm("ON"))
 
-            self.GMCAlarmOFFAction = QAction('Switch Alarm OFF', self, enabled=False)
-            addMenuTip(self.GMCAlarmOFFAction, 'Switch the GMC device alarm OFF')
-            self.GMCAlarmOFFAction.triggered.connect(lambda: gdev_gmc.switchGMC_DeviceAlarm("OFF"))
+            # self.GMCAlarmOFFAction = QAction('Switch Alarm OFF', self, enabled=False)
+            # addMenuTip(self.GMCAlarmOFFAction, 'Switch the GMC device alarm OFF')
+            # self.GMCAlarmOFFAction.triggered.connect(lambda: gdev_gmc.switchGMC_DeviceAlarm("OFF"))
 
-            self.GMCSpeakerONAction = QAction('Switch Speaker ON', self, enabled=False)
-            addMenuTip(self.GMCSpeakerONAction, 'Switch the GMC device speaker ON')
-            self.GMCSpeakerONAction.triggered.connect(lambda: gdev_gmc.switchGMC_DeviceSpeaker("ON"))
+            # self.GMCSpeakerONAction = QAction('Switch Speaker ON', self, enabled=False)
+            # addMenuTip(self.GMCSpeakerONAction, 'Switch the GMC device speaker ON')
+            # self.GMCSpeakerONAction.triggered.connect(lambda: gdev_gmc.switchGMC_DeviceSpeaker("ON"))
 
-            self.GMCSpeakerOFFAction = QAction('Switch Speaker OFF', self, enabled=False)
-            addMenuTip(self.GMCSpeakerOFFAction, 'Switch the GMC device speaker OFF')
-            self.GMCSpeakerOFFAction.triggered.connect(lambda: gdev_gmc.switchGMC_DeviceSpeaker("OFF"))
+            # self.GMCSpeakerOFFAction = QAction('Switch Speaker OFF', self, enabled=False)
+            # addMenuTip(self.GMCSpeakerOFFAction, 'Switch the GMC device speaker OFF')
+            # self.GMCSpeakerOFFAction.triggered.connect(lambda: gdev_gmc.switchGMC_DeviceSpeaker("OFF"))
 
-            self.GMCSavingStateAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, ''))), 'Set History Saving Mode ...', self, enabled=False)
-            addMenuTip(self.GMCSavingStateAction, 'Set History Saving Mode of GMC device to OFF, CPS, CPM, and CPM hourly average')
-            self.GMCSavingStateAction.triggered.connect(gdev_gmc.setGMC_HistSaveMode)
+            # self.GMCSavingStateAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, ''))), 'Set History Saving Mode ...', self, enabled=False)
+            # addMenuTip(self.GMCSavingStateAction, 'Set History Saving Mode of GMC device to OFF, CPS, CPM, and CPM hourly average')
+            # self.GMCSavingStateAction.triggered.connect(gdev_gmc.setGMC_HistSaveMode)
 
             self.GMCSetTimeAction = QAction('Set Date+Time', self, enabled=False)
             addMenuTip(self.GMCSetTimeAction, 'Set the Date + Time of the GMC device to the computer time')
             self.GMCSetTimeAction.triggered.connect(gdev_gmc.GMCsetDateTime)
 
+            self.GMCEraseSavedDataAction = QAction('Erase Saved Data ...', self, enabled=False)
+            addMenuTip(self.GMCEraseSavedDataAction, 'Erase all data from the History memory of the GMC device')
+            self.GMCEraseSavedDataAction.triggered.connect(lambda: gdev_gmc.doEraseSavedData())
+
             self.GMCREBOOTAction = QAction('Reboot ...', self, enabled=False)
-            addMenuTip(self.GMCREBOOTAction, 'Send REBOOT command to the GMC device')
-            self.GMCREBOOTAction.triggered.connect(lambda: gdev_gmc.doREBOOT())
+            addMenuTip(self.GMCREBOOTAction, 'Reboot the GMC device')
+            self.GMCREBOOTAction.triggered.connect(lambda: gdev_gmc.doREBOOT(False))
 
             self.GMCFACTORYRESETAction = QAction('FACTORYRESET ...', self, enabled=False)
-            addMenuTip(self.GMCFACTORYRESETAction, 'Send FACTORYRESET command to the GMC device')
+            addMenuTip(self.GMCFACTORYRESETAction, 'Reset the GMC device to factory configuration')
             self.GMCFACTORYRESETAction.triggered.connect(lambda: gdev_gmc.doFACTORYRESET(False))
 
-            self.GMCFACTORYRESET_forceAction = QAction('Devel FACTORYRESET', self, enabled=True)
-            addMenuTip(self.GMCFACTORYRESET_forceAction, 'Send FACTORYRESET command to the GMC device')
+            self.GMCSerialAction = QAction('Set Serial Port ...', self, enabled=True)
+            addMenuTip(self.GMCSerialAction, 'Manually set the serial port of the GMC device')
+            self.GMCSerialAction.triggered.connect(lambda: setDeviceSerialPort("GMC", gglobs.GMC_usbport))
+
+
+            self.GMCREBOOT_forceAction = QAction('DVL Force Reboot', self, enabled=True)
+            addMenuTip(self.GMCREBOOT_forceAction, 'Force a Reboot of the GMC device')
+            self.GMCREBOOT_forceAction.triggered.connect(lambda: gdev_gmc.doREBOOT(True))
+
+            self.GMCFACTORYRESET_forceAction = QAction('DVL Force FACTORYRESET', self, enabled=True)
+            addMenuTip(self.GMCFACTORYRESET_forceAction, 'Force a Reset of the GMC device to factory configuration')
             self.GMCFACTORYRESET_forceAction.triggered.connect(lambda: gdev_gmc.doFACTORYRESET(True))
 
             deviceSubMenuGMC = deviceMenu.addMenu("GMC Series")
@@ -348,11 +398,17 @@ class ggeiger(QMainWindow):
             deviceSubMenuGMC.addAction(self.GMCInfoAction)
             deviceSubMenuGMC.addAction(self.GMCInfoActionExt)
             deviceSubMenuGMC.addAction(self.GMCConfigEditAction)
-            deviceSubMenuGMC.addAction(self.GMCConfigAction)
+            deviceSubMenuGMC.addAction(self.GMCConfigMemoryAction)
             deviceSubMenuGMC.addAction(self.GMCSetTimeAction)
+            deviceSubMenuGMC.addAction(self.GMCEraseSavedDataAction)
+            deviceSubMenuGMC.addAction(self.GMCONAction)
+            deviceSubMenuGMC.addAction(self.GMCOFFAction)
             deviceSubMenuGMC.addAction(self.GMCREBOOTAction)
             deviceSubMenuGMC.addAction(self.GMCFACTORYRESETAction)
-            if gglobs.devel:    # Factory Reset without checking
+            deviceSubMenuGMC.addAction(self.GMCSerialAction)
+
+            if gglobs.devel:    # on devel allow Factory Reset without checking
+                deviceSubMenuGMC.addAction(self.GMCREBOOT_forceAction)
                 deviceSubMenuGMC.addAction(self.GMCFACTORYRESET_forceAction)
 
             # if 0 and gglobs.devel:
@@ -394,7 +450,8 @@ class ggeiger(QMainWindow):
             deviceSubMenuAudio.addAction(self.AudioInfoAction)
             deviceSubMenuAudio.addAction(self.AudioInfoActionExt)
             deviceSubMenuAudio.addAction(self.AudioPlotAction)
-            #deviceSubMenuAudio.addAction(self.AudioSignalAction)
+            if gglobs.devel:
+                deviceSubMenuAudio.addAction(self.AudioSignalAction)
             if gglobs.AudioOei:
                 deviceSubMenuAudio.addAction(self.AudioEiaAction)
 
@@ -481,6 +538,11 @@ class ggeiger(QMainWindow):
             addMenuTip(self.GSRebootAction, "Do a Gamma-Scout reboot as warm-start\nAvailable only for 'Online' models")
             self.GSRebootAction.triggered.connect(lambda: gdev_gscout.GSreboot())
 
+            self.GSSerialAction = QAction('Set Serial Port ...', self, enabled=True)
+            addMenuTip(self.GSSerialAction, 'Manually set the serial port of the I2C device')
+            # self.GSSerialAction.triggered.connect(lambda: gdev_gscout.setGS_SerialPort())
+            self.GSSerialAction.triggered.connect(lambda: setDeviceSerialPort("GammaScout", gglobs.GSusbport))
+
             deviceSubMenuGS  = deviceMenu.addMenu("Gamma-Scout Series")
             deviceSubMenuGS.setToolTipsVisible(True)
             deviceSubMenuGS.addAction(self.GSInfoAction)
@@ -490,6 +552,7 @@ class ggeiger(QMainWindow):
             deviceSubMenuGS.addAction(self.GSSetPCModeAction)
             deviceSubMenuGS.addAction(self.GSSetOnlineAction)
             deviceSubMenuGS.addAction(self.GSRebootAction)
+            deviceSubMenuGS.addAction(self.GSSerialAction)
 
     # submenu I2C
         if gglobs.Devices["I2C"][ACTIV] :
@@ -502,17 +565,21 @@ class ggeiger(QMainWindow):
             addMenuTip(self.I2CInfoActionExt, 'Show extended info on I2C device')
             self.I2CInfoActionExt.triggered.connect(lambda: self.fprintDeviceInfo("I2C", extended = True))
 
-            self.I2CForceCalibAction = QAction('Calibrate CO2 Sensor', self, enabled=True)
+            self.I2CForceCalibAction = QAction('Calibrate CO2 Sensor', self, enabled=False)
             addMenuTip(self.I2CForceCalibAction, 'Force a CO2 calibration of the SCD41 sensor')
             self.I2CForceCalibAction.triggered.connect(lambda: gdev_i2c.forceCalibration())
 
-            self.I2CScanAction = QAction('Scan I2C Bus', self, enabled=True)
+            self.I2CScanAction = QAction('Scan I2C Bus', self, enabled=False)
             addMenuTip(self.I2CScanAction, 'Scan I2C bus for any sensors and report to NotePad (only when not-logging)')
             self.I2CScanAction.triggered.connect(lambda: gdev_i2c.scanI2CBus())
 
-            self.I2CResetAction = QAction('Reset System', self, enabled=True)
+            self.I2CResetAction = QAction('Reset System', self, enabled=False)
             addMenuTip(self.I2CResetAction, 'Reset the I2C ELV dongle and attached sensors (only when not-logging)')
             self.I2CResetAction.triggered.connect(lambda: gdev_i2c.resetI2C())
+
+            self.I2CSerialAction = QAction('Set Serial Port ...', self, enabled=True)
+            addMenuTip(self.I2CSerialAction, 'Manually set the serial port of the I2C device')
+            self.I2CSerialAction.triggered.connect(lambda: setDeviceSerialPort("I2C", gglobs.I2Cusbport))
 
             deviceSubMenuI2C  = deviceMenu.addMenu("I2C Series")
             deviceSubMenuI2C.setToolTipsVisible(True)
@@ -521,6 +588,7 @@ class ggeiger(QMainWindow):
             deviceSubMenuI2C.addAction(self.I2CForceCalibAction)
             deviceSubMenuI2C.addAction(self.I2CScanAction)
             deviceSubMenuI2C.addAction(self.I2CResetAction)
+            deviceSubMenuI2C.addAction(self.I2CSerialAction)
 
 
     # submenu LabJack
@@ -580,11 +648,11 @@ class ggeiger(QMainWindow):
             addMenuTip(self.ManuInfoAction, 'Show basic info on Manu device')
             self.ManuInfoAction.triggered.connect(lambda: self.fprintDeviceInfo("Manu", extended = False))
 
-            self.ManuInfoActionExt = QAction('Show Extended Info', self, enabled=False)
-            addMenuTip(self.ManuInfoActionExt, 'Show extended info on Manu device')
-            self.ManuInfoActionExt.triggered.connect(lambda: self.fprintDeviceInfo("Manu", extended = True))
+            # self.ManuInfoActionExt = QAction('Show Extended Info', self, enabled=False)
+            # addMenuTip(self.ManuInfoActionExt, 'Show extended info on Manu device')
+            # self.ManuInfoActionExt.triggered.connect(lambda: self.fprintDeviceInfo("Manu", extended = True))
 
-            self.ManuValAction = QAction('Enter Values Manually', self, enabled=True)
+            self.ManuValAction = QAction('Enter Values Manually', self, enabled=False)
             addMenuTip(self.ManuValAction, "Enter Values Manually")
             self.ManuValAction.triggered.connect(gdev_manu.setManuValue)
 
@@ -602,28 +670,29 @@ class ggeiger(QMainWindow):
             addMenuTip(self.WiFiInfoAction, 'Show basic info on WiFiServer device')
             self.WiFiInfoAction.triggered.connect(lambda: self.fprintDeviceInfo("WiFiServer", extended=False))
 
-            # self.WiFiInfoActionExt = QAction('Show Extended Info', self, enabled=False)
-            # addMenuTip(self.WiFiInfoActionExt, 'Show extended info on WiFiServer device')
-            # self.WiFiInfoActionExt.triggered.connect(lambda: self.fprintDeviceInfo("WiFiServer", extended = True))
-
-            # self.WiFiSettingsAction = QAction('Set WiFiServer Properties ...', self, enabled=True)
-            # addMenuTip(self.WiFiSettingsAction, "Set properties like IP and data type")
-            # self.WiFiSettingsAction.triggered.connect(gdev_wifiserver.setWiFiServerProperties)
-
-            self.WiFiSettingsAction = QAction('Set WiFiServer Data Type ...', self, enabled=True)
-            addMenuTip(self.WiFiSettingsAction, "Set data type LAST or AVG")
-            self.WiFiSettingsAction.triggered.connect(gdev_wifiserver.setWiFiServerProperties)
+            self.WiFiInfoActionExt = QAction('Show Extended Info', self, enabled=False)
+            addMenuTip(self.WiFiInfoActionExt, 'Show extended info on WiFiServer device')
+            self.WiFiInfoActionExt.triggered.connect(lambda: self.fprintDeviceInfo("WiFiServer", extended = True))
 
             self.WiFiPingAction = QAction("Ping WiFiServer Device", self)
             addMenuTip(self.WiFiPingAction, 'Ping WiFiServer Device and report success or failure')
             self.WiFiPingAction.triggered.connect(lambda: gdev_wifiserver.pingWiFiServer())
 
+            self.WiFiSettingsAction = QAction('Set WiFiServer Data Type ...', self, enabled=True)
+            addMenuTip(self.WiFiSettingsAction, "Set data type LAST or AVG")
+            self.WiFiSettingsAction.triggered.connect(gdev_wifiserver.setWiFiServerProperties)
+
+            self.WiFiResetAction = QAction("Reset WiFiServer Device", self)
+            addMenuTip(self.WiFiResetAction, 'Reset WiFiServer Device')
+            self.WiFiResetAction.triggered.connect(lambda: gdev_wifiserver.resetWiFiServer())
+
             deviceSubMenuWiFi  = deviceMenu.addMenu("WiFiServer Series")
             deviceSubMenuWiFi.setToolTipsVisible(True)
             deviceSubMenuWiFi.addAction(self.WiFiInfoAction)
-            # deviceSubMenuWiFi.addAction(self.WiFiInfoActionExt)
+            deviceSubMenuWiFi.addAction(self.WiFiInfoActionExt)
             deviceSubMenuWiFi.addAction(self.WiFiPingAction)
             deviceSubMenuWiFi.addAction(self.WiFiSettingsAction)
+            deviceSubMenuWiFi.addAction(self.WiFiResetAction)
 
 
     # submenu WiFiClient
@@ -648,15 +717,68 @@ class ggeiger(QMainWindow):
             # deviceSubMenuWiFiClient.addAction(self.WiFiClientSettingsAction)
 
 
+    # submenu RaspiPulse
+        if gglobs.Devices["RaspiPulse"][ACTIV]  :
+
+            self.RaspiPulseInfoAction = QAction('Show Info', self, enabled=True)
+            addMenuTip(self.RaspiPulseInfoAction, 'Show basic info on RaspiPulse device')
+            self.RaspiPulseInfoAction.triggered.connect(lambda: self.fprintDeviceInfo("RaspiPulse", extended=False))
+
+            self.RaspiPulseInfoActionExt = QAction('Show Extended Info', self, enabled=False)
+            addMenuTip(self.RaspiPulseInfoActionExt, 'Show extended info on RaspiPulse device')
+            self.RaspiPulseInfoActionExt.triggered.connect(lambda: self.fprintDeviceInfo("RaspiPulse", extended = True))
+
+            self.RaspiPulseResetAction = QAction("Reset RaspiPulse Device", self)
+            addMenuTip(self.RaspiPulseResetAction, 'Reset RaspiPulse Device')
+            self.RaspiPulseResetAction.triggered.connect(lambda: gdev_raspipulse.resetRaspiPulse())
+
+            deviceSubMenuRaspiPulse  = deviceMenu.addMenu("RaspiPulse Series")
+            deviceSubMenuRaspiPulse.setToolTipsVisible(True)
+            deviceSubMenuRaspiPulse.addAction(self.RaspiPulseInfoAction)
+            deviceSubMenuRaspiPulse.addAction(self.RaspiPulseInfoActionExt)
+            deviceSubMenuRaspiPulse.addAction(self.RaspiPulseResetAction)
+
+
+    # submenu RaspiI2C
+        if gglobs.Devices["RaspiI2C"][ACTIV]  :
+
+            self.RaspiI2CInfoAction = QAction('Show Info', self, enabled=True)
+            addMenuTip(self.RaspiI2CInfoAction, 'Show basic info on RaspiI2C device')
+            self.RaspiI2CInfoAction.triggered.connect(lambda: self.fprintDeviceInfo("RaspiI2C", extended=False))
+
+            self.RaspiI2CInfoActionExt = QAction('Show Extended Info', self, enabled=False)
+            addMenuTip(self.RaspiI2CInfoActionExt, 'Show extended info on RaspiI2C device')
+            self.RaspiI2CInfoActionExt.triggered.connect(lambda: self.fprintDeviceInfo("RaspiI2C", extended = True))
+
+            self.RaspiI2CResetAction = QAction("Reset RaspiI2C Device", self)
+            addMenuTip(self.RaspiI2CResetAction, 'Reset RaspiI2C Device')
+            self.RaspiI2CResetAction.triggered.connect(lambda: gdev_raspii2c.resetRaspiI2C())
+
+            deviceSubMenuRaspiI2C  = deviceMenu.addMenu("RaspiI2C Series")
+            deviceSubMenuRaspiI2C.setToolTipsVisible(True)
+            deviceSubMenuRaspiI2C.addAction(self.RaspiI2CInfoAction)
+            deviceSubMenuRaspiI2C.addAction(self.RaspiI2CInfoActionExt)
+            deviceSubMenuRaspiI2C.addAction(self.RaspiI2CResetAction)
+
 
     # widgets for device in toolbar
         devBtnSize = 65
 
+        #  '#00C853',        # Google color green
+        #  '#ffe500',        # Google color yellow
+        #  '#EA4335',        # Google color red
         # !!! MUST NOT have a colon ':' after QPushButton !!!
-        self.dbtnStyleSheetON    = "QPushButton {margin-right:5px; background-color: #12cc3d; border-radius: 2px; border:1px solid silver; color: black; font-size:14px; font-weight:bold}"
-        self.dbtnStyleSheetOFF   = "QPushButton {margin-right:5px;  }"
-        self.dbtnStyleSheetError = "QPushButton {margin-right:5px; background-color: #ff3333; border-radius: 2px; border:1px solid silver; color: black; font-size:14px; font-weight:bold}"
+        # self.dbtnStyleSheetON    = "QPushButton {margin-right:5px; background-color: #12cc3d; border-radius: 2px; border:1px solid silver; color: black; font-size:14px; font-weight:bold}"
+        # self.dbtnStyleSheetOFF   = "QPushButton {margin-right:5px;  }"
+        # self.dbtnStyleSheetError = "QPushButton {margin-right:5px; background-color: #ff3333; border-radius: 2px; border:1px solid silver; color: black; font-size:14px; font-weight:bold}"
+        # self.dbtnStyleSheetSimul = "QPushButton {margin-right:5px; background-color: #FFF373; border-radius: 2px; border:1px solid silver; color: black; font-size:14px; font-weight:bold}"
 
+        self.dbtnStyleSheetOFF   = "QPushButton {margin-right:5px;  }"
+        self.dbtnStyleSheetError = "QPushButton {margin-right:5px; background-color: #EA4335; border-radius: 2px; border:1px solid silver; color: black; font-size:14px; font-weight:bold}"
+        self.dbtnStyleSheetSimul = "QPushButton {margin-right:5px; background-color: #ffe500; border-radius: 2px; border:1px solid silver; color: black; font-size:14px; font-weight:bold}"
+        self.dbtnStyleSheetON    = "QPushButton {margin-right:5px; background-color: #00C853; border-radius: 2px; border:1px solid silver; color: black; font-size:14px; font-weight:bold}"
+
+        # Power button (for GMC only)
         self.dbtnGMCPower = QPushButton()
         self.dbtnGMCPower.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_power-round_off.png'))))
         self.dbtnGMCPower.setFixedSize(32, 33)
@@ -670,15 +792,15 @@ class ggeiger(QMainWindow):
         self.connectTextGMC = 'GMC'
         self.dbtnGMC = QPushButton(self.connectTextGMC)
         self.dbtnGMC.setFixedSize(devBtnSize, 32)
-        self.dbtnGMC.setToolTip("GMC Device - Turns green once a connection is made - click for info")
+        self.dbtnGMC.setToolTip("GMC Device - Click for Device Info")
         self.dbtnGMC.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnGMC.setAutoFillBackground(True) # This is important!! Why???
         self.dbtnGMC.clicked.connect(lambda: self.fprintDeviceInfo("GMC", extended=False))
 
         self.connectTextAudio = 'Audio'
-        self.dbtnAudio =  QPushButton(self.connectTextAudio)
+        self.dbtnAudio = QPushButton(self.connectTextAudio)
         self.dbtnAudio.setFixedSize(devBtnSize, 32)
-        self.dbtnAudio.setToolTip("AudioCounter Device - Turns green once a connection is made - click for info")
+        self.dbtnAudio.setToolTip("AudioCounter Device - Click for Device Info")
         self.dbtnAudio.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnAudio.setAutoFillBackground(True)
         self.dbtnAudio.clicked.connect(lambda: self.fprintDeviceInfo(self.connectTextAudio, extended = False))
@@ -686,7 +808,7 @@ class ggeiger(QMainWindow):
         self.connectTextRM = 'RadM'
         self.dbtnRM =  QPushButton(self.connectTextRM)
         self.dbtnRM.setFixedSize(devBtnSize,32)
-        self.dbtnRM.setToolTip("RadMon Device - Turns green once a connection is made - click for info")
+        self.dbtnRM.setToolTip("RadMon Device - Click for Device Info")
         self.dbtnRM.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnRM.setAutoFillBackground(True)
         self.dbtnRM.clicked.connect(lambda: self.fprintDeviceInfo("RadMon"))
@@ -694,32 +816,15 @@ class ggeiger(QMainWindow):
         self.connectTextAmbio = 'Ambio'
         self.dbtnAmbio =  QPushButton(self.connectTextAmbio)
         self.dbtnAmbio.setFixedSize(devBtnSize, 32)
-        self.dbtnAmbio.setToolTip("Manu Device - Turns green once a connection is made - click for info")
+        self.dbtnAmbio.setToolTip("Manu Device - Click for Device Info")
         self.dbtnAmbio.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnAmbio.setAutoFillBackground(True)
         self.dbtnAmbio.clicked.connect(lambda: self.fprintDeviceInfo("AmbioMon"))
 
-        self.connectTextWiFi = 'WiFiS'
-        self.dbtnWServer = QPushButton(self.connectTextWiFi)
-        self.dbtnWServer.setFixedSize(devBtnSize, 32)
-        self.dbtnWServer.setToolTip("WiFiServer Device - Turns green once a connection is made - click for info")
-        self.dbtnWServer.setStyleSheet(self.dbtnStyleSheetOFF)
-        self.dbtnWServer.setAutoFillBackground(True)
-        self.dbtnWServer.clicked.connect(lambda: self.fprintDeviceInfo("WiFiServer"))
-
-        self.connectTextServ = 'WiFiC'
-        self.dbtnWClient = QPushButton(self.connectTextServ)
-        self.dbtnWClient.setFixedSize(devBtnSize, 32)
-        self.dbtnWClient.setToolTip("WiFiClient Device - Turns green once a connection is made - click for info")
-        self.dbtnWClient.setStyleSheet(self.dbtnStyleSheetOFF)
-        self.dbtnWClient.setAutoFillBackground(True)
-        self.dbtnWClient.clicked.connect(lambda: self.fprintDeviceInfo("WiFiClient"))
-
-        # self.connectTextGS = 'GS'
         self.connectTextGS = 'GScout'
         self.dbtnGS =  QPushButton(self.connectTextGS)
         self.dbtnGS.setFixedSize(devBtnSize, 32)
-        self.dbtnGS.setToolTip("GS Device - Turns green once a connection is made - click for info")
+        self.dbtnGS.setToolTip("GammaScout Device - Click for Device Info")
         self.dbtnGS.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnGS.setAutoFillBackground(True)
         self.dbtnGS.clicked.connect(lambda: self.fprintDeviceInfo("GammaScout"))
@@ -727,7 +832,7 @@ class ggeiger(QMainWindow):
         self.connectTextI2C = 'I2C'
         self.dbtnI2C =  QPushButton(self.connectTextI2C)
         self.dbtnI2C.setFixedSize(devBtnSize, 32)
-        self.dbtnI2C.setToolTip("I2C Device - Turns green once a connection is made - click for info")
+        self.dbtnI2C.setToolTip("I2C Device - Click for Device Info")
         self.dbtnI2C.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnI2C.setAutoFillBackground(True)
         self.dbtnI2C.clicked.connect(lambda: self.fprintDeviceInfo("I2C" ))
@@ -735,42 +840,75 @@ class ggeiger(QMainWindow):
         self.connectTextLJ = 'LabJck'
         self.dbtnLJ =  QPushButton(self.connectTextLJ)
         self.dbtnLJ.setFixedSize(devBtnSize, 32)
-        self.dbtnLJ.setToolTip("LabJack Device - Turns green once a connection is made - click for info")
+        self.dbtnLJ.setToolTip("LabJack Device - Click for Device Info")
         self.dbtnLJ.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnLJ.setAutoFillBackground(True)
         self.dbtnLJ.clicked.connect(lambda: self.fprintDeviceInfo("LabJack"))
 
-        self.connectTextManu = 'Manu'
-        self.dbtnManu = QPushButton(self.connectTextManu)
-        self.dbtnManu.setFixedSize(devBtnSize, 32)
-        self.dbtnManu.setToolTip("Manu Device - Turns green once a connection is made - click for info")
-        self.dbtnManu.setStyleSheet(self.dbtnStyleSheetOFF)
-        self.dbtnManu.setAutoFillBackground(True)
-        self.dbtnManu.clicked.connect(lambda: self.fprintDeviceInfo("Manu"))
-
-        self.connectTextSimul = 'Simul'
-        self.dbtnSimul =  QPushButton(self.connectTextSimul)
-        self.dbtnSimul.setFixedSize(devBtnSize, 32)
-        self.dbtnSimul.setToolTip("Simul Device - Turns green once a connection is made - click for info")
-        self.dbtnSimul.setStyleSheet(self.dbtnStyleSheetOFF)
-        self.dbtnSimul.setAutoFillBackground(True)
-        self.dbtnSimul.clicked.connect(lambda: self.fprintDeviceInfo(self.connectTextSimul))
-
         self.connectTextMiniMon = 'MiniM'
         self.dbtnMiniMon = QPushButton(self.connectTextMiniMon)
         self.dbtnMiniMon.setFixedSize(devBtnSize, 32)
-        self.dbtnMiniMon.setToolTip("MiniMon Device - Turns green once a connection is made - click for info")
+        self.dbtnMiniMon.setToolTip("MiniMon Device - Click for Device Info")
         self.dbtnMiniMon.setStyleSheet(self.dbtnStyleSheetOFF)
         self.dbtnMiniMon.setAutoFillBackground(True)
         self.dbtnMiniMon.clicked.connect(lambda: self.fprintDeviceInfo("MiniMon"))
 
+        self.connectTextSimul = 'Simul'
+        self.dbtnSimul =  QPushButton(self.connectTextSimul)
+        self.dbtnSimul.setFixedSize(devBtnSize, 32)
+        self.dbtnSimul.setToolTip("Simul Device - Click for Device Info")
+        self.dbtnSimul.setStyleSheet(self.dbtnStyleSheetOFF)
+        self.dbtnSimul.setAutoFillBackground(True)
+        self.dbtnSimul.clicked.connect(lambda: self.fprintDeviceInfo(self.connectTextSimul))
+
+        self.connectTextWiFiClient = 'WiFiC'
+        self.dbtnWClient = QPushButton(self.connectTextWiFiClient)
+        self.dbtnWClient.setFixedSize(devBtnSize, 32)
+        self.dbtnWClient.setToolTip("WiFiClient Device - Click for Device Info")
+        self.dbtnWClient.setStyleSheet(self.dbtnStyleSheetOFF)
+        self.dbtnWClient.setAutoFillBackground(True)
+        self.dbtnWClient.clicked.connect(lambda: self.fprintDeviceInfo("WiFiClient"))
+
+        self.connectTextWiFiServer = 'WiFiS'
+        self.dbtnWServer = QPushButton(self.connectTextWiFiServer)
+        self.dbtnWServer.setFixedSize(devBtnSize, 32)
+        self.dbtnWServer.setToolTip("WiFiServer Device - Click for Device Info")
+        self.dbtnWServer.setStyleSheet(self.dbtnStyleSheetOFF)
+        self.dbtnWServer.setAutoFillBackground(True)
+        self.dbtnWServer.clicked.connect(lambda: self.fprintDeviceInfo("WiFiServer"))
+
+        self.connectTextRaspiI2C = 'RI2C'
+        self.dbtnRI2C = QPushButton(self.connectTextRaspiI2C)
+        self.dbtnRI2C.setFixedSize(devBtnSize, 32)
+        self.dbtnRI2C.setToolTip("Raspi I2C Device - Click for Device Info")
+        self.dbtnRI2C.setStyleSheet(self.dbtnStyleSheetOFF)
+        self.dbtnRI2C.setAutoFillBackground(True)
+        self.dbtnRI2C.clicked.connect(lambda: self.fprintDeviceInfo("RaspiI2C"))
+
+        self.connectTextRaspiPulse = 'RPuls'
+        self.dbtnRPulse = QPushButton(self.connectTextRaspiPulse)
+        self.dbtnRPulse.setFixedSize(devBtnSize, 32)
+        self.dbtnRPulse.setToolTip("Raspi Pulse Device - Click for Device Info")
+        self.dbtnRPulse.setStyleSheet(self.dbtnStyleSheetOFF)
+        self.dbtnRPulse.setAutoFillBackground(True)
+        self.dbtnRPulse.clicked.connect(lambda: self.fprintDeviceInfo("RaspiPulse"))
+
+        self.connectTextManu = 'Manu'
+        self.dbtnManu = QPushButton(self.connectTextManu)
+        self.dbtnManu.setFixedSize(devBtnSize, 32)
+        self.dbtnManu.setToolTip("Manu Device - Click for Device Info")
+        self.dbtnManu.setStyleSheet(self.dbtnStyleSheetOFF)
+        self.dbtnManu.setAutoFillBackground(True)
+        self.dbtnManu.clicked.connect(lambda: self.fprintDeviceInfo("Manu"))
+
+
     # toolbar Devices
         toolbar = self.addToolBar('Devices')
         toolbar.setToolTip("Devices Toolbar")
-        toolbar.setIconSize(QSize(32,32))    # standard size is too small
+        toolbar.setIconSize(QSize(32,32))                       # standard size is too small
 
-        toolbar.addAction(self.toggleDeviceConnectionAction) # Connect icon
-        toolbar.addWidget(QLabel("   "))                # spacer
+        toolbar.addAction(self.toggleDeviceConnectionAction)    # Connect icon
+        toolbar.addWidget(QLabel("   "))                        # spacer
 
         if gglobs.Devices["GMC"][ACTIV]         : toolbar.addWidget(self.dbtnGMCPower)        # GMC power icon
         if gglobs.Devices["GMC"][ACTIV]         : toolbar.addWidget(self.dbtnGMC)             # GMC device display
@@ -782,9 +920,11 @@ class ggeiger(QMainWindow):
         if gglobs.Devices["LabJack"][ACTIV]     : toolbar.addWidget(self.dbtnLJ)              # LabJack device display
         if gglobs.Devices["MiniMon"][ACTIV]     : toolbar.addWidget(self.dbtnMiniMon)         # MiniMon device display
         if gglobs.Devices["Simul"][ACTIV]       : toolbar.addWidget(self.dbtnSimul)           # Simul device display
-        if gglobs.Devices["Manu"][ACTIV]        : toolbar.addWidget(self.dbtnManu)            # Manu device display
         if gglobs.Devices["WiFiClient"][ACTIV]  : toolbar.addWidget(self.dbtnWClient)         # WiFiClient device display
         if gglobs.Devices["WiFiServer"][ACTIV]  : toolbar.addWidget(self.dbtnWServer)         # WiFiServer device display
+        if gglobs.Devices["RaspiI2C"][ACTIV]    : toolbar.addWidget(self.dbtnRI2C)            # RaspiI2C device display
+        if gglobs.Devices["RaspiPulse"][ACTIV]  : toolbar.addWidget(self.dbtnRPulse)          # RaspiPulse device display
+        if gglobs.Devices["Manu"][ACTIV]        : toolbar.addWidget(self.dbtnManu)            # Manu device display
 
 #Log Menu
         self.logLoadFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_Log_DB.svg.png'))), 'Get Log from Database or Create New One ...', self)
@@ -808,6 +948,11 @@ class ggeiger(QMainWindow):
         self.addCommentAction = QAction('Add Comment to Log ...', self, enabled=False)
         addMenuTip(self.addCommentAction, 'Add a comment to the current log')
         self.addCommentAction.triggered.connect(lambda: self.addComment("Log"))
+
+        # clear Log File
+        self.clearLogfileAction = QAction('Clear Log File ...', self, enabled=True)
+        addMenuTip(self.clearLogfileAction, 'Set the log file to empty state')
+        self.clearLogfileAction.triggered.connect(lambda: self.clearLogfile())
 
         self.showLogDataAction = QAction('Show Log Data', self)
         addMenuTip(self.showLogDataAction, 'Show all records from current log')
@@ -843,6 +988,7 @@ class ggeiger(QMainWindow):
         loggingMenu.addAction(self.logLoadFileAction)
         loggingMenu.addAction(self.logLoadCSVAction)
         loggingMenu.addAction(self.addCommentAction)
+        loggingMenu.addAction(self.clearLogfileAction)
 
         loggingMenu.addSeparator()
         loggingMenu.addAction(self.setLogTimingAction)
@@ -857,13 +1003,14 @@ class ggeiger(QMainWindow):
 
         loggingMenu.addSeparator()
         loggingMenu.addAction(self.logSaveCSVAction)
-        #loggingMenu.triggered[QAction].connect(self.processtrigger)
+
+        # loggingMenu.triggered[QAction].connect(self.processtrigger) # just for testing; no action done
 
         toolbar = self.addToolBar('Log')
         toolbar.setToolTip("Log Toolbar")
         toolbar.setIconSize(QSize(32,32))  # standard size is too small
         toolbar.addAction(self.logLoadFileAction)
-        toolbar.addAction(self.logLoadCSVAction)
+        # toolbar.addAction(self.logLoadCSVAction)
         toolbar.addAction(self.startloggingAction)
         toolbar.addAction(self.quickLogAction)
         toolbar.addAction(self.logSnapAction)
@@ -897,13 +1044,13 @@ class ggeiger(QMainWindow):
         historyMenu.addSeparator()
 
 
-### begin device specific #########################
+### begin device specific History actions #########################
 
     # valid for GMC only
         if gglobs.Devices["GMC"][ACTIV] :
             # get his from device
             self.histGMCDeviceAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Device ...', self, enabled=False)
-            addMenuTip(self.histGMCDeviceAction, 'Load history data from any GMC device, create database, and plot')
+            addMenuTip(self.histGMCDeviceAction, 'Load history data from any GMC device, create database, and plot\n(when NOT logging)')
             self.histGMCDeviceAction.triggered.connect(lambda: self.getFileHistory("Device"))
 
             # get his from bin file
@@ -926,15 +1073,10 @@ class ggeiger(QMainWindow):
             addMenuTip(self.showHistBinDataExcerptAction, 'Show first and last few lines of history binary data in human readable form')
             self.showHistBinDataExcerptAction.triggered.connect(lambda: self.showData("HisBin", full=False))
 
-            # show FF map
-            self.historyFFAction = QAction("Show History Binary Data as FF Map", self)
+            # show AA / FF map
+            self.historyFFAction = QAction("Show History Binary Data as AA / FF Map", self)
             addMenuTip(self.historyFFAction, "Show History Binary Data as a map highlighting the locations of bytes with FF value (FF=empty value)")
             self.historyFFAction.triggered.connect(lambda: gsup_sql.createByteMapFromDB(0xFF))
-
-            # show AA map
-            self.historyAAAction = QAction("Show History Binary Data as AA Map", self)
-            addMenuTip(self.historyAAAction, "Show History Binary Data as a map highlighting the locations of bytes with AA value (AA=DateTime String)")
-            self.historyAAAction.triggered.connect(lambda: gsup_sql.createByteMapFromDB(0xAA))
 
             # save bin data to bin file
             self.showHistBinDataSaveAction = QAction('Save History Binary Data to File', self)
@@ -951,7 +1093,6 @@ class ggeiger(QMainWindow):
             historySubMenuGMC.addAction(self.showHistBinDataDetailAction) # bytecount
             historySubMenuGMC.addAction(self.showHistBinDataAction)
             historySubMenuGMC.addAction(self.showHistBinDataExcerptAction)
-            historySubMenuGMC.addAction(self.historyAAAction)
             historySubMenuGMC.addAction(self.historyFFAction)
 
             historySubMenuGMC.addSeparator()
@@ -962,7 +1103,7 @@ class ggeiger(QMainWindow):
     # valid for Gamma-Scout only
         if gglobs.Devices["GammaScout"][ACTIV]:
             self.histGSDeviceAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Device ...', self, enabled=False)
-            addMenuTip(self.histGSDeviceAction, 'Load history data from any Gamma-Scout device, create database, and plot')
+            addMenuTip(self.histGSDeviceAction, 'Load history data from any Gamma-Scout device, create database, and plot\n(when NOT logging)')
             self.histGSDeviceAction.triggered.connect(lambda: self.getFileHistory("GSDevice"))
 
             self.histGSDatFileAction = QAction(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_hist_device_active.png'))), 'Get History from Gamma-Scout Dat File ...', self)
@@ -1073,17 +1214,17 @@ class ggeiger(QMainWindow):
         historyMenu.addSeparator()
         historyMenu.addAction(self.histSaveCSVAction)
 
-        toolbar     = self.addToolBar('History')
+        toolbar = self.addToolBar('History')
         toolbar.setToolTip("History Toolbar")
         toolbar.setIconSize(QSize(32,32))  # standard size is too small
         toolbar.addAction(self.loadHistDBAction)
-        toolbar.addAction(self.loadHistHisAction)
+        # toolbar.addAction(self.loadHistHisAction)
 
 # Web menu
         # menu entry and toolbar button for Show IP Address
         self.IPAddrAction = QAction('Show IP Status', self, enabled=True)
         self.IPAddrAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_ip_address.png'))))
-        addMenuTip(self.IPAddrAction, "Show GeigerLog's current IP Address and Ports in use")
+        addMenuTip(self.IPAddrAction, "Show GeigerLog's current IP Address and Ports usage")
         self.IPAddrAction.triggered.connect(lambda: self.showIPStatus())
 
         # menu entry and toolbar button for Web Server access
@@ -1101,7 +1242,7 @@ class ggeiger(QMainWindow):
         self.GMCmapAction = QAction('Set up Radiation World Map ...', self, enabled=True)
         self.GMCmapAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_world_v2_inactive.png'))))
         addMenuTip(self.GMCmapAction, 'Set Properties of Radiation World Map Updating')
-        self.GMCmapAction.triggered.connect(lambda: setupRadWorldMap())
+        self.GMCmapAction.triggered.connect(lambda: gweb_radworld.setupRadWorldMap())
 
         webMenu = self.menubar.addMenu('&Web')
         webMenu.setToolTipsVisible(True)
@@ -1165,28 +1306,9 @@ class ggeiger(QMainWindow):
         addMenuTip(DisplayLastValAction, 'Show a table with the variables and their last value, including scaled value')
         DisplayLastValAction.triggered.connect(lambda: gsup_tools.displayLastValues())
 
-        self.DeviceSetUSBportAction = QAction('Set Port ...', self)
-        self.DeviceSetUSBportAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_SetPort.png'))))
-        addMenuTip(self.DeviceSetUSBportAction, 'Show all available USB-to-Serial Ports and allow selection of port and setting of baudrate for each device')
-        self.DeviceSetUSBportAction.triggered.connect(self.setSerialPort)
-
-        self.GMCDevicePortDiscoveryAction = QAction('GMC', self)
-        addMenuTip(self.GMCDevicePortDiscoveryAction, 'Find the USB Port connected to a GMC Geiger counter and its Baudrate automatically')
-        self.GMCDevicePortDiscoveryAction.triggered.connect(lambda: autoDiscoverUSBPort("GMC"))
-        if not gglobs.Devices["GMC"][ACTIV]:
-            self.GMCDevicePortDiscoveryAction.setEnabled(False)
-
-        self.I2CDevicePortDiscoveryAction = QAction('I2C', self)
-        addMenuTip(self.I2CDevicePortDiscoveryAction, 'Find the USB Port connected to an I2C device and its Baudrate automatically')
-        self.I2CDevicePortDiscoveryAction.triggered.connect(lambda: autoDiscoverUSBPort("I2C"))
-        if not gglobs.Devices["I2C"][ACTIV]:
-            self.I2CDevicePortDiscoveryAction.setEnabled(False)
-
-        self.GSDevicePortDiscoveryAction = QAction('GS', self)
-        addMenuTip(self.GSDevicePortDiscoveryAction, 'Find the USB Port connected to a Gamma-Scout Geiger counter and its Baudrate automatically')
-        self.GSDevicePortDiscoveryAction.triggered.connect(lambda: autoDiscoverUSBPort("GS"))
-        if not gglobs.Devices["GammaScout"][ACTIV]:
-            self.GSDevicePortDiscoveryAction. setEnabled(False)
+        FixAudioAction = QAction("Fix garbled audio", self)
+        addMenuTip(FixAudioAction, 'Fix for a Linux-only PulseAudio bug resulting in garbled audio')
+        FixAudioAction.triggered.connect(lambda: fixGarbledAudio())
 
 
         toolsMenu = self.menubar.addMenu('&Tools')
@@ -1194,9 +1316,6 @@ class ggeiger(QMainWindow):
 
         toolsMenu.addAction(PlotLogAction)
         toolsMenu.addAction(PlotHisAction)
-
-        # toolsMenu.addSeparator()
-        # toolsMenu.addAction(fprintPlotDataAction)
 
         toolsMenu.addSeparator()
         toolsMenu.addAction(fprintSuStAction)
@@ -1211,19 +1330,9 @@ class ggeiger(QMainWindow):
         toolsMenu.addAction(fprintPlotDataAction)
         toolsMenu.addAction(DisplayLastValAction)
 
-        toolsMenu.addSeparator()
-        toolsMenu.addAction(self.DeviceSetUSBportAction)
-
-        toolsSubMenu = toolsMenu.addMenu("Autodiscover Port for Device")
-        toolsSubMenu.setToolTipsVisible(True)
-        toolsSubMenu.addAction(self.GMCDevicePortDiscoveryAction)
-        toolsSubMenu.addAction(self.I2CDevicePortDiscoveryAction)
-        toolsSubMenu.addAction(self.GSDevicePortDiscoveryAction)
-
-        toolbar = self.addToolBar('Tools')
-        toolbar.setToolTip("Tools Toolbar")
-        toolbar.setIconSize(QSize(32,32))  # standard size is too small
-        toolbar.addAction(self.DeviceSetUSBportAction)
+        if "LINUX" in platform.platform().upper():
+            toolsMenu.addSeparator()
+            toolsMenu.addAction(FixAudioAction)
 
 
 #Help Menu
@@ -1248,6 +1357,10 @@ class ggeiger(QMainWindow):
         addMenuTip(self.helpOccupationalRadiationAction, 'Occupational Radiation Limits in USA and Germany')
         self.helpOccupationalRadiationAction.triggered.connect(self.helpOccupationalRadiation)
 
+        self.showOptionsAction = QAction('Show Command Line Options', self)
+        addMenuTip(self.showOptionsAction, 'Show command line options')
+        self.showOptionsAction.triggered.connect(self.helpOptions)
+
         self.helpAboutAction = QAction('About GeigerLog', self)
         addMenuTip(self.helpAboutAction, 'About the GeigerLog program')
         self.helpAboutAction.triggered.connect(self.helpAbout)
@@ -1263,10 +1376,12 @@ class ggeiger(QMainWindow):
         helpMenu.addAction(self.helpFirmwareBugAction)
         helpMenu.addAction(self.helpWorldMapsAction)
         helpMenu.addAction(self.helpOccupationalRadiationAction)
+        helpMenu.addAction(self.showOptionsAction)
 
         helpMenu.addSeparator()
         #helpMenu.addAction(self.helpAboutQTAction)
         helpMenu.addAction(self.helpAboutAction)
+
         #helpMenu.triggered[QAction].connect(self.processtrigger)
 
 
@@ -1277,7 +1392,7 @@ class ggeiger(QMainWindow):
             showOptionsAction.triggered.connect(self.helpOptions)
 
             changeOptionsAction = QAction('Change Command Line Options', self)
-            addMenuTip(changeOptionsAction, 'Allows to change some command line options during running')
+            addMenuTip(changeOptionsAction, 'Allows to change some command line options while running')
             changeOptionsAction.triggered.connect(self.changeOptions)
 
             showSystemInfoAction = QAction('Show System Info', self)
@@ -1296,20 +1411,20 @@ class ggeiger(QMainWindow):
             develGammaAction = QAction("GMC Configuration", self)
             develGammaAction.triggered.connect(lambda: gdev_gmc.editGMC_Configuration())
 
-            develBingAction = QAction("Bip", self)
-            develBingAction.triggered.connect(lambda: playWav(wtype = "ok"))
+            develBipAction = QAction("Play Bip", self)
+            develBipAction.triggered.connect(lambda: playWav(wtype = "ok"))
 
-            develBurpAction = QAction("Burp", self)
+            develBurpAction = QAction("Play Burp", self)
             develBurpAction.triggered.connect(lambda: playWav(wtype = "burp"))
 
-            develClickAction = QAction("Click", self)
-            develClickAction.triggered.connect(lambda: playClick())
+            develClickAction = QAction("Play Geiger Click", self)
+            develClickAction.triggered.connect(lambda: playGeigerClick())
 
-            develCounterAction = QAction("Counter", self)
-            develCounterAction.triggered.connect(lambda: playCounter())
+            develCounterAction = QAction("Play Geiger Counter", self)
+            develCounterAction.triggered.connect(lambda: playGeigerCounter())
 
-            develSineAction = QAction("Sine", self)
-            develSineAction.triggered.connect(lambda: playSine())
+            develSineAction = QAction("Play Sine Scale", self)
+            develSineAction.triggered.connect(lambda: playSineScale())
 
             develLogClickAction = QAction("Toggle Click Sound for Log Calls", self)
             develLogClickAction.triggered.connect(lambda: self.toggleLogClick())
@@ -1328,6 +1443,13 @@ class ggeiger(QMainWindow):
             develFixAudioAction = QAction("Fix garbled audio", self)
             develFixAudioAction.triggered.connect(lambda: fixGarbledAudio())
 
+            develCRC8Action = QAction("Show CRC8 result", self)
+            develCRC8Action.triggered.connect(lambda: showResultCRC8())
+
+            develColorAction = QAction("Print color codes to Terminal", self)
+            develColorAction.triggered.connect(lambda: printColorCodesToTerminal())
+
+
             # MonitorAction = QAction('Show Monitor', self)
             # addMenuTip(MonitorAction, 'Show a Monitor ')
             # MonitorAction.triggered.connect(lambda: gsup_tools.plotMonitor())
@@ -1340,7 +1462,7 @@ class ggeiger(QMainWindow):
             develMenu = self.menubar.addMenu('D&evel')
             develMenu.setToolTipsVisible(True)
 
-            develMenu.addAction(showOptionsAction)
+            # develMenu.addAction(showOptionsAction)
             develMenu.addAction(changeOptionsAction)
             develMenu.addAction(showSystemInfoAction)
 
@@ -1349,20 +1471,25 @@ class ggeiger(QMainWindow):
             develMenu.addAction(develAlphaAction)
             develMenu.addAction(develBetaAction)
             develMenu.addAction(develGammaAction)
-            develMenu.addAction(develBingAction)
+            develMenu.addAction(develBipAction)
             develMenu.addAction(develBurpAction)
             develMenu.addAction(develSineAction)
             develMenu.addAction(develClickAction)
             develMenu.addAction(develCounterAction)
             # develMenu.addAction(SaveRepairLogAction)
             # develMenu.addAction(SaveRepairHisAction)
-            develMenu.addAction(develAudioAction)
-            develMenu.addAction(develLogClickAction)
+
+            if "gdev_audio" in sys.modules:
+                develMenu.addAction(develAudioAction)
+            # develMenu.addAction(develLogClickAction)  # inactive
             # develMenu.addAction(MonitorAction)
             # develMenu.addAction(pggraphAction)
 
             if "LINUX" in platform.platform().upper():
                 develMenu.addAction(develFixAudioAction)
+
+            develMenu.addAction(develCRC8Action)
+            develMenu.addAction(develColorAction)
 
 
 # add navigation toolbar as last toolbar
@@ -1378,8 +1505,6 @@ class ggeiger(QMainWindow):
         # labels and entry fields
         dltitle  = QLabel("Data")
         dltitle.setFont(self.fatfont)
-        # dllog=QLabel("Log:")
-        # dlhist=QLabel("History:")
         dlDevice  = QLabel("Device")
         dlDevice.setFont(self.fatfont)
 
@@ -1395,9 +1520,6 @@ class ggeiger(QMainWindow):
         dbtnPlotHis.clicked.connect(lambda: self.plotGraph('His', full=False))
 
     # col 2, 3, 4
-        # dlcf     = QLabel("Database Files")
-        # dlcf.setAlignment(Qt.AlignCenter)
-
         self.dcfLog=QLineEdit()
         self.dcfLog.setReadOnly(True)
         self.dcfLog.setStyleSheet("QLineEdit { background-color: #DFDEDD; color: rgb(80,80,80); }")
@@ -1431,18 +1553,19 @@ class ggeiger(QMainWindow):
 # Row Data
         DataButtonWidth = BigButtonWidth + 35
 
-    # # button Scaling
-    #     self.btnSetScaling =  QPushButton('Scaling')
-    #     self.btnSetScaling.clicked.connect(self.editScaling)
-    #     self.btnSetScaling.setFixedWidth(DataButtonWidth)
-    #     self.btnSetScaling.setToolTip("Scaling - View and edit current settings for value- and graph-scaling")
-
     # button: add comment
         self.btnAddComment = QPushButton('Add Comment')
         self.btnAddComment.setFixedWidth(DataButtonWidth)
         self.btnAddComment.setEnabled(False)
         self.btnAddComment.setToolTip('Add a comment to current database file')
         self.btnAddComment.clicked.connect(lambda: self.addComment("Current"))
+#xyc
+    # button: clear log file
+        self.btnClearLogfile = QPushButton('Clear Log File')
+        self.btnClearLogfile.setFixedWidth(DataButtonWidth)
+        self.btnClearLogfile.setEnabled(False)
+        self.btnClearLogfile.setToolTip('Set the log file to empty state')
+        self.btnClearLogfile.clicked.connect(lambda: self.clearLogfile())
 
     # button: Log Cycle
         self.btnSetCycle = QPushButton()
@@ -1451,42 +1574,43 @@ class ggeiger(QMainWindow):
         self.btnSetCycle.setStyleSheet("QPushButton {}")
         self.btnSetCycle.clicked.connect(self.setLogCycle)
 
+    # H layout for comment and logcycle
         DataLayout = QHBoxLayout()
-        # DataLayout.addStretch()
-        # graphOptions.addWidget(btnSetScaling,   row, 3)
-        # DataLayout.addWidget(self.btnSetScaling)
+        if gglobs.devel: DataLayout.addWidget(self.btnClearLogfile)
         DataLayout.addWidget(self.btnAddComment)
         DataLayout.addWidget(self.btnSetCycle)
 
 # Row Notepad
-        NPButtonWidth = 70
+        NPButtonWidth = 65
+
     # header
         dlnotepad = QLabel("NotePad")
         dlnotepad.setFixedWidth(col0width)
         dlnotepad.setFont(self.fatfont)
 
+
     # button: print notepad to printer / pdf
         self.btnPrint2Printer = QPushButton('Print')
         self.btnPrint2Printer.clicked.connect(lambda: self.printNotePad())
-        self.btnPrint2Printer.setToolTip("Print Content of NotePad to printer or pdf-file")
+        self.btnPrint2Printer.setToolTip("Print Content of NotePad to Printer or  PDF-File")
         self.btnPrint2Printer.setFixedWidth(NPButtonWidth)
 
     # button: save notepad to file
         self.btnSaveNotePad = QPushButton('Save')
         self.btnSaveNotePad.clicked.connect(lambda: self.saveNotePad())
-        self.btnSaveNotePad.setToolTip("Save Content of NotePad as text file named <current filename>.notes")
+        self.btnSaveNotePad.setToolTip("Save Content of NotePad as Text File named <current filename>.notes")
         self.btnSaveNotePad.setFixedWidth(NPButtonWidth)
 
     # button: search notepad
         self.btnSearchNotePad = QPushButton("Search")
         self.btnSearchNotePad.clicked.connect(lambda: self.searchNotePad())
-        self.btnSearchNotePad.setToolTip("Search NotePad for occurence of a text (Shortcut: CTRL-F)")
+        self.btnSearchNotePad.setToolTip("Search NotePad for Occurence of a Text (Shortcut: CTRL-F)")
         self.btnSearchNotePad.setFixedWidth(NPButtonWidth)
 
     # button: print plot data
         self.btnPrintPlotData = QPushButton('Data Plt')
         self.btnPrintPlotData.setFixedWidth(NPButtonWidth)
-        self.btnPrintPlotData.setToolTip("Print variables as in the current plot to the Npotepad")
+        self.btnPrintPlotData.setToolTip("Print variables as in the current plot to the Notepad")
         self.btnPrintPlotData.clicked.connect(lambda: self.showData("PlotData"))
 
     # button: print full data to notepad
@@ -1542,10 +1666,6 @@ class ggeiger(QMainWindow):
 
         row = 0
         dataOptions.addWidget(dltitle,                 row, 0)
-        # dataOptions.addWidget(self.btnPrintPlotData,           row, 1, alignment=Qt.AlignLeft)
-        # dataOptions.addWidget(self.btnAddComment,      row, 2, alignment=Qt.AlignCenter)
-        # dataOptions.addWidget(self.btnAddComment,      row, 2, alignment=Qt.AlignRight)
-        # dataOptions.addWidget(self.btnSetCycle,              row, 3, alignment=Qt.AlignRight)
 
         dataOptions.addLayout(DataLayout,              row, 1, 1, 3)
         dataOptions.addWidget(vlinedB0,                row, 4, 3, 1)
@@ -1576,6 +1696,7 @@ class ggeiger(QMainWindow):
         dataOptionsGroup.setStyleSheet("QGroupBox {border-style:solid; border-width:1px; border-color:silver;}")
         dataOptionsGroup.setLayout(dataOptions)
         dataOptionsGroup.setFixedHeight(155)  # to match height with graph options (needed here: 143)
+        # dataOptionsGroup.setStyleSheet("background-color:%s;" % "#FaFF00") # macht alles gelb
 
 
 # GraphOptions
@@ -1658,8 +1779,6 @@ class ggeiger(QMainWindow):
         btnApplyGraph.setFixedWidth(col4width)
         btnApplyGraph.setToolTip("Apply the Graph Options and replot")
         btnApplyGraph.setStyleSheet("background-color: lightblue")
-        # btnApplyGraph.setMinimumHeight(51)
-        # btnApplyGraph.setMinimumHeight(76)
         btnApplyGraph.setDefault(True)
         btnApplyGraph.clicked.connect(self.applyGraphOptions)
 
@@ -1754,7 +1873,8 @@ class ggeiger(QMainWindow):
 
     # col 9:
 
-        col9width = 60
+        # col9width = 60
+        col9width = 50
 
         # SuSt
         btnQuickStats =  QPushButton('SuSt')
@@ -1888,6 +2008,7 @@ class ggeiger(QMainWindow):
         graphOptionsGroup = QGroupBox()
         graphOptionsGroup.setContentsMargins(0,0,0,0)
         graphOptionsGroup.setStyleSheet("QGroupBox {border-style: solid; border-width: 1px; border-color: silver;}")
+        # graphOptionsGroup.setStyleSheet("background-color:%s;" % "#FaFF00")
         graphOptionsGroup.setLayout(graphOptions)
         graphOptionsGroup.setFixedHeight(155)  # min height needed
 
@@ -1895,27 +2016,73 @@ class ggeiger(QMainWindow):
         self.notePad = QTextEdit()
         self.notePad.setReadOnly(True)
         self.notePad.setFont(self.fontstd)
-        self.notePad.setLineWrapMode(QTextEdit.NoWrap)
+        self.notePad.setLineWrapMode(QTextEdit.NoWrap)          # alt: QTextOption::WordWrap
         self.notePad.setTextColor(QColor(40, 40, 40))
-        # self.notePad.setStyleSheet("background-color:%s;" % gglobs.windowPadColor[0])
+        # self.notePad.setStyleSheet("background-color:%s;" % "#FaFF00")
 
         gglobs.notePad = self.notePad # pointer used for fprint in utils
 
 # LogPad
+        # limit the amount of text stored in the logPad.
+        # clear + append is MUCH faster than setText or setPlainText !!! (5000 ms vs 200 ms)
+        # Character count: 5 + 8 + 7 * 12 = 97 round up to 100 per line
+        # 100char/sec * 3600sec/h = 360 000 per h ==> 1 mio in 2.8h = ~3h
+        # 10000 char / 100char/sec ==> 100 sec, ~2min
+        # in overnight run the limit was done some 600 times; maximum duration was 0.237 sec!
+        #
+        # oldlptext = gglobs.logPad.toPlainText()
+        # lenOld    = len(oldlptext)
+        # lpmax     = 1e5                                       # max no of chars in logPad
+        # if lenOld > lpmax:
+        #     lpshort   = oldlptext[-int(lpmax - 10000):]       # exclude first 10000+ chars
+        #     LFindex   = lpshort.find("\n")                    # find position of first LF in remaining text
+        #     newlptext = lpshort[LFindex + 1:]
+        #     lenNew    = len(newlptext)
+        #     Delta     = lenOld - lenNew
+        #     self.logPad.clear()
+        #     gglobs.logPad.append(newlptext)                   # append shortened text to logPad
+        # this is all replaced by:  self.logPad.document().setMaximumBlockCount(33)
+
+        self.logHeader = QLabel()
+        self.logHeader.setFont(self.fontstd)
+        # self.logHeader.setStyleSheet("background-color: %s; padding-left: 3 px;" % "#f0f0f0")
+        self.logHeader.setStyleSheet("background-color: {}; padding-left: 3 px;".format("#f0f0f0"))
+        self.logHeader.setMaximumHeight(25)                     # single line only
+
+        gglobs.LogHeaderText = "{:<11s} ".format("Time")
+        hlist = "M,S,M1,S1,M2,S2,M3,S3"
+        for a in hlist.split(","):  gglobs.LogHeaderText += "{:<6s}".format(a)  # 6 places
+        hlist = "T,P,H,X"
+        for a in hlist.split(","):  gglobs.LogHeaderText += "{:<7s}".format(a)  # 7 places
+        gglobs.LogHeaderText += "  "
+        self.logHeader.setText(gglobs.LogHeaderText)
+
+
         self.logPad = QTextEdit()
         self.logPad.setReadOnly(True)
         self.logPad.setFont(self.fontstd)
         self.logPad.setLineWrapMode(QTextEdit.NoWrap)
         self.logPad.setTextColor(QColor(40, 40, 40))
-        # self.logPad.setStyleSheet("background-color:%s;" % gglobs.windowPadColor[1])
+        self.logPad.document().setMaximumBlockCount(3600)  # Limit total output: 1 Block = 1 Zeile; at 1 sec cycle -> 3600 per hour
+        # self.logPad.setStyleSheet("background-color:%s;" % "#FaFF00")
 
         gglobs.logPad = self.logPad # pointer used for logPrint in utils
+
+        self.layoutLog = QVBoxLayout()
+        self.layoutLog.addWidget(self.logHeader)
+        self.layoutLog.addWidget(self.logPad)
+        self.layoutLog.setSpacing(0)
+        self.layoutLog.setContentsMargins(0,0,0,0)
+
+        self.logCombo = QWidget()
+        self.logCombo.setLayout(self.layoutLog)
+
 
 # set the layout - left side
         splitterPad = QSplitter(Qt.Vertical)
         splitterPad.addWidget(self.notePad)
-        splitterPad.addWidget(self.logPad)
-        splitterPad.setSizes([800, 250])
+        splitterPad.addWidget(self.logCombo)
+        splitterPad.setSizes([800, 290])
 
         layoutLeft = QVBoxLayout()
         layoutLeft.addWidget(dataOptionsGroup)
@@ -1926,8 +2093,7 @@ class ggeiger(QMainWindow):
 # set the layout - right side
         layoutRight = QVBoxLayout()
         layoutRight.addWidget(graphOptionsGroup)
-        # layoutRight.addStretch()
-        layoutRight.addWidget(self.canvas)      # add canvas directly, no frame
+        layoutRight.addWidget(self.canvas)          # add canvas directly, no frame
         layoutRight.setContentsMargins(0,0,0,0)
         layoutRight.setSpacing(0)
 
@@ -1947,23 +2113,20 @@ class ggeiger(QMainWindow):
 # centralwidget
         self.setCentralWidget(splitterBoth)
 
-#timer for logging
-        self.timer0 = QTimer()
-        # self.timer0.timeout.connect(self.runCycle)
-        self.timer0.timeout.connect(self.runLoggingCycle)
+# timer for logging
+# is replaced with its own thread
+#         self.timer0 = QTimer()
+#         self.timer0.timeout.connect(self.runLoggingCycle)
 
-
-#timer2 for checking
-        self.timer1 = QTimer()
-        # self.timer1.start(500)                          # 500 millisec
-        # self.timer1.start(100)                          # 100 millisec
-        self.timer1.start(10)                             # 10 millisec
-        self.timer1.timeout.connect(self.runCheckCycle)   # checks for start/stop coming from web page, logPad size, PNG request
+# timerCheck for checking
+        self.timerCheck = QTimer()
+        self.timerCheck.timeout.connect(self.runCheckCycle)     # checks various requests
+        self.timerCheck.start(10)                               # time in millisec
 
 #show
-        self.dcfLog.setText(str(gglobs.logFilePath))    # default is None
-        self.dcfHis.setText(str(gglobs.hisFilePath))
-        self.showTimingSetting (gglobs.logCycle)
+        self.dcfLog.setText(str(gglobs.logFilePath))        # default is "None" for filepath
+        self.dcfHis.setText(str(gglobs.hisFilePath))        # default is "None" for filepath
+        self.showTimingSetting (gglobs.logCycle)            # default is 3 (sec)
 
         self.show()
         if gglobs.window_size == "maximized":   self.showMaximized()
@@ -1975,7 +2138,7 @@ class ggeiger(QMainWindow):
         dprint("Screen: Dimensions: ",  QDesktopWidget().screenGeometry()) # gives screen dimensions
         dprint("Screen: Available:  ",  screen_available)                        # gives screen dimensions available
 
-        # Note on Window sizes:
+        # NOTE on Window sizes:
         # "On X11, a window does not have a frame until the window manager decorates it."
         # see: http://doc.qt.io/qt-4.8/application-windows.html#window-geometry
         # self.geometry(),      : gives Windows dimensions but has the frame EXCLUDED!
@@ -1987,156 +2150,244 @@ class ggeiger(QMainWindow):
         message = __copyright__ + ", by " + __author__ + ", License: " + __license__
         self.showStatusMessage(message, timing=0, error=False) # message remains until overwritten by next
 
-        Qt_update()
+        QtUpdate()
 
-        wprint("Data  Options group: height: {}, width: {}".format(dataOptionsGroup.height(), dataOptionsGroup.width()))
-        wprint("Graph Options group: height: {}, width: {}".format(graphOptionsGroup.height(), graphOptionsGroup.width()))
+        cdprint("Data  Options group: height: {}, width: {}".format(dataOptionsGroup.height(), dataOptionsGroup.width()))
+        cdprint("Graph Options group: height: {}, width: {}".format(graphOptionsGroup.height(), graphOptionsGroup.width()))
 
-        gdprint("Starting the GUI complete " + "-" * 100 + "\n")
+        dprint(TGREEN + "Starting the GUI is complete " + "-" * 100 + TDEFAULT + "\n")
 
-        if gglobs.startupProblems > "":
-            self.startupProblems(gglobs.startupProblems, closeGL=True)  # EXIT on Failure!
-
+        # Python problems - wrong version --> EXIT
         if gglobs.python_version  > "":
-            self.startupProblems(gglobs.python_version,  closeGL=True)  # EXIT on wrong Python version!
+            self.startupProblems(gglobs.python_version,  closeGL=True)
 
+        # Startup problems --> EXIT
+        if gglobs.startupProblems > "":
+            self.startupProblems(gglobs.startupProblems, closeGL=True)
+
+        # Config problems --> Continue
         if gglobs.configAlerts > "":
-            msg  = "<b>Configuration File has Problems, please review:\n"
-            msg += "(without correction, defaults will be used)</b>\n\n"
-            msg += gglobs.configAlerts
-            self.startupProblems(msg,  closeGL = False)
+            msg  = gglobs.configAlerts.replace("\n", "<br>")
+            self.startupProblems(msg,  closeGL=False)
             gglobs.configAlerts = ""
 
-        # at least one activated device?
-        isAnyDeviceActive = False
-        for DevName in gglobs.Devices:
-            if gglobs.Devices[DevName][ACTIV]:
-                isAnyDeviceActive = True
-                break
+        # at least one activated device?  if not warn but continue
+        ### local def #########################################
+        def isAnyDeviceActive():
+            for DevName in gglobs.Devices:
+                if gglobs.Devices[DevName][ACTIV]: return True
+            return False
+        ### end local def #####################################
 
-        if not isAnyDeviceActive:
-            self.fprintWarningMessage("WARNING: You have not activated any device!", configFlag=True)
+        if not isAnyDeviceActive():
+            dprint("No Devices are Activated !")
+            self.warnMissingDeviceActivations()
 
+        # MonServer autostart
         if gglobs.MonServerAutostart:
             gweb_monserv.initMonServer(force=True)
 
-        # Devel - start GeigerLog with command 'devel' e.g.: 'geigerlog -dv devel'
-        # on devel  : make some extra commands available in devel menu
-        # on devel1 : do devel and load database 'default.logdb' if available
-        # on devel2 : do devel1 and make connections
-        # on devel3 : do devel2 and start quicklog
-        if gglobs.devel:
-            crctest = (0x80, 0x06)
-            crctest = (0xFF, 0xFF)
-            cdprint("crc test: {} => {} ".format(crctest, getCRC8(crctest)))
-
-        if gglobs.devel1:
+        ## GeigerLog autostart options
+        if gglobs.autoQuickStart:
+            # quickstart - takes precedence
             self.switchAllConnections(new_connection = "ON")
-
-        if gglobs.devel2:
-            defaultFile = os.path.join(gglobs.dataPath, "default.logdb")
-            if os.access(defaultFile , os.R_OK):
-                self.getFileLog(defaultLogDBPath = defaultFile)
-            else:
-                dprint("Testfile '{}' not found".format(defaultFile), debug=True)
-
-        if gglobs.devel3:
             self.quickLog()
+        else:
+            # make autoLogPath
+            autoLogPath = os.path.join(gglobs.dataPath, gglobs.autoLogFile)
 
-        playWav("ok")
+            if gglobs.autoLogStart:
+                # autoLogStart
+                self.switchAllConnections(new_connection = "ON")
+                self.getFileLog(defaultLogDBPath=autoLogPath)
+                self.startLogging()
+            else:
+                if gglobs.autoDevConnect:
+                    # only auto Connect
+                    self.switchAllConnections(new_connection = "ON")
+
+                if gglobs.autoLogLoad:
+                    # only auto Load
+                    self.getFileLog(defaultLogDBPath=autoLogPath)
 
 
-#========== END __init__ ------------------***********
+
+    #     edprint("Screen Geometry: ", QDesktopWidget().screenGeometry())    # total hardware screen
+    #     edprint("Screen Available:", QDesktopWidget().availableGeometry()) # available screen
+    #     edprint("Screen as set: ", (x, y, sw, sh)  )
+    #     geom             = self.geometry()
+    #     geom_frame       = self.frameGeometry()
+    #     edprint("Current window size:", "{}x{} including window frame (w/o frame: {}x{})".format(geom_frame.width(), geom_frame.height(), geom.width(), geom.height()))
+
+
+
+#========== END __init__ ======================================================
 #
 #========== BEGIN Class Functions =============================================
 
+
+    def processtrigger(self, q):
+        """testing processtrigger"""
+
+        pass
+        #rdprint("'{}' was triggered".format(q.text()))
+
+#xyz
     def runCheckCycle(self):
-        """triggered by timer1, checks for start/stop set via web page and more"""
+        """triggered by timerCheck"""
 
-        fncname = "runCheckCycle: "
+        fncname     = "runCheckCycle: "
 
-        # check for startflag from web
-        if gglobs.startflag:
+        rCCstart    = time.time()
+        msgfmt      = "{:<14s}{:7.2f} ms"
+
+    # switch cycle button - options: "", "On", "Off"
+        if gglobs.logCycleButtonFlag > "":
+            self.flashCycleButton(gglobs.logCycleButtonFlag)
+            gglobs.logCycleButtonFlag = ""
+
+
+    # update Displays
+        # 1: "Last value" of the Selected Variable in the Graph area (~0.3 ms)
+        # 2: "Display Last Values" window                            (~1 ms)
+        elif gglobs.needDisplayUpdate :
+            gglobs.needDisplayUpdate = False
+
+            self.updateDisplayVariableValue()
+
+            duration    = 1000 * (time.time() - rCCstart)
+            msg         = msgfmt.format("update Disp:", duration)
+            cdprint(fncname + msg)
+
+
+    # update LogPad
+        elif len(gglobs.logLogPadDeque) > 0:
+            # logHeaderText:  Time       M     S     M1    S1    M2    S2    M3    S3    T      P      H      X
+            # Example:        14:25:53.4 4849  75    4829  80    .     .     4727  77    33.72  33.09  233680 0.994
+
+            msgLogPad, logValues   = gglobs.logLogPadDeque.popleft()
+            # edprint("msgLogPad: ", msgLogPad)
+
+            # extract values for all variables
+            if "No data" in msgLogPad:  # all data are NAN; msgLogPad has timestamp plus "No data"
+                pass
+            else:
+                for i, vname in enumerate(gglobs.varsCopy):
+                    if i < 8:
+                        # for all CPM* and CPS* give 5 digits space
+                        if logValues[vname] is None or np.isnan(logValues[vname]):
+                            sval = "{:<5s}".format(".")
+                        else:
+                            val = logValues[vname]
+                            if   isinstance(val, int) or val.is_integer():              # it is of integer value
+                                if      val < 1E5:      sval = "{:<5.0f}".format(val)   # less than 100 000
+                                else:                   sval = "{:<#5.3g}".format(val)  # 100 000 or greater
+                            else:
+                                val = round(val, 2)
+                                if      val <= 0.99:    sval = "{:<#5.2g}".format(val)
+                                else:                   sval = "{:<#5.3g}".format(val)
+                    else:
+                        # for T, P, H, X give 5 digits space + 1 extra space
+                        if logValues[vname] is None or np.isnan(logValues[vname]):
+                            sval = "{:<6s}".format(".")
+                        else:
+                            rval = round(logValues[vname], 3)
+                            # edprint("val:{} rval:{}".format(val, rval))
+                            if      rval <= 0.999:   sval = "{:<#6.3g}".format(rval)
+                            elif    rval <  1e3:     sval = "{:<#6.4g}".format(rval)
+                            elif    rval <  1E9:     sval = "{:<6.0f}" .format(rval)    # less than 1000 mio (999 999 999 = 9 digits)
+                            else:                    sval = "{:<#6.4G}".format(rval)
+
+                    msgLogPad += " {}".format(sval)
+
+            gglobs.SnapRecord = msgLogPad               # saving in case it was called by snaprecord
+            logPrint(msgLogPad)
+
+            duration    = 1000 * (time.time() - rCCstart)
+            msg         = msgfmt.format("update LogPad:", duration)
+            cdprint(fncname + msg)
+
+
+    # update mem
+        elif len(gglobs.logMemDataDeque) > 0:
+            # update 1 deque entry per loop. comes before graph, will be complete before graph update
+
+            datalist = gglobs.logMemDataDeque.popleft()
+
+            try:
+                # update options:
+                #   gglobs.logDBData = np.append       (gglobs.logDBData, [datalist],  axis=0)        # max = 10000 ms
+                #   gglobs.logDBData = np.concatenate ((gglobs.logDBData, [datalist]), axis=0)        # max = 12000 ms
+                #   gglobs.logDBData = np.vstack      ((gglobs.logDBData, [datalist])        )        # max =  9000 ms
+
+                gglobs.logDBData = np.vstack ((gglobs.logDBData, [datalist]))
+
+            except Exception as e:
+                exceptPrint(e, fncname)
+                efprint(longstime() + " " + fncname + str(e))
+
+            duration   = 1000 * (time.time() - rCCstart)
+            msg        = fncname + msgfmt.format("update Mem:", duration)
+
+            if gglobs.devel:
+                if duration > 500:
+                    efprint("DVL {} {} {}".format(longstime(), msg, "++++++++"))
+
+            cdprint(msg)
+
+            gglobs.needGraphUpdate = True   # the only place where:  gglobs.needGraphUpdate = True
+
+
+    # update graph
+        # plot the log data but only if Log (and not His) is displayed
+        elif gglobs.needGraphUpdate:
+            gglobs.needGraphUpdate = False
+
+            # from rCCstart to here: approx 5µs
+            if gglobs.activeDataSource == "Log":
+                # displaying Log
+                gglobs.currentDBData = gglobs.logDBData      # make the log data current!
+                makePlotMsg          = gsup_plot.makePlot()  # direct plot; slightly quicker than plotGraph
+            else:
+                # displaying His
+                makePlotMsg          = "No graph update; His is displayed"
+
+            duration  = 1000 * (time.time() - rCCstart)
+            xmsg      = " "             # " --> Xtra   " if gglobs.timing else " "
+            msg       = msgfmt.format("update Graph:", duration) + xmsg + str(makePlotMsg)
+            cdprint(fncname + msg)
+
+
+    # efprint thread message
+        # cannot fprint directly when origin is in different thread (e.g. MiniMon)
+        # Note: testing for empty is 3x faster than testing length > 0!
+        elif gglobs.ThreadMsg > "":
+            for msg in gglobs.ThreadMsg.strip().split("\n"): qefprint(msg)
+            gglobs.ThreadMsg = ""
+
+
+    ###### Web stuff Begin #####################################################
+    # check for start-flag from web
+        elif gglobs.startflag:
             gglobs.startflag = False
             if not gglobs.logging: self.startLogging()
 
-        # check for stopflag from web
-        if gglobs.stopflag:
+
+    # check for stop-flag from web
+        elif gglobs.stopflag:
             gglobs.stopflag = False
             if gglobs.logging:     self.stopLogging()
 
-        # check for cycletime overrun
-        if gglobs.runLogCycleDelta[0] > gglobs.logCycle:
-            msg = " Getting Log data took longer ({:0.3f} sec) than cycle ({:0.3f} sec)!".format(gglobs.runLogCycleDelta[0], gglobs.logCycle)
-            qefprint(stime() + msg)
-            edprint(msg)
-            edprint(gglobs.runLogCycleDelta[1])
-            gglobs.runLogCycleDelta = (0, "")  # runCheckCycle would catch it twice with its 500ms cycle
 
-        # Truncate logPad
-        # limit the amount of text stored in the logPad
-        # clear + append is MUCH faster than setText or setPlainText !!! (5000 ms vs 200 ms)
-        # Character count: 5 + 8 + 7 * 12 = 97 round up to 100
-        # 100char/sec * 3600sec/h = 360 000 per h ==> 1 mio in 2.8h = ~3h
-        # 10000 char / 100char/sec ==> 100 sec, ~2min
-        # in overnight run the limit was done some 600 times; maximum duration was 0.237 sec!
-        lpstart   = time.time()
-        oldlptext = gglobs.logPad.toPlainText()
-        lenOld    = len(oldlptext)
-        lpmax     = 1e5                                       # max no of chars in logPad
-        if lenOld > lpmax:
-            lpshort   = oldlptext[-int(lpmax - 10000):]       # exclude first 10000+ chars
-            LFindex   = lpshort.find("\n")                    # find position of first LF in remaining text
-            newlptext = lpshort[LFindex + 1:]
-            lenNew    = len(newlptext)
-            Delta     = lenOld - lenNew
-            self.logPad.clear()
-            gglobs.logPad.append(newlptext)                   # append shortened text to logPad
+    # check for quick-flag from web
+        elif gglobs.quickflag:
+            gglobs.quickflag = False
+            if not gglobs.logging: self.quickLog()
 
-        # prepare pic in memory
+
+    # update Telegram Messenger
+        # INACTIVE !!! removed when Telegram had a code change
         #
-        # prepare a JPG in memory
-        # gglobs.picbytes = io.BytesIO()
-        # plt.savefig(gglobs.picbytes, format="jpg")
-
-        # matplotlib offers some optional export options that are only
-        # available to .jpg files. For example, quality (default 95),
-        # optimize (default: false), and progressive (default: false).
-        # plt.savefig('line_plot.jpg', dpi=300, quality=80, optimize=True, progressive=True)
-        # MatplotlibDeprecationWarning: The 'quality' parameter of print_jpg()
-        # was deprecated in Matplotlib 3.3 and will be removed two minor releases
-        # later. Use pil_kwargs={'quality': ...} instead. If any parameter follows
-        # 'quality', they should be passed as keyword, not positionally.
-
-        # gglobs.picbytes = io.BytesIO()
-        # plt.savefig(gglobs.picbytes, format="jpg", pil_kwargs={'quality':80})
-
-        # prepare a PNG, SVG, JPG in memory
-        # with a MiniMon File of 20MB, 665000 records!
-        # DEBUG  : ...232 runCheckCycle: Make JPG:   915.4 ms
-        # DEBUG  : ...233 runCheckCycle: Make SVG: 36627.4 ms  # using SVG makes the generation time explode!
-        # DEBUG  : ...234 runCheckCycle: Make PNG:   933.0 ms
-        # DEBUG  : ...233 runCheckCycle: Make JPG:   945.2 ms  # Qual=80; quality reduction bringt nichts:
-
-        # mit 720 records:
-        # Vorteil PNG über SVG bleibt
-        # DEBUG  : ...268 runCheckCycle: Make JPG:  85.9 ms
-        # DEBUG  : ...269 runCheckCycle: Make SVG: 152.2 ms
-        # DEBUG  : ...270 runCheckCycle: Make PNG:  99.3 ms
-        # DEBUG  : ...244 runCheckCycle: Make JPG:  90.4 ms    # Qual=80; quality reduction bringt nichts
-
-        if gglobs.flagGetGraph:
-            gglobs.flagGetGraph = False
-
-            # get and save the pic into memory
-            startpng = time.time()
-            gglobs.picbytes = io.BytesIO()
-            plt.savefig(gglobs.picbytes, format="png")
-            duration = (time.time() - startpng) * 1000 # ms
-            cdprint(fncname + "Make PNG: {:0.1f} ms".format(duration))
-
-        # removed when Telegram had a code change
-        # # update Telegram Messenger
         # if gglobs.TelegramActivation:
         #     now = time.time()
         #     # print("now - gglobs.TelegramLastUpdate: ", now - gglobs.TelegramLastUpdate)
@@ -2144,131 +2395,47 @@ class ggeiger(QMainWindow):
         #         gglobs.TelegramLastUpdate = now
         #         updateTelegram()
 
-        # update GMCmap when RWMmapUpdateCycle expires
-        if gglobs.RWMmapActivation:
-            now = time.time()
-            if gglobs.RWMmapLastUpdate is None:
-                gglobs.RWMmapLastUpdate = now
-            else:
-                # print("now - gglobs.RWMmapLastUpdate: ", now - gglobs.RWMmapLastUpdate)
-                if now - gglobs.RWMmapLastUpdate > gglobs.RWMmapUpdateCycle * 60:
+
+    # update GMCmap
+        elif gglobs.RWMmapActivation:
+            if gglobs.logging:
+                now = time.time()
+                if gglobs.RWMmapLastUpdate is None:
+                    # set the cycle time
                     gglobs.RWMmapLastUpdate = now
-                    updateRadWorldMap()
+                else:
+                    # update when RWMmapUpdateCycle expires
+                    # print("now - gglobs.RWMmapLastUpdate: ", now - gglobs.RWMmapLastUpdate)
+                    if now - gglobs.RWMmapLastUpdate > gglobs.RWMmapUpdateCycle * 60:
+                        gglobs.RWMmapLastUpdate = now
+                        gweb_radworld.updateRadWorldMap()
+    ##### web stuff end ####################################################
 
 
-    def runLoggingCycle(self):
-        """Fetch the values from the devices, save to database, and update Display and Plot"""
+    # check for log cycletime overrun
+        # sollte nicht mehr vorkommen!?
+        elif gglobs.runLogCycleDurs[2] > (gglobs.logCycle * 250) and gglobs.devel:           # 1000 * 0.25 = 250
+            totalDur = gglobs.runLogCycleDurs[2] / 1000                     # totalDur = Grand Total dur in sec
+            msg1     = "LogCycle "
+            color    = None
 
-        if not gglobs.logging:            return  # currently not logging
-        # if gglobs.logConn == None:        return  # no connection defined
-        if gglobs.runLogCycleIsBusy:      return  # called while still active
+            if   totalDur > gglobs.logCycle * 1.0:                          # > full cycle
+                color = BOLDRED
+                msg1 += "OVERRUN"
 
-        gglobs.runLogCycleIsBusy = True
+            # elif totalDur > gglobs.logCycle * 0.5:                          # > half cycle
+            #     color = BOLDMAGENTA
+            #     msg1 += "Half Cycle"
 
-        # play Click
-        if gglobs.LogClickSound: playClick()
+            if color is not None:
+                msg1 += "\nDetails: Fetch: {:0.1f} ms, SaveToDB: {:0.1f} ms, Grand Total: {:0.1f} ms".format(*gglobs.runLogCycleDurs)
 
-        start_runLogCycle = time.time()
+                efprint(stime() + " " + msg1)
+                dprint(color + msg1.replace("\n", " ") + TDEFAULT)
+                gglobs.runLogCycleDurs = [0, 0, 0]  # runCheckCycle would catch it multiple times with its cycle shorter than logcycle
 
-        fncname             = "runLoggingCycle: "
-        msgfmt              = "{:<25s}   {:6.3f} "
-        msg                 = []
-        gglobs.LogReadings += 1                                 # update index (=LogReadings)
-
-        if gglobs.verbose:  print()                             # print empty line to terminal only
-
-        vprint(fncname + "saving to:", gglobs.logDBPath)
-        setDebugIndent(1)
-        vprint(getLoggedValuesHeader())                         # must come before fetchLogValues!
-
-        # set the time for this record
-        timeJulian, timetag = gsup_sql.DB_getLocaltime() # e.g.: 2458512.928904213, '2019-01-29 10:17:37'
-        #~print(fncname + "timetag:", timetag, ",  timeJulian:",timeJulian)
-
-        # For LogPad remove Date, use time only  '2018-07-14 12:00:52' --> '12:00:52'
-        # Example: Index     Time   vars and data
-        #           1162 11:43:40   M=143  S=1  M1=  S1=  M2=128.0  S2=3.0  M3=128.0  S3=3.0  T=25.0  P=983.63  H=24.0  X=18.0
-        msgLogPad = "{:2.7g} {:8s} ".format(gglobs.LogReadings, timetag[11:])
-
-        # fetch the data
-        # Example logvalue: {'CPM': 18110.0, 'CPS': 297.0, 'CPM1st': nan, 'CPS1st': nan, 'CPM2nd': nan, 'CPS2nd': nan, 'CPM3rd': nan, 'CPS3rd': nan, 'Temp': 295, 'Press': 293.8, 'Humid': 277, 'Xtra': 18}
-        s1 = time.time()
-        logValues = self.fetchLogValues()
-        duration  = 1000 * (time.time() - s1)
-        msg.append(msgfmt.format("getValues Total:", duration))
-        vprint(msg[-1])
-
-        # check for all NAN, and update lastLogValues with logValues, but only if new value is not NAN
-        nanOnly = True
-        for vname in gglobs.varsCopy:
-            if not np.isnan(logValues[vname]):
-                nanOnly                     = False
-                gglobs.lastLogValues[vname] = logValues[vname]
-
-        if nanOnly:
-            logPrint(msgLogPad + " No data")            # no saving, no display, no graph
-        else:
-            # save the data
-            s1 = time.time()
-            save_msg = self.saveLogValues(timeJulian, logValues)
-            duration  = 1000 * (time.time() - s1)
-            # gglobs.ManuValue[0] = round(duration, 3)
-            msg.append(msgfmt.format("save Data:", duration) + save_msg)
-            vprint(msg[-1])
-            if duration > 0.1 * gglobs.logCycle * 1000:
-                edprint(fncname + "Save Data took very long: {:0.3f} ms. Of this: {}".format(duration, save_msg))
-                # playClick()
-
-
-            # update the LogPad
-            # Example: Index     Time   vars=values ...
-            #           1162 11:43:40   M=143  S=1  M1=  S1=  M2=128.0  S2=3.0  M3=128.0  S3=3.0  T=25.0  P=983.63  H=24.0  X=18.0
-            s1 = time.time()
-            # get values for all loggable variables
-            for vname in gglobs.varsCopy:
-                if gglobs.varsSetForLog[vname]:
-                    msgLogPad += " {}=".format(gglobs.varsCopy[vname][1])
-                    if not np.isnan(logValues[vname]):  msgLogPad += "{:<7.6g}".format(logValues[vname]) # can print 6 digit number still as integer
-                    else:                               msgLogPad += " " * 7
-            logPrint(msgLogPad)
-            duration  = 1000 * (time.time() - s1)
-            msg.append(msgfmt.format("update LogPad:", duration))
-            vprint(msg[-1])
-
-            # update Displays
-            # - "Last value" of the Selected Variable in the Graph area (~0.3 ms)
-            # - "Display Last Values" window                            (~1 ms)
-            s1 = time.time()
-            self.updateDisplayVariableValue()
-            duration  = 1000 * (time.time() - s1)
-            msg.append(msgfmt.format("update Displays:", duration))
-            vprint(msg[-1])
-
-
-            # update graph, but only if current graph is the log graph!
-            s1 = time.time()
-            PlotMsg = ""
-            if gglobs.activeDataSource == "Log":
-                gglobs.currentDBData = gglobs.logDBData         # the data!
-                PlotMsg = gsup_plot.makePlot()  # direct plot; slightly quicker than plotGraph
-
-            duration  = 1000 * (time.time() - s1)
-            msg.append("{:<25s}   {:5.1f}  {}".format("update Graph:", duration, PlotMsg))
-            vprint(msg[-1])
-
-
-        totaldur  = 1000 * (time.time() - start_runLogCycle)
-        msg.append(msgfmt.format(fncname + "Total:", totaldur))
-        vprint(msg[-1])
-
-        setDebugIndent(0)
-
-        gglobs.runLogCycleIsBusy = False
-        gglobs.runLogCycleDelta  = (totaldur / 1000, ", ".join(msg))
-
-        gglobs.forceSaving = False
-
-        return msgLogPad # used in snap record
+        # print("r", end="", flush=True)
+##### end runCheckCycle(self): #############################################
 
 
     def fetchLogValues(self):
@@ -2276,19 +2443,22 @@ class ggeiger(QMainWindow):
 
         fncname = "fetchLogValues: "
 
-        # logValues is dict like: (in Python > 3.6 always ordered CPM .... Xtra!)
+        vprint(getLoggedValuesHeader())
+
+        # logValues is dict, always ordered, like:
         # {'CPM':93.0,'CPS':2.0,'CPM1st':45,'CPS1st':3,'CPM2nd':0,'CPS2nd':0,'CPM3rd':nan,'CPS3rd':nan,'Temp':3.0,'Press':4.0,'Humid':5.0,'Xtra':12}
+        # set all logValues items to NAN
         logValues = {}
         for vname in gglobs.varsCopy:
             logValues[vname] = gglobs.NAN   # NAN is needed later for testing
 
         # fetch the new values for each device (if active)
-        #   gglobs.Devices keys: "GMC", "Audio", "RadMon", "AmbioMon", "GammaScout", "I2C", "LabJack", "MiniMon", "Simul", "Manu", "WiFi"
-        #   e.g.: gglobs.Devices['GMC']   [VNAME] : ['CPM', 'CPS']              # VNAME == 1
+        #   gglobs.Devices keys: "GMC", "Audio", "RadMon", "AmbioMon", "GammaScout", "I2C", "LabJack", "MiniMon", ...
+        #   e.g.: gglobs.Devices['GMC']   [VNAME] : ['CPM', 'CPS']              # note: VNAME == 1
         #   e.g.: gglobs.Devices['RadMon'][VNAME] : ['T', 'P', 'H', 'X']
         for DevName in gglobs.Devices:
             if gglobs.Devices[DevName][CONN]: # look only at connected devices
-                devvars = gglobs.Devices[DevName][VNAME]    #   == ['T', 'P', 'H', 'X']
+                devvars = gglobs.Devices[DevName][VNAME]    #  e.g. == ['CPM', 'T', 'X']
                 if   DevName == "GMC"       : logValues.update(gdev_gmc         .getValuesGMC        (devvars))
                 elif DevName == "Audio"     : logValues.update(gdev_audio       .getValuesAudio      (devvars))
                 elif DevName == "RadMon"    : logValues.update(gdev_radmon      .getValuesRadMon     (devvars))
@@ -2299,103 +2469,43 @@ class ggeiger(QMainWindow):
                 elif DevName == "LabJack"   : logValues.update(gdev_labjack     .getValuesLabJack    (devvars))
                 elif DevName == "MiniMon"   : logValues.update(gdev_minimon     .getValuesMiniMon    (devvars))
                 elif DevName == "Simul"     : logValues.update(gdev_simul       .getValuesSimul      (devvars))
-                elif DevName == "Manu"      : logValues.update(gdev_manu        .getValuesManu       (devvars))
 
                 elif DevName == "WiFiClient": logValues.update(gdev_wificlient  .getValuesWiFiClient (devvars))
                 elif DevName == "WiFiServer": logValues.update(gdev_wifiserver  .getValuesWiFiServer (devvars))
 
+                elif DevName == "RaspiI2C"  : logValues.update(gdev_raspii2c    .getValuesRaspiI2C   (devvars))
+                elif DevName == "RaspiPulse": logValues.update(gdev_raspipulse  .getValuesRaspiPulse (devvars))
+
+                elif DevName == "Manu"      : logValues.update(gdev_manu        .getValuesManu       (devvars))
+
+        # cdprint("logValues: ", logValues)
         return logValues
 
 
-    def saveLogValues(self, timeJulian, logValues):
-        """Save data to database, and update data in memory"""
-
-        fncname = "saveLogValues: "
-
-        datalist     = [None] * (gglobs.datacolsDefault + 2)        # (12 + 2) x None; 2 wg Julianday
-        datalist[0]  = gglobs.LogReadings                           # store the index
-        datalist[1]  = "NOW"                                        # time stamp
-        datalist[2]  = "localtime"                                  # modifier for time stamp
-
-        # check for all data being nan
-        nanOnly      = True
-        for i, vname in enumerate(gglobs.varsCopy):
-            if not np.isnan(logValues[vname]):
-                nanOnly         = False
-                datalist[3 + i] = logValues[vname]                  # data into datalist[3 + following]
-
-        # rdprint(fncname + "datalist: ", datalist)
-
-        # save data, but only if at least one variable is not nan
-        timing = ""
-        if nanOnly:
-            timing += " all NAN, not saving"
-
-        else:
-        # Write to database file
-            # in >50000 writes average was 15.6 ms, Stddev = 3.0, maximum 300ms(!)
-            wdbstart = time.time()
-            gsup_sql.DB_insertData(gglobs.logConn, [datalist])
-            duration = (time.time() - wdbstart) * 1000
-            timing += " to db file: {:0.1f} ms".format(duration)
-            # gglobs.ManuValue[0] = round(duration, 3)    # -> Temp
-
-        # Write to memory
-            # time is set to matplotlib time
-            datalist = [
-                                                            # no index
-                        timeJulian - gglobs.JULIAN111,      # time is set to matplotlib time
-                        logValues["CPM"],
-                        logValues["CPS"],
-                        logValues["CPM1st"],
-                        logValues["CPS1st"],
-                        logValues["CPM2nd"],
-                        logValues["CPS2nd"],
-                        logValues["CPM3rd"],
-                        logValues["CPS3rd"],
-                        logValues["Temp"],
-                        logValues["Press"],
-                        logValues["Humid"],
-                        logValues["Xtra"],
-                       ]
-
-            # gglobs.logDBData = np.append       (gglobs.logDBData, [datalist],  axis=0)        # max = 10000 ms
-            # gglobs.logDBData = np.concatenate ((gglobs.logDBData, [datalist]), axis=0)        # max = 12000 ms
-            # gglobs.logDBData = np.vstack      ((gglobs.logDBData, [datalist])        )        # max =  9000 ms
-
-            wmstart = time.time()
-            gglobs.logDBData = np.vstack ((gglobs.logDBData, [datalist]))
-            duration = (time.time() - wmstart) * 1000
-            # rdprint("np.vstack ((gglobs.logDBData, [datalist])): {:0.3f} ms".format(duration))
-
-            # gglobs.ManuValue[1] = round(duration, 3)    # -> Press
-            timing += ",  to memory: {:0.1f} ms".format(duration)
-
-        return timing
-
-
     def snapLogValue(self):
-        """Take a measurement when toolbar icon Snap is clicked"""
+        """Take an out-of-order measurement (like when toolbar icon Snap is clicked)"""
 
         if not gglobs.logging: return
 
         fncname = "snapLogValue: "
-        vprint(fncname)
-        setDebugIndent(1)
 
-        snaprecord = self.runLoggingCycle() # do an extra logging cycle
+        vprint(fncname)
+        setIndent(1)
+
+        runLogCycle() # do an extra logging cycle
 
         fprint(header("Snapped Log Record"))
-        fprint(snaprecord)
-        vprint(fncname + snaprecord)
+        fprint(gglobs.LogHeaderText)
+        fprint(gglobs.SnapRecord)
+        dprint(fncname + gglobs.SnapRecord)
 
-        # comment to the DB
+        # send comment to the DB
         ctype       = "COMMENT"
         cJulianday  = "NOW"
-        cinfo       = "Snapped log record: '{}'".format(snaprecord)
+        cinfo       = "Snapped log record: '{}'".format(gglobs.SnapRecord)
         gsup_sql.DB_insertComments(gglobs.logConn, [[ctype, cJulianday, "localtime", cinfo]])
 
-        setDebugIndent(0)
+        setIndent(0)
 
 
 #####################################################################################################
@@ -2408,39 +2518,61 @@ class ggeiger(QMainWindow):
         fprint("Toggle Log Click", "is ON" if gglobs.LogClickSound else "is OFF")
 
 
-    # def flashCycleButton(self, mode):
+    def flashCycleButton(self, mode):
+        """make LogCycle button yellow during a log call, and grey otherwise"""
 
-    #     if mode == "ON":    stylesheetcode = "QPushButton {background-color:#F4D345; color:rgb(0,0,0);}" # yellow button bg
-    #     else:               stylesheetcode = "QPushButton {}"                                            # std grey button bg
-    #     self.btnSetCycle.setStyleSheet(stylesheetcode)
-    #     # Qt_update()                                     # without it no flashing at all
+        if mode == "On": stylesheetcode = "QPushButton {background-color:#F4D345; color:rgb(0,0,0);}" # yellow button bg, black text
+        else:            stylesheetcode = "QPushButton {}"                                            # std grey button bg
 
-
-    def fprintWarningMessage(self, message, configFlag=False):
-        """Warning No Device Activated"""
-
-        efprint(header(message))
-        if configFlag:  qefprint("Devices are activated in the configuration file 'geigerlog.cfg'.\n")
-        qefprint("Neither Logging nor History downloads from device are possible, but you can work on\n\
-                  existing Log and History data loaded from file.")
+        self.btnSetCycle.setStyleSheet(stylesheetcode)
 
 
-    def startupProblems(self, message, closeGL = True):
-        """alert on problems like wrong Python version, configuration file missing,
-        configuration file incorrect"""
+    def warnMissingDeviceActivations(self):
+        """Warning on no-Devices-activated"""
 
-        playWav("error")
+        message  = "<b>You have not activated any devices!</b><br><br>\
+                    You can work on existing data from Log or History loaded from database or CSV file,\
+                    but you cannot create new data, neither by Logging nor by History download from device, until a device is activated.\
+                    <br><br>Devices are activated in GeigerLog's configuration file <b>geigerlog.cfg</b>, which you find in the GeigerLog directory.\
+                    <br><br>Search in the file for the word <b>DEVICES</b>, then scroll down to find your \
+                    device <b>[XYZ]</b>, and set its <b>XYZActivation = yes</b>.<br><br>\
+                    <b>Example</b>: To activate a GMC counter find <b>[GMC_Device]</b> and set: <b>GMC_Activation = yes</b>.<br><br>\
+                    For more see chapter 'Configuration of GeigerLog' in the GeigerLog manual.<br>"
 
         msg = QMessageBox()
-        msg.setWindowIcon(self.iconGeigerLog)
-        msg.setWindowTitle("STARTUP PROBLEM")
-
-        msg.setText("<!doctype html>" + message)    # message must be html coded text
-
+        msg.setWindowIcon       (self.iconGeigerLog)
+        msg.setWindowTitle      ("Missing Device Activation")
+        msg.setIcon             (QMessageBox.Warning)
         msg.setStandardButtons  (QMessageBox.Ok)
         msg.setDefaultButton    (QMessageBox.Ok)
         msg.setEscapeButton     (QMessageBox.Ok)
         msg.setWindowModality   (Qt.WindowModal)
+
+        msg.setText("<!doctype html>" + message)    # message must be html coded text
+
+        playWav("err")
+
+        msg.exec()
+
+
+    def startupProblems(self, message, closeGL=True):
+        """Warning on serious problems like wrong Python version, configuration file missing,
+        configuration file incorrect"""
+
+        msg = QMessageBox()
+        msg.setWindowIcon(self.iconGeigerLog)
+        msg.setWindowTitle("STARTUP PROBLEM")
+        msg.setIcon(QMessageBox.Warning)
+        msg.setStandardButtons  (QMessageBox.Ok)
+        msg.setDefaultButton    (QMessageBox.Ok)
+        msg.setEscapeButton     (QMessageBox.Ok)
+        msg.setWindowModality   (Qt.WindowModal)
+
+        # msg.setText("<!doctype html>Please, review:\n\n" + message)    # message must be html coded text
+        msg.setText("<!doctype html>" + message)    # message must be html coded text
+
+        playWav("err")
+
         msg.exec()
 
         if closeGL:
@@ -2470,28 +2602,32 @@ class ggeiger(QMainWindow):
         lmonserve.setAlignment(Qt.AlignLeft)
 
         monserve = QLabel()
-        monserve.setToolTip('Monitor Server:   IP : Port')
-        if gglobs.MonServerActive: addr = (gglobs.MonServerIP, gglobs.MonServerPort)
-        else:                           addr = ("auto", "auto")
-        monserve.setText("{} : {}".format(*addr))
+        monserve.setToolTip('Monitor Server:   IP:Port')
+        if gglobs.MonServerSSL: ssl = "https://"
+        else:                   ssl = "http://"
+        monserve.setText("{}{} : {}".format(ssl, gglobs.GeigerLogIP, gglobs.MonServerPort))
 
     # WiFiClient Server
-        lwific = QLabel("GeigerLog's WiFiClient Server:")
-        lwific.setAlignment(Qt.AlignLeft)
+        if gglobs.Devices["WiFiClient"][ACTIV]:
+            lwific = QLabel("GeigerLog's WiFiClient Server:")
+            lwific.setAlignment(Qt.AlignLeft)
 
-        wific = QLabel()
-        wific.setToolTip('WiFiClient Server:   IP : Port')
-        wific.setText("{} : {}".format(gglobs.WiFiClientIP, gglobs.WiFiClientPort))
-
+            wific = QLabel()
+            wific.setToolTip('WiFiClient Server:   IP:Port')
+            ssl = "http://"
+            wific.setText("{}{} : {}".format(ssl, gglobs.GeigerLogIP, gglobs.WiFiClientPort))
+        else:
+            lwific = QLabel("")
+            wific  = QLabel("")
 
         ipoptions=QGridLayout()
         ipoptions.addWidget(lglip,                          0, 0)
         ipoptions.addWidget(glip,                           0, 1)
         ipoptions.addWidget(QLabel(""),                     1, 0)
-        ipoptions.addWidget(QLabel("IP Address : Port"),    2, 1)
-        ipoptions.addWidget(lmonserve,                      3, 0)
+        ipoptions.addWidget(QLabel("        IP Address :   Port"),    2, 1)
+        ipoptions.addWidget(lmonserve,                      3, 0)               # MonServer
         ipoptions.addWidget(monserve,                       3, 1)
-        ipoptions.addWidget(lwific,                         4, 0)
+        ipoptions.addWidget(lwific,                         4, 0)               # WiFiClient
         ipoptions.addWidget(wific,                          4, 1)
         ipoptions.addWidget(QLabel(""),                     6, 1)
 
@@ -2520,13 +2656,13 @@ class ggeiger(QMainWindow):
         fncname = "searchNotePad: "
 
         qid = QInputDialog()
-        stxt, ok = qid.getText(None, 'Search NotePad', 'Search Text:' + ' '*35, text=gglobs.notePadSearchText)
+        stxt, ok = qid.getText(None, 'Search NotePad', 'Search Text:' + ' ' * 35, text=gglobs.notePadSearchText)
         if not ok: return
 
         gglobs.notePadSearchText = stxt
-        #rint(fncname + "stxt = '{}'".format(stxt), type(stxt))
+        # cdprint(fncname + "stxt = '{}'".format(stxt), type(stxt))
 
-        flag = QTextDocument.FindBackward            # flag to search backwards
+        flag  = QTextDocument.FindBackward            # flag to search backwards
         found = self.notePad.find(stxt, flag)
         if found:  return
         else: # not found
@@ -2541,7 +2677,9 @@ class ggeiger(QMainWindow):
     def saveNotePad(self):
         """Save Content of NotePad to file"""
 
-        nptxt = self.notePad.toPlainText()  # Saving as Plain Text; all is b&W, no colors
+        fncname = "saveNotePad: "
+
+        nptxt = self.notePad.toPlainText()  # Saving as Plain Text; all is B&W, no colors
         #nptxt = self.notePad.toHtml()      # Saving in HTML Format; preserves color
         #print("nptxt:", nptxt)
 
@@ -2553,30 +2691,37 @@ class ggeiger(QMainWindow):
         fprint(header("Saving NotePad Content"))
         fprint("to File: {}\n".format(newFile))
 
-        with open(newFile, 'a') as f:
-            f.write(nptxt)
+        try:
+            with open(newFile, 'a') as f:
+                f.write(nptxt)
+        except Exception as e:
+            exceptPrint(e, fncname + "save nptxt")
 
 
 #exit GeigerLog
     def closeEvent(self, event):
         """is called via self.close! Allow to Exit unless Logging is active"""
-        # event: QEvent.Close = 19 : Widget was closed
+        # Qt event: QEvent.Close = 19 : Widget was closed
 
         fncname = "closeEvent: "
 
         setBusyCursor()
 
         dprint("closeEvent: event type: {}".format(event.type()))
-        setDebugIndent(1)
+        setIndent(1)
 
         if gglobs.logging :
             event.ignore()
-            self.showStatusMessage("Cannot exit when logging! Stop logging first")
-            dprint(fncname + "ignored; Cannot exit when logging! Stop logging first")
+            msg = "Cannot exit when logging! Stop logging first"
+            self.showStatusMessage(msg)
+            dprint(fncname + "ignored; " + msg)
 
         else:
             event.accept()                           # allow closing the window
             dprint(fncname + "accepted")
+
+            # terminate threads
+            gweb_monserv.terminateMonServer()
 
             # terminate all connected devices
             for DevName in gglobs.Devices:
@@ -2597,7 +2742,7 @@ class ggeiger(QMainWindow):
             # termination. Note the statement "can never return".
             sys.exit(0) # otherwise sub windows won't close
 
-        setDebugIndent(0)
+        setIndent(0)
         setNormalCursor()
 
 
@@ -2624,7 +2769,6 @@ class ggeiger(QMainWindow):
         else:                                 gglobs.varChecked4PlotHis[vname] = vIsChkd
         # gdprint("varChecked4PlotLog", getEasyDictPrint(gglobs.varChecked4PlotLog))
 
-        # if self.varDisplayCheckbox[vname].isChecked():
         if vIsChkd:
             # sets and enables the select combobox to the checked variable
             # thus making it to the selected variable
@@ -2658,8 +2802,6 @@ class ggeiger(QMainWindow):
         #print("changedGraphOptionsMav: i:", i)
         gglobs.mavChecked  = self.mavbox.isChecked()
 
-        if gglobs.mavChecked:           gglobs.printMavComments = True
-
         self.applyGraphOptions()
 
 
@@ -2676,8 +2818,6 @@ class ggeiger(QMainWindow):
         except Exception as e:
             # exceptPrint(e, "changedGraphOptionsMavText: MvAvg permits numeric values only")
             pass
-
-        if self.mavbox.isChecked():     gglobs.printMavComments = True
 
         self.applyGraphOptions()
 
@@ -2806,11 +2946,11 @@ class ggeiger(QMainWindow):
                                  # blocking by gglobs.allowGraphUpdate
 
 
-    def clearGraphLimits(self, printMavComments=False):
+    def clearGraphLimits(self):
         """resets all min, max graph options to empty and plots the graph"""
 
         vprint("clearGraphLimits:")
-        setDebugIndent(1)
+        setIndent(1)
 
         gglobs.Xleft               = None
         gglobs.Xright              = None
@@ -2829,7 +2969,7 @@ class ggeiger(QMainWindow):
 
         gsup_plot.makePlot()
 
-        setDebugIndent(0)
+        setIndent(0)
 
 
     def plotGraph(self, dataType, full=True):
@@ -2841,7 +2981,7 @@ class ggeiger(QMainWindow):
             return
 
         vprint("plotGraph: dataType:", dataType)
-        setDebugIndent(1)
+        setIndent(1)
 
         if dataType == "Log":
             gglobs.activeDataSource     = "Log"
@@ -2884,7 +3024,6 @@ class ggeiger(QMainWindow):
                 self.varDisplayCheckbox[vname]  .setEnabled(False)
         gglobs.allowGraphUpdate    = True
 
-
         if gglobs.currentDBData is not None:
             if gglobs.currentDBData.size > 0:
                 fprint(header("Plot Data"))
@@ -2894,16 +3033,16 @@ class ggeiger(QMainWindow):
 
         self.reset_replotGraph(full=full)
 
-        setDebugIndent(0)
+        setIndent(0)
 
 
-    def reset_replotGraph(self, printMavComments=False, full=True):
+    def reset_replotGraph(self, full=True):
         """resets all graph options to start conditions and plots the graph"""
 
         fncname = "reset_replotGraph: "
 
         vprint(fncname + "full: {}".format(full))
-        setDebugIndent(1)
+        setIndent(1)
 
         gglobs.allowGraphUpdate    = False
 
@@ -2932,7 +3071,7 @@ class ggeiger(QMainWindow):
             self.select.                 setCurrentIndex(0) # in case no data
             self.select.                 setEnabled(True)   # required
 
-        # if full reset to start condition
+        # if full, reset to start condition
         if full:
             for i, vname in enumerate(gglobs.varsCopy):
                 # cdprint("i:{:2d} vname: {:10s} varDisplayCheckbox[vname].isEnabled(): {}".format(i, vname, self.varDisplayCheckbox[vname].isEnabled()))
@@ -2966,7 +3105,7 @@ class ggeiger(QMainWindow):
 
         self.applyGraphOptions()
 
-        setDebugIndent(0)
+        setIndent(0)
 
 
     def applyGraphOptions(self):
@@ -3062,10 +3201,6 @@ class ggeiger(QMainWindow):
                 efprint("Graph: Wrong numbers: Ambient min must be less than Ambient max")
                 return
 
-    # # mav
-    #     try:    gglobs.mav     = float(mav)
-    #     except: gglobs.mav     = gglobs.mav_initial
-
     # color
         colorName = gglobs.varsCopy[getNameSelectedVar()][3]
         self.btnColor.setText("")
@@ -3075,8 +3210,6 @@ class ggeiger(QMainWindow):
     # replot
         gsup_plot.makePlot()
         self.updateDisplayVariableValue()
-
-        gglobs.flagGetGraph = True
 
 
     def updatecursorposition(self, event):
@@ -3112,7 +3245,7 @@ class ggeiger(QMainWindow):
 
 
     def onclick(self, event):
-        """on mouseclick in graph enter time coords into xmin, xmax
+        """on mouseclick in graph enter time coords into xmin, xmax;
         left click = xmin, right click = xmax"""
 
         try: # if no data are shown, this may result in non-breaking error messages
@@ -3140,10 +3273,10 @@ class ggeiger(QMainWindow):
 #history
     def getFileHistory(self, source):
         """getFileHistory from source. source is one out of:
-        - "Device"
-        - "Database"
-        - "Binary File"
-        - "Parsed File"
+                - "Device"
+                - "Database"
+                - "Binary File"
+                - "Parsed File"
         no return; data stored in global variables"""
 
         fncname = "getFileHistory: "
@@ -3157,7 +3290,7 @@ class ggeiger(QMainWindow):
             # writing to it is not necessary; it will not be modified
             dlg=QFileDialog(caption = "Get History - Select from Existing Database File", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.ExistingFile)
-            dlg.setNameFilter("History Files (*.hisdb);;Log Files (*.logdb);;History or Log Files (*.hisdb *.logdb)")
+            dlg.setNameFilter("History or Log Files (*.hisdb *.logdb);;Only History Files (*.hisdb);;Only Log Files (*.logdb);;Any Files (*)")
 
         elif source == "Binary File":
             # there must be an existing, readable '*.bin' file,
@@ -3165,7 +3298,7 @@ class ggeiger(QMainWindow):
             # the bin file will remain unchanged
             dlg=QFileDialog(caption = "Get History - Select from Existing Binary File", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.ExistingFile)
-            dlg.setNameFilter("History Files (*.bin *.gmc)")
+            dlg.setNameFilter("History Files (*.bin *.gmc);;Any Files (*)")
 
         elif source == "Parsed File":
             # there must be an existing, readable '*.his' file
@@ -3173,7 +3306,7 @@ class ggeiger(QMainWindow):
             # the his file will remain unchanged
             dlg=QFileDialog(caption= "Get History - Select from Existing *.his or other CSV File", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.ExistingFile)
-            dlg.setNameFilter("History Files (*.log *.his *.csv *.txt *.notes)")
+            dlg.setNameFilter("History Files (*.log *.his *.csv *.txt *.notes);;Any Files (*)")
 
         elif source == "Device":    # a GMC device
             if gglobs.logging:
@@ -3185,14 +3318,14 @@ class ggeiger(QMainWindow):
             # an existing hisdb file will be overwritten
             dlg=QFileDialog(caption = "Get History from GMC Device - enter new filename or select from existing", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.AnyFile)
-            dlg.setNameFilter("History Files (*.hisdb)")
+            dlg.setNameFilter("History Files (*.hisdb);;Any Files (*)")
 
         elif source == "GSDevice":  # a Gamma Scout device
             # may use existing or new .hisdb file, but must be allowed to overwrite this file
             # an existing hisdb file will be overwritten
             dlg=QFileDialog(caption = "Get History from Gamma-Scout Device - enter new filename or select from existing", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.AnyFile)
-            dlg.setNameFilter("History Files (*.hisdb)")
+            dlg.setNameFilter("History Files (*.hisdb);;Any Files (*)")
 
         elif source == "GSDatFile":
             # there must be an existing, readable '*.dat' file, created by
@@ -3201,21 +3334,21 @@ class ggeiger(QMainWindow):
             # the dat file will remain unchanged
             dlg=QFileDialog(caption = "Get History - Select from Existing Gamma Scout *.dat File", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.ExistingFile)
-            dlg.setNameFilter("History Files (*.dat)")
+            dlg.setNameFilter("History Files (*.dat);;Any Files (*)")
 
         elif source == "AMDeviceCAM":  # an Manu device for CAM data
             # may use existing or new .hisdb file, but must be allowed to overwrite this file
             # an existing hisdb file will be overwritten
             dlg=QFileDialog(caption = "Get History from Manu Device - enter new filename or select from existing", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.AnyFile)
-            dlg.setNameFilter("History Files (*.hisdb)")
+            dlg.setNameFilter("History Files (*.hisdb);;Any Files (*)")
 
         elif source == "AMDeviceCPS":  # an Manu device for CPS data
             # may use existing or new .hisdb file, but must be allowed to overwrite this file
             # an existing hisdb file will be overwritten
             dlg=QFileDialog(caption = "Get History from Manu Device - enter new filename or select from existing", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.AnyFile)
-            dlg.setNameFilter("History Files (*.hisdb)")
+            dlg.setNameFilter("History Files (*.hisdb);;Any Files (*)")
 
         #~ elif source == "AMDatFile":
             #~ ####### not valid -- placeholder for Manu !!!!!!!! ############
@@ -3227,7 +3360,7 @@ class ggeiger(QMainWindow):
             #~ # the dat file will remain unchanged
             #~ dlg=QFileDialog(caption = "Get History - Select from Existing Gamma Scout *.dat File", options=QFileDialog.DontUseNativeDialog)
             #~ dlg.setFileMode(QFileDialog.ExistingFile)
-            #~ dlg.setNameFilter("History Files (*.dat)")
+            #~ dlg.setNameFilter("History Files (*.dat);;Any Files (*)")
 
         elif source == "AMFileCAM":
             # there must be an existing, readable '*.CAM' file, created by
@@ -3236,7 +3369,7 @@ class ggeiger(QMainWindow):
             # the *.CAM file will remain unchanged
             dlg=QFileDialog(caption = "Get History - Select from Existing Manu binary *.CAM File", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.ExistingFile)
-            dlg.setNameFilter("History Binary Files (*.CAM)")
+            dlg.setNameFilter("History Binary Files (*.CAM);;Any Files (*)")
 
         elif source == "AMFileCPS":
             # there must be an existing, readable '*.CPS' file, created by
@@ -3245,7 +3378,7 @@ class ggeiger(QMainWindow):
             # the *.CPS file will remain unchanged
             dlg=QFileDialog(caption = "Get History - Select from Existing Manu binary *.CPS File", options=QFileDialog.DontUseNativeDialog)
             dlg.setFileMode(QFileDialog.ExistingFile)
-            dlg.setNameFilter("History Binary Files (*.CPS)")
+            dlg.setNameFilter("History Binary Files (*.CPS);;Any Files (*)")
 
         else:
             printProgError("getFileHistory: Filedialog: Wrong source: ", source)
@@ -3253,12 +3386,11 @@ class ggeiger(QMainWindow):
         dlg.setViewMode     (QFileDialog.Detail)
         dlg.setWindowIcon   (self.iconGeigerLog)
         dlg.setDirectory    (gglobs.fileDialogDir)
-
-        dlg.setFixedSize(950, 550)
+        dlg.setFixedSize    (950, 550)
 
         # Execute dialog
         if dlg.exec() == QDialog.Accepted:  pass     # QDialog Accepted
-        else:                                return   # QDialog Rejected
+        else:                               return   # QDialog Rejected
     ### end filedialog -  a file was selected
 
     #
@@ -3267,7 +3399,7 @@ class ggeiger(QMainWindow):
         while True:
             fprint(header("Get History from {}".format(source)))
             dprint(fncname + "from source: ", source)
-            setDebugIndent(1)
+            setIndent(1)
 
             gglobs.fileDialogDir = dlg.directory().path() # remember the directory
             #print("getFileHistory: fileDialogDir:", gglobs.fileDialogDir)
@@ -3400,7 +3532,7 @@ class ggeiger(QMainWindow):
             # Make Hist for source = AmbioMon device
             elif source in ("AMDeviceCAM", "AMDeviceCPS"):
                 # error, message = gdev_Manu.makeAmbioHistory(source, gglobs.AmbioDeviceName)
-                error, message = gdev_Manu.makeAmbioHistory(source, gglobs.Devices["AmbioMon"][DNAME])
+                error, message = gdev_ambiomon.makeAmbioHistory(source, gglobs.Devices["AmbioMon"][DNAME])
                 if error == -1:                                # a severe error
                     efprint(message)
                     break
@@ -3408,7 +3540,7 @@ class ggeiger(QMainWindow):
             # Make Hist for source = AmbioMon binary file
             elif source in ("AMFileCAM", "AMFileCPS"):
                 # error, message = gdev_Manu.makeAmbioHistory(source, gglobs.AmbioDeviceName)
-                error, message = gdev_Manu.makeAmbioHistory(source, gglobs.Devices["AmbioMon"][DNAME])
+                error, message = gdev_ambiomon.makeAmbioHistory(source, gglobs.Devices["AmbioMon"][DNAME])
                 if error == -1:                                # a severe error
                     efprint(message)
                     break
@@ -3425,7 +3557,31 @@ class ggeiger(QMainWindow):
 
         self.setNormalCursor()
 
-        setDebugIndent(0)
+        setIndent(0)
+
+#xyc
+    def clearLogfile(self):
+        """Delete the logfile database and recreate it"""
+
+        msg = QMessageBox()
+        msg.setWindowIcon(gglobs.iconGeigerLog)
+        msg.setIcon(QMessageBox.Critical)
+        msg.setWindowTitle("Clear Log File")
+        msg.setText("You will loose all data in this database.\n\nPlease confirm with OK, or Cancel")
+        msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        msg.setDefaultButton(QMessageBox.Cancel)
+        msg.setEscapeButton(QMessageBox.Cancel)
+        retval = msg.exec()
+
+        if retval == QMessageBox.Ok:                        # QMessageBox.Ok == 1024
+            self.btnClearLogfile.setEnabled(False)
+
+            autoLogPath = os.path.join(gglobs.dataPath, gglobs.autoLogFile)
+            self.stopLogging()
+            gsup_sql.DB_deleteDatabase("Log", autoLogPath)
+            self.getFileLog(defaultLogDBPath=autoLogPath)
+
+            self.btnClearLogfile.setEnabled(True)
 
 
     def setLogCycle(self):
@@ -3434,7 +3590,7 @@ class ggeiger(QMainWindow):
         fncname = "setLogCycle: "
 
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
 
         lctime     = QLabel("Log Cycle [s]  \n(0.100 ... 1000)   ")
         lctime.setAlignment(Qt.AlignLeft)
@@ -3494,16 +3650,16 @@ class ggeiger(QMainWindow):
             if gglobs.logConn != None:
                 gsup_sql.DB_updateLogcycle(gglobs.logConn, gglobs.logCycle)
 
-        setDebugIndent(0)
+        setIndent(0)
 
 
     def check_state(self, *args, **kwargs):
 
         sender = self.sender()
 
-        print("sender.text():", sender.text())
-        print("args:", args)
-        print("kwargs:", kwargs)
+        # print("sender.text():", sender.text())
+        # print("args:", args)
+        # print("kwargs:", kwargs)
 
         try:
             v = float(sender.text().replace(",", "."))
@@ -3520,8 +3676,10 @@ class ggeiger(QMainWindow):
             bgcolor = 'white' # white
             color   = 'black'
             gglobs.btn.setEnabled(True)
+
         #elif state == QValidator.Intermediate:
         #    color = '#fff79a' # yellow
+
         else:
             bgcolor = '#fff79a' # yellow
             color   = 'red'
@@ -3531,85 +3689,89 @@ class ggeiger(QMainWindow):
         sender.setStyleSheet('QLineEdit { background-color: %s; color: %s }' % (bgcolor, color))
 
 
-#logging
+# start logging
     def startLogging(self):
         """Starts the logging"""
 
         dprint("startLogging:")
-        setDebugIndent(1)
 
         fprint(header("Start Logging"))
 
-        while True:
+        # A logfile is not loaded
+        # should never happen as the start button should be inactive
+        if gglobs.logDBPath == None:
+            efprint("WARNING: Cannot log; Logfile is not loaded")
+            return
 
-            # A logfile is not loaded
-            # should never happen as the start button should be inactive
-            if gglobs.logDBPath == None:
-                efprint("WARNING: Cannot log; Logfile is not loaded")
-                break
+        # Logfile is either read-only, not writeable, or had been removed
+        if not os.access(gglobs.logDBPath, os.W_OK):
+            efprint("WARNING: Cannot log; Logfile is not available for writing!")
+            return
 
-            # Logfile is either read-only, not writeable, or had been removed
-            if not os.access(gglobs.logDBPath, os.W_OK):
-                efprint("WARNING: Cannot log; Logfile is not available for writing!")
-                break
+        # No loggable variables
+        if gglobs.varMapCountTotal == 0:
+            efprint("WARNING: No variables for logging available; Logging is not possible!")
+            qefprint("Please check configuration if this is unexpected !")
+            return
 
-            # No loggable variables
-            if gglobs.varMappedCount == 0:
-                efprint("WARNING: No variables for logging available; Logging is not possible!")
-                qefprint("Please check configuration if this is unexpected !")
-                break
+    # all clear, go for it
 
-            # all clear, go for it
-            gglobs.logging       = True          # set early, to allow threads to get data
-            gglobs.LogReadings   = 0
-            gglobs.currentDBPath = gglobs.logDBPath
+        setIndent(1)
 
-            # make output like:
-            #~#DEVICES, 2021-02-04 11:48:35, Connected: GMC         : CPM CPS
-            #~#DEVICES, 2021-02-04 11:48:35, Connected: Simul       : CPM CPS CPM1st CPS1st CPM2nd CPS2nd CPM3rd CPS3rd
-            #~#DEVICES, 2021-02-04 11:48:35, Connected: MiniMon     : Temp Humid Xtra
-            #~#LOGGING, 2021-02-04 11:48:35, Start @Cycle: 1.0 sec
-            comments  = []
-            printcom  = ""
-            for DevName in gglobs.Devices:
-                if gglobs.DevVarsAsText[DevName] != None:
-                    cinfo     = "Connected: {:11s} : {}" .format(DevName, gglobs.DevVarsAsText[DevName])
-                    comments.append(["DEVICES", "NOW", "localtime", cinfo])
-                    printcom += "#DEVICES, {}, {}\n"     .format(stime(), cinfo)
+        gglobs.logging       = True          # set early, to allow threads to get data
+        gglobs.LogReadings   = 0
+        gglobs.currentDBPath = gglobs.logDBPath
 
-            cinfo     = "Start @Cycle: {} sec"   .format(gglobs.logCycle)
-            comments.append(["LOGGING", "NOW", "localtime", cinfo])
-            printcom += "#LOGGING, {}, {}"       .format(stime(), cinfo)
+        # make comment lines like:
+        #   DEVICES, 2022-06-06 15:54:46, Connected: GMC : GMC-300Re 4.54 : CPS
+        #   DEVICES, 2022-06-06 15:54:46, Connected: Manu : GeigerLog Manu : Temp Press Humid Xtra
+        #   LOGGING, 2022-06-06 15:54:46, Start @Cycle: 1.0 sec
+        comments  = []
+        printcom  = ""
+        for DevName in gglobs.Devices:
+            if gglobs.DevVarsAsText[DevName] != None:
+                cinfo     = "Connected: {} : {} : {}" .format(DevName, gglobs.Devices[DevName][0], gglobs.DevVarsAsText[DevName])
+                printcom += "#DEVICES, {}, {}\n"     .format(stime(), cinfo)
+                comments.append(["DEVICES", "NOW", "localtime", cinfo])
 
-            gsup_sql.DB_insertComments(gglobs.logConn, comments)
-            logPrint(printcom)
-            fprint  (printcom)
+        cinfo     = "Start @Cycle: {} sec"   .format(gglobs.logCycle)
+        printcom += "#LOGGING, {}, {}"       .format(stime(), cinfo)
+        comments.append(["LOGGING", "NOW", "localtime", cinfo])
 
-            cleanupDevices("before")
+        gsup_sql.DB_insertComments(gglobs.logConn, comments)
+        logPrint(printcom)
+        fprint  (printcom)
 
-        # STARTING
-            self.checkLoggingState()
-            self.plotGraph("Log", full=False)                   # initialize graph settings
-            self.timer0.start(int(gglobs.logCycle * 1000))      # timer time is in ms; logCycle in sec
-            self.runLoggingCycle()                                  # make first call now; timer fires only AFTER 1st period!
-            dprint("startLogging: Logging now; Timer is started with cycle {} sec.".format(gglobs.logCycle))
+        cleanupDevices("before logging")
 
-            break
+    # STARTING
+        self.checkLoggingState()
+        self.plotGraph("Log", full=False)                   # initialize graph settings
+        gglobs.logCycleButtonFlag = "On"
 
-        setDebugIndent(0)
+        initLogThread()
+
+        dprint("startLogging: Logging now; Timer was started with cycle {} sec.".format(gglobs.logCycle))
+
+        setIndent(0)
 
 
+# stop logging
     def stopLogging(self):
         """Stops the logging"""
 
         if not gglobs.logging: return
 
         fncname = "stopLogging: "
+
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
 
         fprint(header("Stop Logging"))
-        self.timer0.stop()
+
+        # cdprint(fncname + "about to call terminateLogThread()")
+        terminateLogThread()
+
         gglobs.logging = False
         dprint(fncname + "Logging is stopped")
 
@@ -3619,7 +3781,7 @@ class ggeiger(QMainWindow):
 
         gsup_sql.DB_insertComments(gglobs.logConn, [["LOGGING", "NOW", "localtime", "Stop"]])
 
-        cleanupDevices("after")
+        cleanupDevices("after logging")
 
         self.checkLoggingState()
         self.labelSelVar.setStyleSheet('color:darkgray;')
@@ -3628,7 +3790,8 @@ class ggeiger(QMainWindow):
         # For the the Rad World Map update - will make it wait for full cycle
         gglobs.RWMmapLastUpdate = None
 
-        setDebugIndent(0)
+        gglobs.logCycleButtonFlag = "Off"
+        setIndent(0)
 
 
     def addComment(self, dataType):
@@ -3655,9 +3818,7 @@ class ggeiger(QMainWindow):
 
         d           = QInputDialog()
         # it looks like QInputDialog() always blocks outside clicking????
-        #d.setWindowModality(Qt.WindowModal) #Qt.ApplicationModal, Qt.NonModal          # no clicking outside
-        #d.setWindowModality(Qt.ApplicationModal) #Qt.ApplicationModal, Qt.NonModal     # no clicking outside
-        d.setWindowModality(Qt.NonModal) #Qt.ApplicationModal,                          # no clicking outside
+        d.setWindowModality(Qt.NonModal)                                      # no clicking outside
         dtext, ok   = d.getText(None, 'Add a Comment', info)
 
         if ok:
@@ -3699,15 +3860,12 @@ class ggeiger(QMainWindow):
 
 
 #
-# Update the Timing setting in the dashboard
+# Update the LogCycle setting in the dashboard
 #
     def showTimingSetting(self, logCycle):
-        """update the Timings shown under Data"""
+        """update the Timings shown on the LogCycle button"""
 
-        # self.btnSetCycle.setText("Cycle: {:0.3g} s".format(logCycle))
-        # self.btnSetCycle.setText("Log Cycle: {:0.3g} s".format(logCycle))
         self.btnSetCycle.setText("Log Cycle: {:0.5g} s".format(logCycle))
-        # self.btnSetCycle.setText("Log Cycle: {:0.3f} s".format(logCycle))
 
 
 #
@@ -3753,7 +3911,7 @@ class ggeiger(QMainWindow):
             addMenuTip(self.labelSelVar, "Shows Last Value of the Selected Variable when logging")
             return
 
-        # updates DisplayVariables Window
+    # update DisplayVariables Window
         # see function displayLastValues() in gsup_tools.py
         if gglobs.displayLastValsIsOn:
             try:
@@ -3766,8 +3924,9 @@ class ggeiger(QMainWindow):
                 msg = "Exception updateDisplayVariableValue:"
                 exceptPrint(e, msg)
 
-        # selected variable: when logging: black on yellow background, else with dark.grey on grey
-        if gglobs.logging and gglobs.activeDataSource == "Log":
+    # update selected variable:
+        # when logging: black on yellow background, else with dark.grey on grey
+        if gglobs.activeDataSource == "Log" and gglobs.logging :
             self.labelSelVar.setStyleSheet('color: black; background-color: #F4D345;')
 
         elif gglobs.activeDataSource == "His":
@@ -3833,8 +3992,8 @@ class ggeiger(QMainWindow):
                 statusTip = "{:0.2f} hPa = {:0.2f} mbar".format(value, value)
 
             elif selVar == "Humid":
-                varText   = "{:0.2f} %".format(value)
-                statusTip = "{:0.2f} %".format(value)
+                varText   = "{:0.2f} %RH".format(value)
+                statusTip = "{:0.2f} %RH".format(value)
 
             elif selVar == "Xtra":
                 varText   = "{:0.2f}".format(value)
@@ -3855,22 +4014,25 @@ class ggeiger(QMainWindow):
         msg = "Start logging using Quick Log database 'default.logdb'"
         fprint(msg)
         dprint(fncname + msg)
-        setDebugIndent(1)
+        setIndent(1)
 
-        gglobs.logDBPath   = os.path.join(gglobs.dataPath, "default.logdb")
-        gsup_sql.DB_deleteDatabase("Log", gglobs.logDBPath)
-        self.getFileLog(defaultLogDBPath = gglobs.logDBPath) # get default.logdb
+        # set up default.logdb
+        gglobs.logDBPath = os.path.join(gglobs.dataPath, "default.logdb")
+        gsup_sql.DB_deleteDatabase("Log", gglobs.logDBPath)     # close any existing db, and then delete file
+        self.getFileLog(defaultLogDBPath=gglobs.logDBPath)      # make a new one
         self.startLogging()
 
-        setDebugIndent(0)
+        setIndent(0)
 
 
-    def getFileLog(self, defaultLogDBPath = False, source="Database"):
+    def getFileLog(self, defaultLogDBPath=False, source="Database"):
         """Load existing file for logging, or create new one.
         source can be:
         - "Database" (which is *.logdb file )
-        - "CSV File" (which is *.log or *.csv file)
+        - "CSV File" (which is any csv file)
         """
+
+        fncname = "getFileLog: "
 
         #
         # Get logfile filename/path
@@ -3879,7 +4041,7 @@ class ggeiger(QMainWindow):
         if defaultLogDBPath != False:
             gglobs.logFilePath      = None
             gglobs.logDBPath        = defaultLogDBPath
-            #dprint("getFileLog: using defaultLogDBPath: ", gglobs.logDBPath)
+            dprint("getFileLog: using defaultLogDBPath: ", gglobs.logDBPath)
 
         # else run dialog to get one
         else:
@@ -3889,14 +4051,14 @@ class ggeiger(QMainWindow):
                 dlg=QFileDialog(caption= "Get Log - Enter New Filename or Select from Existing", options=QFileDialog.DontUseNativeDialog)
                 dlg.setFileMode(QFileDialog.AnyFile)
 
-                dlg.setNameFilter("Log Files (*.logdb)")
+                dlg.setNameFilter("Log Files (*.logdb);;Any Files (*)")
 
             elif source == "CSV File":
                 # there must be an existing, readable csv file with extension '*.log' or '*.csv' or '*.txt' or '*.notes' file
                 # the csv file will remain unchanged
                 dlg=QFileDialog(caption = "Get Log - Select from Existing *.log or other CSV File", options=QFileDialog.DontUseNativeDialog)
                 dlg.setFileMode(QFileDialog.ExistingFile)
-                dlg.setNameFilter("Log Files (*.log *.csv *.txt *.notes)")
+                dlg.setNameFilter("Log Files (*.log *.csv *.txt *.notes);;Any Files (*)")
 
             else:
                 printProgError("undefined source:", source)
@@ -3911,10 +4073,10 @@ class ggeiger(QMainWindow):
             if dlg.exec() == QDialog.Accepted:  pass     # QDialog Accepted
             else:                               return   # QDialog Rejected
 
-            ### end filedialog -  a file was selected
+        ### end filedialog -  a file was selected
 
             gglobs.fileDialogDir = dlg.directory().path()
-            #print("dlg.directory().path():", dlg.directory().path())
+            # print("dlg.directory().path():", dlg.directory().path())
 
             fnames      = dlg.selectedFiles()
             fname       = str(fnames[0])                    # file path
@@ -3957,17 +4119,37 @@ class ggeiger(QMainWindow):
 
         gglobs.currentDBPath   = gglobs.logDBPath
 
+# ######################################################
+#         # does this interfere with His????
+#         # scheint ok, hilft aber nicht on var use
+
+#         gglobs.logTime             = None                 # array: Time data from total file
+#         gglobs.logTimeDiff         = None                 # array: Time data as time diff to first record in days
+#         gglobs.logTimeFirst        = None                 # value: Time of first record of total file
+
+#         gglobs.logTimeSlice        = None                 # array: selected slice out of logTime
+#         gglobs.logTimeDiffSlice    = None                 # array: selected slice out of logTimeDiff
+#         gglobs.logSliceMod         = None
+
+#         gglobs.sizePlotSlice       = None                 # value: size of plotTimeSlice
+
+#         gglobs.logDBData           = None                 # 2dim numpy array with the log data
+#         gglobs.hisDBData           = None                 # 2dim numpy array with the his data
+#         gglobs.currentDBData       = None                 # 2dim numpy array with the currently plotted data
+
+# ######################################################
+
         fprint(header("Get Log"))
         fprint("Log database: {}".                               format(gglobs.logDBPath))
         if defaultLogDBPath == False:
             dprint("getFileLog: use selected Log DB file: '{}'". format(gglobs.logDBPath))
         else:
             dprint("getFileLog: use default Log DB file: '{}'".  format(defaultLogDBPath))
-        setDebugIndent(1)
+        setIndent(1)
 
-        #dprint("getFileLog: gglobs.logFilePath:     ", gglobs.logFilePath)
-        #dprint("getFileLog: gglobs.logDBPath:       ", gglobs.logDBPath)
-        #dprint("getFileLog: gglobs.currentDBPath:   ", gglobs.currentDBPath)
+        dprint("getFileLog: gglobs.logFilePath:     ", gglobs.logFilePath)
+        dprint("getFileLog: gglobs.logDBPath:       ", gglobs.logDBPath)
+        dprint("getFileLog: gglobs.currentDBPath:   ", gglobs.currentDBPath)
 
         if gglobs.logging:   self.stopLogging()
         self.dcfLog.setText(gglobs.logDBPath)
@@ -4013,6 +4195,7 @@ class ggeiger(QMainWindow):
 
                 # data array for the variables
                 gglobs.logDBData = np.empty([0, gglobs.datacolsDefault])
+                # edprint(fncname + "gglobs.logDBData empty: ", gglobs.logDBData)
 
             # Database File does exist
             else:
@@ -4025,26 +4208,30 @@ class ggeiger(QMainWindow):
                     efprint("LogFile opened - WARNING: available ONLY FOR READING")
 
                 gglobs.logConn    = gsup_sql.DB_openDatabase  (gglobs.logConn, gglobs.logDBPath)
-################
+
+        ## end of else ##############
+
         gglobs.logDBData, varsFromDB = gsup_sql.getDataFromDatabase("Log")
+        gglobs.varsSetForLog = gglobs.varsSetForLogNew.copy()           # reset to default device dependent setting
         for vname in gglobs.varsCopy:
-            if varsFromDB[vname]:           gglobs.varsSetForLog[vname] = True
+            if varsFromDB[vname]: gglobs.varsSetForLog[vname] = True    # this adds vars from DEB which are no longer active!
             if gglobs.varsSetForLog[vname]: gglobs.varChecked4PlotLog[vname] = True
 
-        # add the default logCycle as read from the database
-        testcycle = gsup_sql.DB_readLogcycle(gglobs.logConn)    # testcycle is type float
-        #print("testcycle:",testcycle, type(testcycle))
-        if testcycle is None:       # old DB may not have one
+
+        # set the logCycle as read from the database (if present)
+        DefLogCycle = gsup_sql.DB_readLogcycle(gglobs.logConn)          # DefLogCycle is type float
+        #print("Default LogCycle:",DefLogCycle, type(DefLogCycle))
+        if DefLogCycle is None:                                         # old DB may not have one
             gsup_sql.DB_insertLogcycle(gglobs.logConn, gglobs.logCycle)
         else:
-            gglobs.logCycle = testcycle
+            gglobs.logCycle = DefLogCycle
             self.showTimingSetting(gglobs.logCycle)
 
         self.plotGraph("Log")
         self.checkLoggingState()
         self.setNormalCursor()
 
-        setDebugIndent(0)
+        setIndent(0)
 
 
 #
@@ -4130,7 +4317,7 @@ class ggeiger(QMainWindow):
                     counter    = 0
 
                 if update >= update_max:
-                    Qt_update()
+                    QtUpdate()
                     update = 0
 
                 if gglobs.stopPrinting: break
@@ -4200,26 +4387,22 @@ class ggeiger(QMainWindow):
     def printNotePad(self):
         """prints NotePad content to printer or pdf"""
 
-        if gglobs.currentDBPath is None:
-            defaultPDF = defaultFile = os.path.join(gglobs.dataPath, "notepad.pdf")
-        else:
-            defaultPDF = gglobs.currentDBPath + '.pdf'
-        vprint("printNotePad: default pdf file:", defaultPDF)
+        fncname = "printNotePad: "
 
-        mydoc = self.notePad.document()
+        if gglobs.currentDBPath is None: defaultOutputFile = os.path.join(gglobs.dataPath, "notepad.pdf")
+        else:                            defaultOutputFile = gglobs.currentDBPath + '.pdf'
+        # vprint(fncname + "default output file:", defaultOutputFile)
 
         myprinter = QPrinter()
-        wprint("printNotePad: default printer:          ", myprinter.printerName()) # default: HP-OfficeJet-Pro-8730-2
-        #myprinter.setPrinterSelectionOption("pdf")
-        #wprint("printNotePad: printerSelectionOption(): ", myprinter.printerSelectionOption() )
-        myprinter.setOutputFormat(QPrinter.PdfFormat)
-        myprinter.setOutputFileName(defaultPDF)
-        #myprinter.setResolution(96)
-        #myprinter.setPrinterName("Print to File (PDF)")
+        myprinter.  setOutputFormat(QPrinter.PdfFormat)
+        myprinter.  setOutputFileName(defaultOutputFile)
 
         dialog = QPrintDialog(myprinter, self)
         dialog.setOption(QAbstractPrintDialog.PrintToFile, on=True)
-        if dialog.exec():  mydoc.print(dialog.printer())
+
+        if dialog.exec():
+            mydoc = self.notePad.document()
+            mydoc.print(dialog.printer())
 
 
     def setTemporaryTubeSensitivities(self):
@@ -4234,7 +4417,7 @@ class ggeiger(QMainWindow):
             else:                                  scale[i] = gglobs.Sensitivity[i]
 
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
 
         # Comment
         intro = """
@@ -4242,14 +4425,13 @@ class ggeiger(QMainWindow):
 <p>This is temporary for this run only. For a permanent change edit the GeigerLog configuration file 'geigerlog.cfg'.
 <p>Sensititivities are in units of <b>CPM / (µSv/h) </b>.
 <p><b>NOTE:</b>
-If no data for the tube's sensitivity arre avail&shy;able, then take guidance
-from the following numbers. Find details in the GeigerLog manual - Chapter Calibration.</p>
+If no data for the tube's sensitivity are avail&shy;able, then take guidance
+from the following numbers and see chapter 'Appendix G – Calibration' of the GeigerLog manual.</p>
 <p>For a tube like M4011 and a radiation scenario like:
 <pre>
     Cs-137 : 154 CPM / (µSv/h)  (100%)
     Co-60  : 132 CPM / (µSv/h)  ( 86%)
     Ra-226 : 174 CPM / (µSv/h)  (113%)
-
 </pre>
 </p>
 """
@@ -4338,26 +4520,42 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
             try:        ftube3rd = float(etube3rd.text().replace(",", "."))
             except:     ftube3rd = 0
 
+            # to catch both zero values and illegal entries
             if ftubeDef > 0:     gglobs.Sensitivity[0] = ftubeDef
-            else:                efprint("1st tube: Illegal Value, >0 required, you entered: ", etubeDef.text())
+            else:                efprint("CPM/CPS tube: Illegal Value, >0 required, you entered: ", etubeDef.text())
 
             if ftube1st > 0:     gglobs.Sensitivity[1] = ftube1st
-            else:                efprint("1st tube: Illegal Value, >0 required, you entered: ", etube1st.text())
+            else:                efprint("CPM1st/CPS1st tube: Illegal Value, >0 required, you entered: ", etube1st.text())
 
             if ftube2nd > 0:     gglobs.Sensitivity[2] = ftube2nd
-            else:                efprint("2nd tube: Illegal Value, >0 required, you entered: ", etube2nd.text())
+            else:                efprint("CPM2nd/CPS2nd tube: Illegal Value, >0 required, you entered: ", etube2nd.text())
 
             if ftube3rd > 0:     gglobs.Sensitivity[3] = ftube3rd
-            else:                efprint("3rd tube: Illegal Value, >0 required, you entered: ", etube3rd.text())
+            else:                efprint("CPM3rd/CPS3rd tube: Illegal Value, >0 required, you entered: ", etube3rd.text())
 
-            fprint("Def tube:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[0]), debug = True)
-            fprint("1st tube:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[1]), debug = True)
-            fprint("2nd tube:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[2]), debug = True)
-            fprint("3rd tube:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[3]), debug = True)
+            msgfmt = "{:30s}{}"
+            # msgDef = msgfmt.format("Def tube:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[0]))
+            # msg1st = msgfmt.format("1st tube:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[1]))
+            # msg2nd = msgfmt.format("2nd tube:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[2]))
+            # msg3rd = msgfmt.format("3rd tube:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[3]))
+            msgDef = msgfmt.format("Tube CPM/CPS:",       "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[0]))
+            msg1st = msgfmt.format("Tube CPM1st/CPS1st:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[1]))
+            msg2nd = msgfmt.format("Tube CPM2nd/CPS2nd:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[2]))
+            msg3rd = msgfmt.format("Tube CPM3rd/CPS3rd:", "{} CPM / (µSv/h)" .format(gglobs.Sensitivity[3]))
+
+            fprint(msgDef)
+            fprint(msg1st)
+            fprint(msg2nd)
+            fprint(msg3rd)
+
+            dprint(msgDef)
+            dprint(msg1st)
+            dprint(msg2nd)
+            dprint(msg3rd)
 
             gsup_plot.makePlot()
 
-        setDebugIndent(0)
+        setIndent(0)
 
 
     def showDeviceMappings(self):
@@ -4372,53 +4570,59 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
             fprint("Unknown until a connection is made. Use menu: Device -> Connect Devices")
             return
 
-        if gglobs.DevicesConnected > 0 and gglobs.varMappedCount == 0:
-            efprint("WARNING: No mapped variables found although a device is connected.\
+        if gglobs.DevicesConnected > 0 and gglobs.varMapCountTotal == 0:
+            efprint("<b>WARNING: </b>No mapped variables found although a device is connected.\
                      \nLogging will not be possible! Please check configuration if this is unexpected !")
             return
 
-        fprint("Shows the variables mapped to each device as configured. The configuration is set in")
-        fprint("GeigerLog's configuration file geigerlog.cfg")
+        fprint("Mappings as configured in GeigerLog's configuration file geigerlog.cfg.")
 
-        mapflag = False
+        BadMappingFlag = False
         for vname in gglobs.varsCopy:
-            if gglobs.varMap[vname] > 1:
-                if mapflag == False:    # print only on first occurence
-                    efprint("WARNING: Mapping problem of Variables")
+            if gglobs.varMapCount[vname] > 1:
+                if BadMappingFlag == False:    # print only on first occurence
+                    efprint("<b>WARNING: </b>Mapping problem of Variables")
                 qefprint("Variable {}".format(vname), "is mapped to more than one device")
-                mapflag = True
+                BadMappingFlag = True
 
         dline = "{:10s}: {:4s} {:4s} {:6s} {:6s} {:6s} {:6s} {:6s} {:6s} {:5s} {:5s} {:5s} {:5s}"
         fprint("\n" + dline.format("Device", *list(gglobs.varsCopy)))
         fprint("-" * 86)
         for DevName in gglobs.Devices:              # Device?
             checklist = []
-            if gglobs.Devices[DevName][CONN]:       # connected?
+            if gglobs.Devices[DevName][ACTIV]:      # connected?
                 checklist.append(DevName)
                 for vname in gglobs.varsCopy:       # Var?
                     try:
-                        if vname in gglobs.Devices[DevName][VNAME]: checklist.append("M")   # option:("ʘ", "X")
+                        if vname in gglobs.Devices[DevName][VNAME]: checklist.append("M")
                         else:                                       checklist.append("-")
                     except:
-                        checklist.append("-")
+                        checklist.append("?")
                 fprint(dline.format(*checklist))
 
-        if mapflag:
-            qefprint("Measurements are made on devices from top to bottom, and for each from left to right.")
-            qefprint("If double-mapping of variables occurs, then the last measured variable will overwrite")
-            qefprint("the previous one, almost always resulting in useless data.")
-            qefprint("Tube Sensitivities may be overwritten as well!\n")
+        if BadMappingFlag:
+            # Mapping is bad
+            msg  = "<b>INFO: </b>"
+            msg += "Measurements are made on devices from top to bottom, and for each from left to<br>"
+            msg += "right. If double-mapping of variables occurs, then the last measured variable will<br>"
+            msg += "overwrite the previous one, almost always resulting in useless data. "
+            fprintInColor(msg, "blue")
+
         else:
-            fprint("Mapping is valid")
+            # Mapping is good
+            fprintInColor("Mapping is valid", "green")
             playWav("ok")
 
 
     def fprintDeviceInfo(self, DevName, extended=False):
-        """prints basic / extended info on the device"""
+        """prints basic / extended info on the device DevName"""
+        # called ONLY from the menu or the device toolbar button
 
-        setBusyCursor()
+
         fncname = "fprintDeviceInfo: "
         dprint(fncname + "DevName: {:10s}, extended: {}".format(DevName, extended))
+        setIndent(1)
+        setBusyCursor()
 
         txt = DevName + " Device Info"
         if extended:  txt += " Extended"
@@ -4429,6 +4633,7 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         elif DevName == "RadMon"      : info = gdev_radmon      .getInfoRadMon     (extended=extended)
         elif DevName == "AmbioMon"    : info = gdev_ambiomon    .getInfoAmbioMon   (extended=extended)
         elif DevName == "GammaScout"  : info = gdev_gscout      .getInfoGammaScout (extended=extended)
+
         elif DevName == "I2C"         : info = gdev_i2c         .getInfoI2C        (extended=extended)
         elif DevName == "LabJack"     : info = gdev_labjack     .getInfoLabJack    (extended=extended)
         elif DevName == "Simul"       : info = gdev_simul       .getInfoSimul      (extended=extended)
@@ -4436,9 +4641,16 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         elif DevName == "Manu"        : info = gdev_manu        .getInfoManu       (extended=extended)
         elif DevName == "WiFiClient"  : info = gdev_wificlient  .getInfoWiFiClient (extended=extended)
         elif DevName == "WiFiServer"  : info = gdev_wifiserver  .getInfoWiFiServer (extended=extended)
-        else:                           info = "incorrect Device Name '{}'".format(DevName)
-        fprint(info)
 
+        elif DevName == "RaspiPulse"  : info = gdev_raspipulse  .getInfoRaspiPulse (extended=extended)
+        elif DevName == "RaspiI2C"    : info = gdev_raspii2c    .getInfoRaspiI2C   (extended=extended)
+
+        else:                           info = "incorrect Device Name '{}'".format(DevName)
+
+        fprint(info)
+        cdprint("\n" + info)
+
+        setIndent(0)
         setNormalCursor()
 
 
@@ -4455,29 +4667,29 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
 
     def switchAllConnections(self, new_connection="ON"):
         """
-        if new_connection == ON:
-            if no connection exists, then try to make connection (with verification
-            of communication with device)
-        if new_connection == OFF:
-            if connection does exist, then disconnect
+        if new_connection == ON:    if no connection exists, then try to make connection
+                                    (with verification of communication with device)
+        if new_connection == OFF:   if connection does exist, then disconnect
         """
+
+        fncname = "switchAllConnections: "
 
         if gglobs.logging:
             self.showStatusMessage("Cannot change when logging! Stop logging first")
             return
 
-        fncname = "switchAllConnections: "
         self.setBusyCursor()
+
         dprint(fncname + "--> {}. ".format(new_connection))
-        setDebugIndent(1)
+        setIndent(1)
 
         #
-        # Connect /Dis-Connect all devices which are activated
+        # Connect / Dis-Connect all devices which are activated
         #
         for DevName in gglobs.Devices:
             if gglobs.Devices[DevName][ACTIV]:
                 self.switchDeviceConnection (DevName, new_connection=new_connection)
-                Qt_update()
+                QtUpdate()
 
         #
         # Print all Devices and their states
@@ -4485,84 +4697,85 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         gglobs.DevicesActivated = 0
         gglobs.DevicesConnected = 0
         dprint(fncname + "Device Status:")
+        setIndent(1)
         for i, DevName in enumerate(gglobs.Devices):
-            DevVars      = gglobs.Devices[DevName][VNAME]   # var names with this device
-            DevActvState = gglobs.Devices[DevName][ACTIV]   # device activated?
-            DevConnState = gglobs.Devices[DevName][CONN]    # device connected?
+            DevVars      = gglobs.Devices[DevName][VNAME]           # var names with this device
+            DevActvState = gglobs.Devices[DevName][ACTIV]           # device activated?
+            DevConnState = gglobs.Devices[DevName][CONN]            # device connected?
 
             if DevActvState:  gglobs.DevicesActivated += 1
             if DevConnState:  gglobs.DevicesConnected += 1
-            if DevVars is not None:    svs = ", ".join(DevVars)   # the variables
+            if DevVars is not None:    svs = ", ".join(DevVars)     # the variables
             else:                      svs = "None"
             dprint("   Device #{:<2d}: {:10s}  Activation: {:6s} Connection: {}{:6s}  Vars: {}".
-                    format(i, DevName, str(DevActvState), TGREEN if DevConnState else "", str(DevConnState), svs))
+                    format(i, DevName, str(DevActvState), TGREEN if DevConnState else "", str(DevConnState), svs), TDEFAULT)
 
-        dprint("   Number of Devices activated: {}".format(gglobs.DevicesActivated))
-        dprint("   Number of Devices connected: {}".format(gglobs.DevicesConnected))
+        dprint("   Devices Activated: {}".format(gglobs.DevicesActivated))
+        dprint("   Devices Connected: {}".format(gglobs.DevicesConnected))
+        setIndent(0)
+
+        if gglobs.DevicesActivated == 0:
+            self.setNormalCursor()
+            self.warnMissingDeviceActivations()
 
         #
-        # set plug-icon green on >= 1 connected devices (at least 1 needed for a closed (=green) plug)
+        # set plug-icon green on at least 1 connected device
         #
-        if gglobs.DevicesConnected > 0:
-            self.toggleDeviceConnectionAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_plug_closed.png')))) # green icon
-        else:
-            self.toggleDeviceConnectionAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_plug_open.png'))))   # red icon
-            self.fprintWarningMessage("WARNING: No devices are connected")
+        if gglobs.DevicesConnected > 0: plugicon = 'icon_plug_closed.png'   # green icon
+        else:                           plugicon = 'icon_plug_open.png'     # red icon
+        self.toggleDeviceConnectionAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, plugicon))))
 
         #
         # determine the mapping and active variables on new connections
         #
         if new_connection == "ON" and gglobs.DevicesConnected > 0:
-            gglobs.varMappedCount = 0
-            for vname   in gglobs.varsCopy:  gglobs.varMap[vname] = 0
+            gglobs.varMapCountTotal = 0
+            for vname   in gglobs.varsCopy:  gglobs.varMapCount[vname] = 0
             for DevName in gglobs.Devices:   gglobs.DevVarsAsText[DevName] = None
 
             # Scan all devices for loggable variables
             for DevName in gglobs.Devices:                                  # scan all devices
                 # rdprint("DevName: ", DevName)
-                if gglobs.Devices[DevName][VNAME] != None:                  # those with variables named
+                if gglobs.Devices[DevName][VNAME] != None:                  # use only those with variables named
                     tmpDevVarsAsText = ""
-                    for vname in gglobs.Devices[DevName][VNAME]:            # scan all their variables
-                        # print("                  : vname:", vname)
-                        if vname == "Unused" or vname == "auto": continue
-                        gglobs.varMap[vname]        += 1
-                        gglobs.varMappedCount       += 1
+                    for vname in gglobs.Devices[DevName][VNAME]:            # scan all vars of this device
+                        # rdprint("                  : vname: ", vname)
+                        if vname == "Unused" or vname == "auto" or vname == "None": continue
+                        gglobs.varMapCount[vname]   += 1
+                        gglobs.varMapCountTotal     += 1
                         tmpDevVarsAsText            += " {}".format(vname)  # like: CPM1st CPS1st CPM2nd ...
-                        gglobs.varsSetForLog[vname]  = True                 # and mark them active for this log
+                        gglobs.varsSetForLogNew[vname] = True               # and mark them active for this log
+                        gglobs.varsSetForLog.update({vname : True})
+                        gglobs.varChecked4PlotLog   [vname] = True
 
-                    # gdprint("tmpDevVarsAsText: ", tmpDevVarsAsText)
                     gglobs.DevVarsAsText[DevName] = tmpDevVarsAsText.strip() # like: {'GMC': 'CPM1st CPS1st CPM2nd CPS2nd Humid', 'Audio': None,
-                    # gdprint("gglobs.DevVarsAsText: ", gglobs.DevVarsAsText)
 
             self.showDeviceMappings()
 
         # cleanup
         self.checkLoggingState()
 
-        setDebugIndent(0)
+        setIndent(0)
         self.setNormalCursor()
 
 
     def setStyleSheetTBButton(self, button, stylesheetflag):
-        """set toolbar button of devices to grey, green or red"""
+        """set toolbar button of devices to grey, green, red, or yellow"""
 
         if   stylesheetflag == "ON"    : button.setStyleSheet(self.dbtnStyleSheetON)        # green
         elif stylesheetflag == "OFF"   : button.setStyleSheet(self.dbtnStyleSheetOFF)       # grey
         elif stylesheetflag == "ERR"   : button.setStyleSheet(self.dbtnStyleSheetError)     # red
+        elif stylesheetflag == "SIM"   : button.setStyleSheet(self.dbtnStyleSheetSimul)     # yellow - simulation
 
-
-    # def setDisableDeviceActions(self):
-    #     """called only when GMC internal config is not usable"""
-
-    #     self.GMCSpeakerONAction.        setEnabled(False)
-    #     self.GMCSpeakerOFFAction.       setEnabled(False)
-    #     self.GMCAlarmONAction.          setEnabled(False)
-    #     self.GMCAlarmOFFAction.         setEnabled(False)
-    #     self.GMCSavingStateAction.      setEnabled(False)
 
     def initDevice(self, DevName):
+        """init the device DevName"""
 
-        # gdprint("NEW initDevice: ", DevName)
+        # NOTE: errmsg will be "" unless there was an error in an initXYZ
+
+        fncname = "initDevice: " + DevName
+        dprint(fncname)
+        setIndent(1)
 
         if   DevName == "GMC":          errmsg = gdev_gmc       .initGMC()
         elif DevName == "Audio":        errmsg = gdev_audio     .initAudio()
@@ -4576,13 +4789,17 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         elif DevName == "Manu":         errmsg = gdev_manu      .initManu()
         elif DevName == "WiFiClient":   errmsg = gdev_wificlient.initWiFiClient()
         elif DevName == "WiFiServer":   errmsg = gdev_wifiserver.initWiFiServer()
+        elif DevName == "RaspiPulse":   errmsg = gdev_raspipulse.initRaspiPulse()
+        elif DevName == "RaspiI2C":     errmsg = gdev_raspii2c  .initRaspiI2C()
 
+        setIndent(0)
         return errmsg
 
 
     def terminateDevice(self, DevName):
+        """terminate the device DevName"""
 
-        # gdprint("NEW terminateDevice: ", DevName)
+        # errmsg is "" unless there was an error in an terminateXYZ
 
         if   DevName == "GMC":          errmsg = gdev_gmc       .terminateGMC()
         elif DevName == "Audio":        errmsg = gdev_audio     .terminateAudio()
@@ -4596,11 +4813,13 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         elif DevName == "Manu":         errmsg = gdev_manu      .terminateManu()
         elif DevName == "WiFiClient":   errmsg = gdev_wificlient.terminateWiFiClient()
         elif DevName == "WiFiServer":   errmsg = gdev_wifiserver.terminateWiFiServer()
+        elif DevName == "RaspiPulse":   errmsg = gdev_raspipulse.terminateRaspiPulse()
+        elif DevName == "RaspiI2C":     errmsg = gdev_raspii2c  .terminateRaspiI2C()
 
         return errmsg
 
 
-    def setEnableDeviceActions(self, new_enable = True, device="", stylesheetflag="ON"):
+    def setEnableDeviceActions(self, new_enable=True, device="", stylesheetflag="ON"):
         """Dis/Enable device specific device actions"""
 
         # Device
@@ -4610,17 +4829,18 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
 
         # GMC counter
         if device == "GMC":
-            # submenu GMC
             self.GMCInfoActionExt.       setEnabled(new_enable)
-            self.GMCConfigAction.        setEnabled(new_enable)
+            self.GMCConfigMemoryAction.  setEnabled(new_enable)
             self.GMCConfigEditAction.    setEnabled(new_enable)
-            self.GMCONAction.            setEnabled(new_enable)
-            self.GMCOFFAction.           setEnabled(new_enable)
             self.GMCSetTimeAction.       setEnabled(new_enable)
+            self.GMCEraseSavedDataAction.setEnabled(new_enable)
             self.GMCREBOOTAction.        setEnabled(new_enable)
             self.GMCFACTORYRESETAction.  setEnabled(new_enable)
+            self.GMCONAction.            setEnabled(new_enable)
+            self.GMCOFFAction.           setEnabled(new_enable)
 
             # # GMC Device functions using the config
+            # replaced by setGMCconfiguration()
             # self.GMCSpeakerONAction.     setEnabled(new_enable)
             # self.GMCSpeakerOFFAction.    setEnabled(new_enable)
             # self.GMCAlarmONAction.       setEnabled(new_enable)
@@ -4636,13 +4856,13 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
             self.setStyleSheetTBButton(self.dbtnGMC, stylesheetflag)
             self.setGMCPowerIcon()
 
-
         # AudioCounter
         elif device == "Audio":
             self.AudioInfoActionExt .setEnabled(new_enable)             # extended info
             self.AudioPlotAction    .setEnabled(new_enable)             # audio plotting
             self.AudioSignalAction  .setEnabled(new_enable)             # audio raw signal
             self.AudioEiaAction     .setEnabled(new_enable)             # audio eia action
+
             self.setStyleSheetTBButton(self.dbtnAudio, stylesheetflag)
 
         # RadMon
@@ -4656,34 +4876,37 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
             self.histAMDeviceCAMAction.  setEnabled(new_enable)
             self.histAMDeviceCPSAction.  setEnabled(new_enable)
             self.AmbioDataModeAction.    setEnabled(new_enable)
-            ##
             self.AmbioInfoActionExt.     setEnabled(new_enable)         # enable extended info
             self.setStyleSheetTBButton(self.dbtnAmbio, stylesheetflag)
 
-
         # Gamma-Scout counter
         elif device == "GammaScout":
-            self.setStyleSheetTBButton(self.dbtnGS, stylesheetflag)
             self.histGSDeviceAction.    setEnabled(new_enable)
             self.GSInfoActionExt.       setEnabled(new_enable)          # enable extended info
             self.GSResetAction.         setEnabled(new_enable)          # enable reset
             self.GSSetPCModeAction.     setEnabled(new_enable)          # enable PC Mode
             self.GSDateTimeAction.      setEnabled(new_enable)          # enable set DateTime
-            self.GSSetOnlineAction.     setEnabled(False)               # set True next lines
-            self.GSRebootAction.        setEnabled(False)               # or remains false
-            if gglobs.GStype == "Online":
+            if gglobs.GS_DeviceDetected == "Online":
                 self.GSSetOnlineAction. setEnabled(new_enable)          # enable Online mode
                 self.GSRebootAction.    setEnabled(new_enable)          # enable Reboot
+            else:
+                self.GSSetOnlineAction.     setEnabled(False)           # set True if "online" device
+                self.GSRebootAction.        setEnabled(False)           # or leave false
+
+            self.setStyleSheetTBButton(self.dbtnGS, stylesheetflag)
 
         # I2C
-        elif device == "I2C":
-            self.I2CInfoActionExt.setEnabled(new_enable)                # extended info
-            # self.I2CResetAction.setEnabled(new_enable)                  # reset
+        elif device == "I2C":                                           # I2C
+            self.I2CInfoActionExt.          setEnabled(new_enable)      #   extended info
+            self.I2CScanAction.             setEnabled(new_enable)      #   can scan only when not logging
+            self.I2CForceCalibAction.       setEnabled(new_enable)      #   can calibrate only when not logging
+            self.I2CResetAction.            setEnabled(new_enable)      #   can reset only when not logging
+            # self.I2CSerialAction.           setEnabled(new_enable)    #   always enabled
             self.setStyleSheetTBButton(self.dbtnI2C, stylesheetflag)
 
         # LabJack
         elif device == "LabJack":
-            self.LJInfoActionExt.setEnabled(new_enable)                 # enable extended info
+            self.LJInfoActionExt.setEnabled(new_enable)                     # enable extended info
             self.setStyleSheetTBButton(self.dbtnLJ, stylesheetflag)
 
         # MiniMon
@@ -4692,23 +4915,34 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
 
         # Simul
         elif device == "Simul":
-            self.SimulSettings.setEnabled(new_enable)                   # enable settings
+            self.SimulSettings.setEnabled(new_enable)                       # enable settings
             self.setStyleSheetTBButton(self.dbtnSimul, stylesheetflag)
 
         # Manu
         elif device == "Manu":
-            self.ManuInfoActionExt.setEnabled(new_enable)               # enable extended info
+            # self.ManuInfoActionExt.setEnabled(new_enable)                 # enable extended info
+            self.ManuValAction.setEnabled(new_enable)                       # enable manual data entry
             self.setStyleSheetTBButton(self.dbtnManu, stylesheetflag)
 
         # WiFiServer
         elif device == "WiFiServer":
-            # self.WiFiInfoActionExt.setEnabled(new_enable)             # enable extended info
+            self.WiFiInfoActionExt.setEnabled(new_enable)                   # enable extended info
             self.setStyleSheetTBButton(self.dbtnWServer, stylesheetflag)
 
         # WiFiClient
         elif device == "WiFiClient":
-            # self.WiFiClientInfoActionExt.setEnabled(new_enable)       # enable extended info
+            # self.WiFiClientInfoActionExt.setEnabled(new_enable)           # enable extended info
             self.setStyleSheetTBButton(self.dbtnWClient, stylesheetflag)
+
+        # RaspiPulse
+        elif device == "RaspiPulse":
+            self.RaspiPulseInfoActionExt.setEnabled(new_enable)             # enable extended info
+            self.setStyleSheetTBButton(self.dbtnRPulse, stylesheetflag)
+
+        # RaspiI2C
+        elif device == "RaspiI2C":
+            self.RaspiI2CInfoActionExt.setEnabled(new_enable)               # enable extended info
+            self.setStyleSheetTBButton(self.dbtnRI2C, stylesheetflag)
 
 
 
@@ -4719,7 +4953,8 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         fncname = "switchDeviceConnection: "
 
         dprint(fncname + "Device: {} --> {}. ".format(DevName, new_connection))
-        setDebugIndent(1)
+        setIndent(1)
+
         self.setBusyCursor()
 
         #
@@ -4727,23 +4962,24 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         #
         if new_connection == "ON":
             fprint(header("Connect {} Device".format(DevName)))
-            Qt_update()
+            QtUpdate()
+
             if gglobs.Devices[DevName][CONN]:
                 fprint("Already connected")
                 self.fprintDeviceInfo(DevName)
-
             else:
                 errmsg = self.initDevice(DevName)
                 if gglobs.Devices[DevName][CONN] :
                     # successful connect
-                    self.setEnableDeviceActions(new_enable = True, device=DevName, stylesheetflag="ON")
-                    fprint("Device successfully connected")
-                    dprint(fncname + "Status: ON: for device: {}".format(gglobs.Devices[DevName][DNAME]))
+                    if   errmsg == "":    self.setEnableDeviceActions(new_enable = True, device=DevName, stylesheetflag="ON")
+                    elif errmsg == "SIM": self.setEnableDeviceActions(new_enable = True, device=DevName, stylesheetflag="SIM")
+                    fprintInColor("Device successfully connected", "green")
+                    gdprint(fncname + "Status: ON: for device: {}".format(gglobs.Devices[DevName][DNAME]))
 
                 else:
                     # failure connecting
                     self.setEnableDeviceActions(new_enable = False, device=DevName, stylesheetflag="ERR")
-                    msg = "Failure connecting with Device: '{}' for reason:\n{}".format(DevName, errmsg) # tuple of 2 parts
+                    msg = "Failure connecting with Device: '{}' for reason:\n\"{}\"".format(DevName, errmsg) # tuple of 2 parts
                     efprint(msg)
                     edprint((fncname + "Status: " + msg).replace("\n", " "))
 
@@ -4762,16 +4998,19 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
                 errmsg = self.terminateDevice(DevName)
                 if not gglobs.Devices[DevName][CONN] :
                     # successful dis-connect
-                    fprint("Device successfully disconnected", debug=True)
+                    msg = "Device {} successfully disconnected".format(DevName)
+                    fprint(msg)
+                    gdprint(msg)
                     self.setEnableDeviceActions(new_enable=False, device=DevName, stylesheetflag="OFF")
                 else:
                     # failure dis-connecting
                     self.setEnableDeviceActions(new_enable=False, device=DevName, stylesheetflag="ERR")
                     efprint("Failure disconnecting:", "'{}'".format(gglobs.Devices[DevName][0] ), debug=True)
                     qefprint(errmsg)
+                    edprint(errmsg)
 
         self.setNormalCursor()
-        setDebugIndent(0)
+        setIndent(0)
 
 
     def checkLoggingState(self):
@@ -4779,69 +5018,127 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
 
         # Logging
         if gglobs.logging:
-            self.logLoadFileAction.         setEnabled(False)   # no loading of log files during logging
-            self.logLoadCSVAction .         setEnabled(False)   # no loading of CSV log files during logging
-            self.startloggingAction.        setEnabled(False)   # no start logging - it is running already
-            self.stoploggingAction.         setEnabled(True)    # stopping is possible
-            self.quickLogAction.            setEnabled(False)   # no quickstart of logging - it is running already
-            self.logSnapAction.             setEnabled(True)    # snaps are possible only during logging
+            self.logLoadFileAction.             setEnabled(False)  # no loading of log files during logging
+            self.logLoadCSVAction .             setEnabled(False)  # no loading of CSV log files during logging
+            self.startloggingAction.            setEnabled(False)  # no start logging - it is running already
+            self.stoploggingAction.             setEnabled(True)   # stopping is possible
+            self.quickLogAction.                setEnabled(False)  # no quickstart of logging - it is running already
+            self.logSnapAction.                 setEnabled(True)   # snaps are possible only during logging
 
-            # self.setLogTimingAction.        setEnabled(False)   # log cycle change only when logging
-            # self.btnSetCycle.               setEnabled(False)   # log cycle change only when logging
+            if gglobs.Devices["GMC"][ACTIV]:                       # GMC
+                self.histGMCDeviceAction.       setEnabled(False)  #   no downloads during logging
 
-            if gglobs.Devices["GMC"][ACTIV]:                    # GMC
-                self.histGMCDeviceAction.   setEnabled(False)   #   no downloads during logging
+                self.GMCInfoActionExt.          setEnabled(False)  #
+                self.GMCConfigEditAction.       setEnabled(False)  #
+                self.GMCConfigMemoryAction.     setEnabled(False)  #
+                self.GMCSetTimeAction.          setEnabled(False)  #
+                self.GMCEraseSavedDataAction.   setEnabled(False)  #
+                self.GMCREBOOTAction.           setEnabled(False)  #
+                self.GMCFACTORYRESETAction.     setEnabled(False)  #
+                self.GMCONAction.               setEnabled(False)
+                self.GMCOFFAction.              setEnabled(False)
+                self.GMCSerialAction.           setEnabled(False)  #
 
-            if gglobs.Devices["GammaScout"][ACTIV]:             # GammaScout
-                self.histGSDeviceAction.    setEnabled(False)   #   no downloads during logging
 
-            if gglobs.Devices["AmbioMon"][ACTIV]:               # AmbioMon
-                self.histAMDeviceCAMAction. setEnabled(False)   #   no downloads during logging
-                self.histAMDeviceCPSAction. setEnabled(False)   #   no downloads during logging
+            if gglobs.Devices["Audio"][ACTIV]:                     # Audio is activated; may NOT be connected
+                self.AudioInfoActionExt.        setEnabled(True)   #
+                self.AudioSignalAction.         setEnabled(False)  # audio raw signal
+                self.AudioPlotAction.           setEnabled(False)
+                self.AudioEiaAction.            setEnabled(False)  # audio eia action
 
-            if gglobs.Devices["I2C"][ACTIV]:                    # I2C
-                self.I2CScanAction.         setEnabled(False)   #   can scan only when not logging
-                self.I2CForceCalibAction.   setEnabled(False)   #   can calibrate only when not logging
-                self.I2CResetAction.        setEnabled(False)   #   can reset only when not logging
+
+            if gglobs.Devices["GammaScout"][ACTIV]:                # GammaScout
+                self.histGSDeviceAction.        setEnabled(False)  #   no downloads during logging
+                self.GSSerialAction.            setEnabled(False)  #   no serial port settings during logging
+
+                self.GSResetAction.             setEnabled(False)  #   disable reset
+                self.GSSetPCModeAction.         setEnabled(False)  #   disable PC Mode
+                self.GSDateTimeAction.          setEnabled(False)  #   disable set DateTime
+                self.GSSerialAction.            setEnabled(False)  #
+
+
+            if gglobs.Devices["AmbioMon"][ACTIV]:                  # AmbioMon
+                self.histAMDeviceCAMAction.     setEnabled(False)  #   no downloads during logging
+                self.histAMDeviceCPSAction.     setEnabled(False)  #   no downloads during logging
+
+
+            if gglobs.Devices["I2C"][ACTIV] :                      # I2C - Activated
+                self.I2CScanAction.             setEnabled(False)  #   can scan only when not logging
+                self.I2CForceCalibAction.       setEnabled(False)  #   can calibrate only when not logging
+                self.I2CResetAction.            setEnabled(False)  #   can reset only when not logging
+                self.I2CSerialAction.           setEnabled(False)  #
+
+
+            if gglobs.Devices["Manu"][ACTIV] :                      # Manu - Activated
+                self.ManuValAction.             setEnabled(True)  #   can enter data only when logging
 
         # Not Logging
         else:
-            self.logLoadFileAction.         setEnabled(True)    # can load log files
-            self.logLoadCSVAction.          setEnabled(True)    # can load CSV log files
-            self.startloggingAction.        setEnabled(True)    # can start logging (GMC powering need will be excluded later)
-            self.stoploggingAction.         setEnabled(False)   # cannot stop - it is not running
-            self.quickLogAction.            setEnabled(True)    # quickstart is possible (GMC powering need will be excluded later)
-            self.logSnapAction.             setEnabled(False)   # cannot take snaps when not logging
+            self.logLoadFileAction.             setEnabled(True)   # can load log files
+            self.logLoadCSVAction.              setEnabled(True)   # can load CSV log files
+            self.startloggingAction.            setEnabled(True)   # can start logging (GMC powering need will be excluded later)
+            self.stoploggingAction.             setEnabled(False)  # cannot stop - it is not running
+            self.quickLogAction.                setEnabled(True)   # quickstart is possible (GMC powering need will be excluded later)
+            self.logSnapAction.                 setEnabled(False)  # cannot take snaps when not logging
 
-            # self.setLogTimingAction.        setEnabled(True)    # log cycle change only when logging
-            # self.btnSetCycle.               setEnabled(True)    # log cycle change only when logging
+            if gglobs.Devices["GMC"][ACTIV] \
+                and gglobs.Devices["GMC"][CONN]:                   # GMC - Activated AND Connected
 
-            if gglobs.Devices["GMC"][ACTIV]:                    # GMC
-                self.histGMCDeviceAction.   setEnabled(True)    #   can download from device when not logging even if powered off
-                if gdev_gmc.isGMC_PowerOn() == "OFF" \
-                   and gglobs.DevicesConnected == 1:            # GMC is NOT powered ON and is only device
-                    self.startloggingAction.setEnabled(False)   #   cannot start logging without power
-                    self.quickLogAction.    setEnabled(False)   #   quickstart is NOT possible without power
+                self.histGMCDeviceAction.       setEnabled(True)   #   can download from device when not logging even if powered off
+                if gdev_gmc.isGMC_PowerOn(True) == "OFF" and gglobs.DevicesConnected == 1:  # GMC is NOT powered ON and is only device
+                    self.startloggingAction.    setEnabled(False)  #   cannot start logging without power and no other devices connected
+                    self.quickLogAction.        setEnabled(False)  #   quickstart is NOT possible without power and no other devices connected
 
-            if gglobs.Devices["GammaScout"][ACTIV]:             # GammaScout
-                self.histGSDeviceAction.    setEnabled(True)    #   can download from device when not logging
+                self.GMCInfoActionExt.          setEnabled(True)   #
+                self.GMCConfigEditAction.       setEnabled(True)   #
+                self.GMCConfigMemoryAction.     setEnabled(True)   #
+                self.GMCSetTimeAction.          setEnabled(True)   #
+                self.GMCEraseSavedDataAction.   setEnabled(True)   #
+                self.GMCREBOOTAction.           setEnabled(True)   #
+                self.GMCFACTORYRESETAction.     setEnabled(True)   #
+                self.GMCSerialAction.           setEnabled(True)   #
+                self.GMCONAction.               setEnabled(True)
+                self.GMCOFFAction.              setEnabled(True)
 
-            if gglobs.Devices["AmbioMon"][ACTIV]:               # AmbioMon
-                self.histAMDeviceCAMAction. setEnabled(True)    #   can download from device when not logging
-                self.histAMDeviceCPSAction. setEnabled(True)    #   can download from device when not logging
+            if gglobs.Devices["Audio"][ACTIV]:                     # Audio is activated; may NOT be connected
+                self.AudioInfoActionExt.        setEnabled(True)   #
+                self.AudioSignalAction.         setEnabled(True)   # audio raw signal
+                self.AudioPlotAction.           setEnabled(True)
+                self.AudioEiaAction.            setEnabled(True)   # audio eia action
 
-            if gglobs.Devices["I2C"][ACTIV]:                    # I2C
-                self.I2CScanAction.         setEnabled(True)    #   can scan only when not logging
-                self.I2CForceCalibAction.   setEnabled(True)    #   can calibrate only when not logging
-                self.I2CResetAction.        setEnabled(True)    #   can reset only when not logging
+            if gglobs.Devices["GammaScout"][ACTIV]:                # GammaScout is activated; may NOT be connected
+                self.GSSerialAction.            setEnabled(True)   #
+
+            if gglobs.Devices["GammaScout"][ACTIV] \
+                and gglobs.Devices["GammaScout"][CONN]:            # GammaScout - is activated AND Connected
+
+                self.histGSDeviceAction.        setEnabled(True)   #   can download from device when not logging
+
+                self.GSResetAction.             setEnabled(True)   #   enable reset
+                self.GSSetPCModeAction.         setEnabled(True)   #   enable PC Mode
+                self.GSDateTimeAction.          setEnabled(True)   #   enable set DateTime
+                self.GSSerialAction.            setEnabled(True)   #
+
+            if gglobs.Devices["AmbioMon"][ACTIV]:                  # AmbioMon
+                self.histAMDeviceCAMAction.     setEnabled(True)   #   can download from device when not logging
+                self.histAMDeviceCPSAction.     setEnabled(True)   #   can download from device when not logging
+
+            if gglobs.Devices["I2C"][ACTIV] \
+                and gglobs.Devices["I2C"][CONN]:                   # I2C - Activated AND Connected:                       # I2C
+                self.I2CScanAction.             setEnabled(True)   #   can scan only when not logging AND connected
+                self.I2CForceCalibAction.       setEnabled(True)   #   can calibrate only when not logging AND connected
+                self.I2CResetAction.            setEnabled(True)   #   can reset only when not logging AND connected
+                self.I2CSerialAction.           setEnabled(True)   #   can set serial when Activated
+
+            if gglobs.Devices["Manu"][ACTIV] :                     # Manu - Activated
+                self.ManuValAction.             setEnabled(False)  #   can enter data only when logging
 
             if gglobs.logDBPath == None:
-                self.startloggingAction.    setEnabled(False)   # no log file loaded, no logging start
+                self.startloggingAction.        setEnabled(False)  # no log file loaded, cannot start logging
 
-            if gglobs.DevicesConnected == 0:                    # no connected devices
-                self.quickLogAction.        setEnabled(False)   #   no quick Log
-                self.startloggingAction.    setEnabled(False)   #   no start log
-
+            if gglobs.DevicesConnected == 0:                       # no connected devices
+                self.quickLogAction.            setEnabled(False)  #   no quick Log
+                self.startloggingAction.        setEnabled(False)  #   no start log
 
         # adding Log comments allowed when a file is defined
         if gglobs.logDBPath != None:    self.addCommentAction.      setEnabled(True)
@@ -4851,9 +5148,14 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         if gglobs.hisDBPath != None:    self.addHistCommentAction.  setEnabled(True)
         else:                           self.addHistCommentAction.  setEnabled(False)
 
-        # general add comment butto enabled if either Log or Hist is available
-        if gglobs.logDBPath != None or gglobs.hisDBPath != None: self.btnAddComment.setEnabled(True)
+        # general add comment button enabled if either Log or Hist file is available
+        if gglobs.logDBPath != None or gglobs.hisDBPath != None: self.btnAddComment.setEnabled(True)    # either or both DBs are loaded
         else:                                                    self.btnAddComment.setEnabled(False)   # neither DB is loaded
+
+        # general empty Log File button enabled if either Log or Hist file is available
+        if gglobs.logDBPath != None or gglobs.hisDBPath != None: self.btnClearLogfile.setEnabled(True)    # either or both DBs are loaded
+        else:                                                    self.btnClearLogfile.setEnabled(False)   # neither DB is loaded
+
 
     def toggleGMCPower(self):
         """Toggle GMC device Power ON / OFF"""
@@ -4862,46 +5164,51 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
             self.showStatusMessage("Cannot change power when logging! Stop logging first")
             return
 
-        if gdev_gmc.isGMC_PowerOn() == "ON": self.switchGMCPower("OFF")
-        else:                                self.switchGMCPower("ON")
+        if gdev_gmc.isGMC_PowerOn(True) == "ON": self.switchGMCPower("OFF")
+        else:                                    self.switchGMCPower("ON")
 
 
-    def switchGMCPower(self, newstate = "ON"):
+    def switchGMCPower(self, newstate="ON"):
         """Switch power of GMC device to ON or OFF"""
 
         fncname = "switchGMCPower: "
-        dprint(fncname + "--> {}".format(newstate))
-        fprint(header("Switch GMC Device Power to: {}".format(newstate)))
-
         self.setBusyCursor()
+
+        dprint(fncname + "--> {}".format(newstate))
+        setIndent(1)
+
+        fprint(header("Switch GMC Device Power"))
+        QtUpdate()
+
+        # faster to set Power than first reading config to check whether necessary
         if newstate == "ON":
-            if gdev_gmc.isGMC_PowerOn() != "ON":
-                gdev_gmc.setGMC_POWERON()
-                time.sleep(3) # takes some time to settle!
+            # set power "ON"
+            gdev_gmc.setGMC_POWERON()
+
         else:
-            if gdev_gmc.isGMC_PowerOn() == "ON":
-                if gglobs.logging: self.stopLogging()
-                gdev_gmc.setGMC_POWEROFF()
-                time.sleep(3) # takes some time to settle!
+            # set power "OFF"
+            if gglobs.logging: self.stopLogging()
+            gdev_gmc.setGMC_POWEROFF()
 
-        gglobs.GMC_cfg, error, errmessage     = gdev_gmc.getGMC_CFG()     # read config after power change
+        # set getconfig=True to read config after power change
+        ipo = self.setGMCPowerIcon(getconfig=True)
 
-        if gdev_gmc.isGMC_PowerOn() == "ON": fprint("Power is ON")
-        else:                                fprint("Power is OFF")
-        self.setGMCPowerIcon()
+        fprint("Current Power State: GMC Power is ", ipo)
 
         self.checkLoggingState()
         self.setNormalCursor()
+        setIndent(0)
 
 
-    def setGMCPowerIcon(self):
+    def setGMCPowerIcon(self, getconfig=False):
 
-        ipo = gdev_gmc.isGMC_PowerOn()
-        #fprint("setGMCPowerIcon: Device Power State: ",  ipo)
+        ipo = gdev_gmc.isGMC_PowerOn(getconfig=getconfig)
 
         if   ipo == "ON":   self.dbtnGMCPower.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_power-round_on.png'))))
         elif ipo == "OFF":  self.dbtnGMCPower.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_power-round_off.png'))))
         else:               self.dbtnGMCPower.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, 'icon_power-round_on.png'))))
+
+        return ipo
 
 
 #help
@@ -4911,7 +5218,6 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         msg = QMessageBox()
         msg.setWindowIcon(self.iconGeigerLog)
         msg.setWindowTitle("Help - Quickstart")
-        #msg.setFont(self.fontstd) # this will set Monospace font!
         msg.setText(gglobs.helpQuickstart)
 
         msg.setStandardButtons(QMessageBox.Ok)
@@ -4984,8 +5290,8 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
 
         msg = QMessageBox()
         msg.setWindowIcon(self.iconGeigerLog)
-        msg.setWindowTitle("Help - Options")
-        msg.setFont(self.fontstd)   # required! is plain text, not HTML
+        msg.setWindowTitle("Help - Command Line Options")
+        msg.setFont(self.fontstd)   # required! must det to plain text, not HTML
         msg.setText(gglobs.helpOptions)
 
         msg.setStandardButtons(QMessageBox.Ok)
@@ -5003,7 +5309,8 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
 
         # the curly brackets {} used for Python's format() don't work when the text has
         # CSS formatting using {}!
-        description = gglobs.helpAbout % (__author__, gglobs.__version__, __copyright__, __license__)
+        # --> solution: use double quotes for what is NOT part of format (i.e. for the CSS)
+        description = gglobs.helpAbout.format(__author__, gglobs.__version__, __copyright__, __license__)
 
 
         p = QPixmap(os.path.join(gglobs.gresPath, 'icon_geigerlog.png')) # the icon is 512 x 512
@@ -5031,7 +5338,7 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         screen_available = QDesktopWidget().availableGeometry()
         d.setMinimumHeight(min(screen_available.height(), gglobs.window_height + 220))
 
-        bbox    = QDialogButtonBox()
+        bbox      = QDialogButtonBox()
         bbox.setStandardButtons(QDialogButtonBox.Ok)
         bbox.accepted.connect(lambda: d.done(0))
 
@@ -5048,334 +5355,173 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         d.exec()
 
 
-    def setSerialPort(self):
-        """sets the Serial Port and its Baud rate"""
-
-        # see: getPortList() for list of attributes to Portlist
-
-        fncname = "setSerialPort: "
-        dprint(fncname)
-        setDebugIndent(1)
-
-        GMC_Activation = True if gglobs.Devices["GMC"]          [ACTIV] else False
-        I2CActivation  = True if gglobs.Devices["I2C"]          [ACTIV] else False
-        GSActivation   = True if gglobs.Devices["GammaScout"]   [ACTIV] else False
-
-        setPortWidth = 680
-
-        selection_ports    = []
-        selection_baudGMC  = list(map(str,sorted(gglobs.GMCbaudrates, reverse=True)))
-        selection_baudI2C  = list(map(str,sorted(gglobs.I2Cbaudrates, reverse=True)))
-        selection_baudGS   = list(map(str,sorted(gglobs.GSbaudrates,  reverse=True)))
-
-        enableSelections = True
-
-        lp = getPortList(symlinks=True) # ist in gsup_utils.py
-        #~print("-----------------lp:          : ", lp)
-
-        hsp = "<b>Available Ports:</b><pre>"
-        hsp += "\n{:15s} {:40s}  {:14s}   {:s}\n{}\n".format("Port", "Name of USB-to-Serial Hardware", "Linked to Port", "VID :PID", "-" * 84)
-
-        if len(lp) == 0:
-            errmessage = "FAILURE: No available serial ports found"
-            dprint(fncname + errmessage, debug=True)
-            hsp += errmessage + "\n" + "Is any device connected? Check cable and plugs! Re-run in a few seconds." + "\n\n\n"
-            enableSelections = False
-        else:
-            for p in lp:
-                #~print("\np: ", p)
-                try:
-                    link = "No Link"
-                    if hasattr(p, "hwid") and "LINK=" in p.hwid:
-                        link1 = p.hwid.find("LINK=")
-                        link2 = p.hwid.find("LINK=", link1 + 5)
-                        #~print("device:", p.device, ",   hwid:", p.hwid)
-                        #~print("link1: ", link1, ", link2: ", link2)
-                        if link2 > 0:   link = p.hwid[link1 + 5 : link2]
-                        else:           link = p.hwid[link1 + 5 : ]
-
-                    p_device        = getattr(p, "device",      "None")
-                    p_description   = getattr(p, "description", "None")
-                    #~print("p_description: ", p_description)
-                    if len(p_description) > 38: p_description = p_description[:37] + "..." # do not show complete length
-                    #~print("p_device:      ", p_device)
-                    #~print("p_description: ", p_description)
-
-                    p_vid           = getattr(p, "vid",         0)
-                    if p_vid is None:   strp_vid = "None"
-                    else:               strp_vid = "{:04X}".format(p_vid)
-
-                    p_pid           = getattr(p, "pid",         0)
-                    if p_pid is None:   strp_pid = "None"
-                    else:               strp_pid = "{:04X}".format(p_pid)
-
-                    if p_device != "None":
-                        selection_ports.append(p.device)
-                        hsp += "{:15s} {:40s}  {:14s}   {}:{}\n".format(p_device, p_description, link, strp_vid, strp_pid)
-
-                except Exception as e:
-                    dprint(fncname + "Exception: {}  list_port: {}".format(e, p))
-                    enableSelections = False
-
-        if GMC_Activation or I2CActivation or GSActivation:
-            isAnySerDeviceActivated = True
-        else:
-            isAnySerDeviceActivated = False
-
-        hsp += "</pre>"
-
-    # GMC
-        # Combo Box Ports
-        portCbBoxGMC = QComboBox(self)
-        portCbBoxGMC.setEnabled(GMC_Activation)
-        portCbBoxGMC.addItems(selection_ports)
-        portCbBoxGMC.setToolTip('Select the USB-to-Serial port')
-        portCbBoxGMC.setCurrentIndex(portCbBoxGMC.findText(gglobs.GMC_usbport))
-
-        # Combo Box Baudrates
-        baudCbBoxGMC = QComboBox(self)
-        baudCbBoxGMC.setEnabled(GMC_Activation)
-        baudCbBoxGMC.addItems(selection_baudGMC)
-        baudCbBoxGMC.setToolTip('Select the USB-to-Serial baudrate')
-        baudCbBoxGMC.setCurrentIndex(baudCbBoxGMC.findText(str(gglobs.GMC_baudrate)))
-
-        # H-Layout of Combo Boxes
-        cblayoutGMC = QHBoxLayout()
-        cblayoutGMC.addWidget(portCbBoxGMC)
-        cblayoutGMC.addWidget(baudCbBoxGMC)
-
-
-    # I2C
-        # Combo Box Ports
-        portCbBoxI2C = QComboBox(self)
-        portCbBoxI2C.setEnabled(I2CActivation)
-        portCbBoxI2C.addItems(selection_ports)
-        portCbBoxI2C.setToolTip('Select the USB-to-Serial port')
-
-        edprint(fncname + "i2cusbport: ", gglobs.I2Cusbport)
-        portCbBoxI2C.setCurrentIndex(portCbBoxI2C.findText(gglobs.I2Cusbport))
-
-        # Combo Box Baudrates
-        baudCbBoxI2C = QComboBox(self)
-        baudCbBoxI2C.setEnabled(I2CActivation)
-        baudCbBoxI2C.addItems(selection_baudI2C)
-        baudCbBoxI2C.setToolTip('Select the USB-to-Serial baudrate')
-        baudCbBoxI2C.setCurrentIndex(baudCbBoxI2C.findText(str(gglobs.I2Cbaudrate)))
-
-        # H-Layout of Combo Boxes
-        cblayoutI2C = QHBoxLayout()
-        cblayoutI2C.addWidget(portCbBoxI2C)
-        cblayoutI2C.addWidget(baudCbBoxI2C)
-
-
-    # GammaScout
-        # Combo Box Ports
-        portCbBoxGS = QComboBox(self)
-        portCbBoxGS.setEnabled(GSActivation)
-        portCbBoxGS.addItems(selection_ports)
-        portCbBoxGS.setToolTip('Select the USB-to-Serial port')
-        portCbBoxGS.setCurrentIndex(portCbBoxGS.findText(gglobs.GSusbport))
-
-        # Combo Box Baudrates
-        baudCbBoxGS = QComboBox(self)
-        baudCbBoxGS.setEnabled(GSActivation)
-        baudCbBoxGS.addItems(selection_baudGS)
-        baudCbBoxGS.setToolTip('Select the USB-to-Serial baudrate')
-        baudCbBoxGS.setCurrentIndex(baudCbBoxGS.findText(str(gglobs.GSbaudrate)))
-
-        # H-Layout of Combo Boxes
-        cblayoutGS = QHBoxLayout()
-        cblayoutGS.addWidget(portCbBoxGS)
-        cblayoutGS.addWidget(baudCbBoxGS)
-
-
-    # hsplabel set Port Listings Text
-        hsplabel = QLabel()
-        hsplabel.setText(hsp)
-        hsplabel.setWordWrap(True)
-        hsplabel.setMaximumWidth(setPortWidth)
-
-        # hsp2label
-        hsp2  = """
-        <p><br>Select port and baudrate for each activated device which is using a serial connection:
-        <br>(GeigerLog's current settings are pre-selected if available.)<br>"""
-
-        hsp2label = QLabel()
-        hsp2label.setText(hsp2)
-        hsp2label.setWordWrap(True)
-        hsp2label.setMaximumWidth(setPortWidth)
-
-    # Device labels
-        GMCDevice = QLabel("GMC Device:")
-        GSDevice  = QLabel("GammaScout Device:")
-        I2CDevice = QLabel("I2C Device:")
-
-    # hsp3label
-        if isAnySerDeviceActivated:
-            hsp3 = """
-            <p><br>When you press OK, any logging will be stopped, and all of GeigerLog's devices will
-            first be disconnected, and then reconnected with the selected, new settings!
-            <p>Press Cancel to close without making any changes."""
-        else:
-            hsp3 = """
-            <p><br>No activated device using a Serial Port was found.
-            <p>Press Cancel to close."""
-
-        hsp3label = QLabel()
-        hsp3label.setText(hsp3)
-        hsp3label.setWordWrap(True)
-        hsp3label.setMaximumWidth(setPortWidth)
-
-    # Dialog Box
-        title = "Set Port"
-        d = QDialog()
-        d.setWindowIcon(self.iconGeigerLog)
-        d.setWindowTitle(title)
-        d.setWindowModality(Qt.WindowModal)
-        d.setMaximumWidth(setPortWidth)
-
-    # Button Box
-        bbox      = QDialogButtonBox()
-        if enableSelections and isAnySerDeviceActivated:
-            bbox.setStandardButtons(QDialogButtonBox.Ok| QDialogButtonBox.Cancel)
-            bbox.accepted.connect(lambda: d.done(1))     # ok
-        else:
-            bbox.setStandardButtons(QDialogButtonBox.Cancel)
-            bbox.accepted.connect(lambda: d.done(1))     # ok
-        bbox.rejected.connect(lambda: d.done(-1))    # cancel
-
-    # dialog layout
-        layoutV = QVBoxLayout(d)
-        layoutV.addWidget(hsplabel)
-        layoutV.addWidget(hsp2label)
-
-        layoutV.addWidget(GMCDevice)
-        layoutV.addLayout(cblayoutGMC)
-
-        layoutV.addWidget(GSDevice)
-        layoutV.addLayout(cblayoutGS)
-
-        layoutV.addWidget(I2CDevice)
-        layoutV.addLayout(cblayoutI2C)
-
-        layoutV.addWidget(hsp3label)
-        layoutV.addWidget(bbox)
-
-        retval = d.exec()
-        #print("---retval=",retval)
-
-        if retval != 1:      # user has selected Cancel or pressed ESC
-            vprint(fncname + "cancelled by user")
-
-        else:
-            fprint(header(title))
-            if gglobs.Devices["GMC"][ACTIV]:
-                if baudCbBoxGMC.currentText() != "":
-                    gglobs.GMC_usbport  = portCbBoxGMC.currentText()
-                    gglobs.GMC_baudrate = int(baudCbBoxGMC.currentText())
-                    dprint(fncname + "GMC device: Port: {} with Baudrate: {}".format(gglobs.GMC_usbport, gglobs.GMC_baudrate))
-                    fprint("GMC Device:")
-                    fprint("- USB-to-Serial Port:",   gglobs.GMC_usbport)
-                    fprint("- Baudrate:",             gglobs.GMC_baudrate)
-
-            if gglobs.Devices["GammaScout"][ACTIV]:
-                if baudCbBoxGS.currentText() != "":
-                    gglobs.GSusbport  = portCbBoxGS.currentText()
-                    gglobs.GSbaudrate = int(baudCbBoxGS.currentText())
-                    dprint(fncname + "GammaScout device: Port: {} with Baudrate: {}".format(gglobs.GSusbport, gglobs.GSbaudrate))
-                    fprint("GammaScout Device:")
-                    fprint("- USB-to-Serial Port:",   gglobs.GSusbport)
-                    fprint("- Baudrate:",             gglobs.GSbaudrate)
-
-            if gglobs.Devices["I2C"][ACTIV]:
-                if baudCbBoxI2C.currentText() != "":
-                    gglobs.I2Cusbport  = portCbBoxI2C.currentText()
-                    gglobs.I2Cbaudrate = int(baudCbBoxI2C.currentText())
-                    dprint(fncname + "I2C device: Port: {} with Baudrate: {}".format(gglobs.I2Cusbport, gglobs.I2Cbaudrate))
-                    fprint("I2C Device:")
-                    fprint("- USB-to-Serial Port:",   gglobs.I2Cusbport)
-                    fprint("- Baudrate:",             gglobs.I2Cbaudrate)
-
-            self.stopLogging()
-            self.switchAllConnections(new_connection = "OFF")
-            self.switchAllConnections(new_connection = "ON")
-
-        setDebugIndent(0)
-
-
     def changeOptions(self):
         """Switches State of some options"""
 
-        options   = ("Verbose  = False",
-                     "Verbose  = True",
-                     "Debug    = False",
-                     "Debug    = True",
-                     "Redirect = False",
-                     "Redirect = True",
-                     "testing  = False",
-                     "testing  = True",
-                     "werbose  = False",
-                     "werbose  = True",
-                     "stattest = False",
-                     "stattest = True",
-                     )
+        fncname = "changeOptions: "
 
-        index         = 0
-        text, ok      = QInputDialog().getItem(None, 'Switch Option', "Select new option setting and press ok:   ", options, index, False )
-        vprint("changeOptions: text= '{}', ok={}".format( text, ok))
+    # left column:
 
-        if not ok: return      # user has selected Cancel
+        # debug
+        checkD = QCheckBox("Debug")
+        checkD.setLayoutDirection(Qt.LeftToRight)
+        checkD.setChecked(gglobs.debug)
 
-        newIndex    = options.index(text)
+        # verbose
+        checkV = QCheckBox("Verbose")
+        checkV.setLayoutDirection(Qt.LeftToRight)
+        checkV.setChecked(gglobs.verbose)
 
-        fprint(header("Change Options"))
-        fprint("New Option setting:", "{}".format(options[newIndex]))
+        # werbose
+        checkW = QCheckBox("Werbose")
+        checkW.setLayoutDirection(Qt.LeftToRight)
+        checkW.setChecked(gglobs.werbose)
 
-    # The ranking is debug --> verbose --> werbose
-    # if any is true, the higher one(s) must also be set true
-    # verbose
-        if   newIndex == 0:
-            gglobs.verbose  = False
-            gglobs.werbose  = False
+    # middle column:
 
-        elif newIndex == 1:
-            gglobs.verbose  = True
+        # devel
+        checkL = QCheckBox("Devel")
+        checkL.setLayoutDirection(Qt.LeftToRight)
+        checkL.setChecked(gglobs.devel)
+
+        # trace
+        checkTR = QCheckBox("Trace")
+        checkTR.setLayoutDirection(Qt.LeftToRight)
+        checkTR.setChecked(gglobs.traceback)
+        checkTR.setToolTip("Prints traceback in devel mode")
+
+        # timing
+        checkM = QCheckBox("Timing")
+        checkM.setLayoutDirection(Qt.LeftToRight)
+        checkM.setChecked(gglobs.timing)
+        checkM.setToolTip("Writes timing values to Manu device")
+
+    # right column:
+
+        # testing
+        checkT = QCheckBox("Testing")
+        checkT.setLayoutDirection(Qt.LeftToRight)
+        checkT.setChecked(gglobs.testing)
+        checkT.setToolTip("Effective only on GMC")
+
+        # gstesting
+        checkGS = QCheckBox("GS Testing")
+        checkGS.setLayoutDirection(Qt.LeftToRight)
+        checkGS.setChecked(gglobs.gstesting)
+        checkGS.setToolTip("Effective only on GammaScout")
+
+        # Stattest
+        checkS = QCheckBox("Stattest")
+        checkS.setLayoutDirection(Qt.LeftToRight)
+        checkS.setChecked(gglobs.stattest)
+        checkS.setToolTip("Adds Normal statistics to Poisson test")
+
+        # GraphEmphasis
+        checkG = QCheckBox("GraphEmphasis")
+        checkG.setLayoutDirection(Qt.LeftToRight)
+        checkG.setChecked(gglobs.graphemph)
+        checkG.setToolTip("Plot lines with full, thick linewidth")
+
+
+        layoutL = QVBoxLayout()         # left
+        layoutL.addWidget(checkD)
+        layoutL.addWidget(checkV)
+        layoutL.addWidget(checkW)
+        layoutL.addWidget(checkTR)
+        layoutL.addStretch()
+
+        layoutM = QVBoxLayout()         # middle
+        layoutM.addWidget(checkL)
+        layoutM.addWidget(checkM)
+        layoutM.addStretch()
+
+        layoutR = QVBoxLayout()         # right
+        layoutR.addWidget(checkT)
+        layoutR.addWidget(checkGS)
+        layoutR.addWidget(checkS)
+        layoutR.addWidget(checkG)
+        layoutR.addStretch()
+
+        layoutB = QHBoxLayout()         # set cols left, middle, right
+        layoutB.addLayout(layoutL)
+        layoutB.addLayout(layoutM)
+        layoutB.addLayout(layoutR)
+
+        bbox = QDialogButtonBox()
+        bbox.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok )
+        bbox.accepted.connect(lambda: d.done(100))
+        bbox.rejected.connect(lambda: d.done(0))   # ESC key produces 0 (zero)!
+
+        d = QDialog()
+        d.setWindowIcon(gglobs.iconGeigerLog)
+        d.setWindowTitle("Change Command Line Options")
+        d.setWindowModality(Qt.WindowModal)
+        d.setMinimumWidth(320)
+
+        layoutV = QVBoxLayout(d)
+        layoutV.addLayout(layoutB)
+        layoutV.addWidget(bbox)
+
+        retval = d.exec()
+        #print("reval:", retval)
+        if retval != 100: return
+
+        #
+        # The ranking is debug --> verbose --> werbose
+        # if any is true, the higher one(s) must also be set true
+        # trace requires debug
+        if checkD.isChecked():
             gglobs.debug    = True
-
-    # debug
-        elif newIndex == 2:
+        else:
             gglobs.debug    = False
             gglobs.verbose  = False
             gglobs.werbose  = False
-        elif newIndex == 3:
+
+        if checkV.isChecked():
+            gglobs.verbose  = True
             gglobs.debug    = True
-
-    # redirect
-        elif newIndex == 4:
-            gglobs.redirect = False
-        elif newIndex == 5:
-            gglobs.redirect = True
-
-    # testing
-        elif newIndex == 6:
-            gglobs.testing  = False
-        elif newIndex == 7:
-            gglobs.testing  = True
-
-    # werbose
-        elif newIndex == 8:
+        else:
+            gglobs.verbose  = False
             gglobs.werbose  = False
-        elif newIndex == 9:
+
+        if checkW.isChecked():
             gglobs.werbose  = True
             gglobs.verbose  = True
             gglobs.debug    = True
+        else:
+            gglobs.werbose  = False
 
-    # stattest
-        elif newIndex == 10:
-            gglobs.stattest  = False
 
-        elif newIndex == 11:
-            gglobs.stattest  = True
+        if checkTR.isChecked():
+            gglobs.traceback= True
+            gglobs.debug    = True
+        else:
+            gglobs.traceback= False
+
+        gglobs.devel        = True if checkL.isChecked()  else False
+        gglobs.timing       = True if checkM.isChecked()  else False
+
+        gglobs.testing      = True if checkT.isChecked()  else False
+        gglobs.gstesting    = True if checkGS.isChecked() else False
+
+        gglobs.stattest     = True if checkS.isChecked()  else False
+        gglobs.graphemph    = True if checkG.isChecked()  else False
+
+        fprint(header("Change Command Line Options"))
+        setfrmt   = "   {:27s}{}\n"
+        settings  = "Current settings:\n"
+        settings += setfrmt.format("Debug:",            gglobs.debug)
+        settings += setfrmt.format("Verbose:",          gglobs.verbose)
+        settings += setfrmt.format("Werbose:",          gglobs.werbose)
+        settings += setfrmt.format("Trace:",            gglobs.traceback)
+        settings += setfrmt.format("Devel:",            gglobs.devel)
+        settings += setfrmt.format("Timing:",           gglobs.timing)
+        settings += setfrmt.format("Testing:",          gglobs.testing)
+        settings += setfrmt.format("GS Testing:",       gglobs.gstesting)
+        settings += setfrmt.format("Stattest:",         gglobs.stattest)
+        settings += setfrmt.format("GraphEmphasis:",    gglobs.graphemph)
+        fprint(settings)
+        dprint(fncname + settings)
 
 
     def editScaling(self):
@@ -5404,12 +5550,10 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
         self.dialog = QDialog()
         self.dialog.setWindowIcon(self.iconGeigerLog)
         self.dialog.setWindowTitle("View and Edit Current Scaling")
-        #~self.dialog.setWindowModality(Qt.WindowModal)
         self.dialog.setWindowModality(Qt.ApplicationModal)
         self.dialog.setMinimumWidth(700)
         self.dialog.setMaximumWidth(1000)
 
-        # buttonbox: https://srinikom.github.io/pyside-docs/PySide/QtGui/QDialogButtonBox.html
         bbox = QDialogButtonBox()
         bbox.setStandardButtons(QDialogButtonBox.Ok|QDialogButtonBox.Cancel)
         bbox.accepted.connect(lambda: self.dialog.done(0))
@@ -5447,8 +5591,6 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
     def clearNotePad(self):
         """Clear the notepad"""
 
-        # self.notePad.append("<span style='color:black;'>&nbsp;</span>")
-        # self.notePad.setStyleSheet("color: rgb(40, 40, 40)")
         self.notePad.clear()
         self.notePad.setTextColor(QColor(40, 40, 40))
 
@@ -5460,12 +5602,12 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
 
 
     def setBusyCursor(self):
-
+        "Change cursor to rotating clock"
         QApplication.setOverrideCursor(Qt.WaitCursor)
 
 
     def setNormalCursor(self):
-
+        "Change cursor to normal (arrow or insert"
         QApplication.restoreOverrideCursor()
 
 
@@ -5476,10 +5618,10 @@ from the following numbers. Find details in the GeigerLog manual - Chapter Calib
             self.statusBar.setStyleSheet("QStatusBar { }")      # reset to default colors
             self.statusBar.showMessage(message, msecs=timing)   # message remains until overwritten by next status
         else:
-            playWav("error")
+            playWav("err")
             self.statusBar.showMessage(message, msecs=timing)   # message remains until overwritten by next status
             self.statusBar.setStyleSheet("QStatusBar { background-color:red; color:white; }")
-            Qt_update()                                         # assure that things are visible
+            QtUpdate()                                         # assure that things are visible
             time.sleep(0.5)                                     # stays red for 0.5 sec
             self.statusBar.setStyleSheet("QStatusBar { }")      # reset to default colors
 

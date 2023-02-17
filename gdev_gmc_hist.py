@@ -97,29 +97,29 @@ def makeGMC_History(sourceHist):
         fprint("Reading data from connected device: {}".format(gglobs.GMCDeviceDetected))
 
         hist    = b""
-        page    = gglobs.GMC_SPIRpage # 4096 or 2048, see: getGMC_DeviceProperties
-        FFpages = 0               # number of successive pages having only FF
+        page    = gglobs.GMC_SPIRpage       # 4096 or 2048, see: getGMC_DeviceProperties
+        FFpages = 0                         # number of successive pages having only FF
 
         # Cleaning pipeline BEFORE reading history
         dprint(fncname + "Cleaning pipeline BEFORE reading history")
         extra = gdev_gmc.getGMC_ExtraByte()
 
         start = time.time()
-        #testing
-        vprint("makeGMC_History: gglobs.GMC_memory, page: ", gglobs.GMC_memory, " ", page)
-        ########
+        cdprint("makeGMC_History: gglobs.GMC_memory, page: ", gglobs.GMC_memory, " ", page)
         for address in range(0, gglobs.GMC_memory, page): # prepare to read all memory
-            time.sleep(0.1) # fails occasionally to read all data when
-                            # sleep is only 0.1; still not ok at 0.2 sec
-                            # wieder auf 0.1, da GQ Dataviewer deutlich scneller ist
-            fprint("Reading page of size {} @address:".format(page), address)
+            # time.sleep(0.1) # fails occasionally to read all data when
+            #                 # sleep is only 0.1; still not ok at 0.2 sec
+            #                 # wieder auf 0.1, da GQ Dataviewer deutlich scneller ist
+            time.sleep(0.01)  # may be the problem reading spir after erase?
 
-#newnewnew
-#REMEMBER: AFTER Factoryreset rewrite the saving mode (showed cpm, although it was CPS!)
-
-            QApplication.processEvents()
-            QApplication.processEvents()
+            spirstart = time.time()
             rec, error, errmessage = gdev_gmc.getGMC_SPIR(address, page)
+            spirdur   = 1000 * (time.time() - spirstart)
+            try:    spirbpsec = page / spirdur * 1000
+            except: spirbpsec = gglobs.NAN
+            fprint("Reading page of size {} @address:{:9n}  took {:6.1f} ms (Bytes/sec: {:6.1f})".format(page, address, spirdur, spirbpsec))
+            QtUpdate()
+
             if error in (0, 1):
                 hist += rec
                 if error == 1: fprint("Reading error:", "Recovery succeeded")
@@ -131,7 +131,7 @@ def makeGMC_History(sourceHist):
                     FFpages  = 0
 
                 if not gglobs.fullhist and FFpages * page >= 8192: # 8192 is 2 pages of 4096 byte each
-                    txt = "Found {} successive {} B-pages (total {} B), as 'FF' only - ending reading".format(FFpages, page, FFpages * page)
+                    txt = "Found {} successive pages of {} B (total {} B), as 'FF' only - ending reading".format(FFpages, page, FFpages * page)
                     dprint(txt)
                     fprint(txt)
                     break
@@ -143,7 +143,7 @@ def makeGMC_History(sourceHist):
 
         stop = time.time()
         dtime = (stop - start)
-        timing = "Total time: {:0.1f} sec, Total Bytes: {:d} --> {:0.1f} kBytes/s ({:0.2f} MBits/s)".format(dtime, len(hist), len(hist) / dtime / 1000, len(hist) / dtime / 1E6 * 8)
+        timing = "Total time: {:0.1f} sec, Total Bytes: {:1n} --> {:0.2f} kBytes/s ({:0.3f} MBits/s)".format(dtime, len(hist), len(hist) / dtime / 1000, len(hist) / dtime / 1E6 * 8)
         dprint(timing)
         fprint(timing)
 
@@ -159,7 +159,12 @@ def makeGMC_History(sourceHist):
     gglobs.HistoryParseList     = []
     gglobs.HistoryCommentList   = []
 
-    fprint("Parsing binary data", debug=gglobs.debug)
+
+    # fprint("Parsing binary data", debug=gglobs.debug)
+    msg = "Parsing binary data"
+    fprint(msg)
+    dprint(msg)
+
     parseHIST(hist)
 
     dbhisClines    = [None] * 2
@@ -175,7 +180,10 @@ def makeGMC_History(sourceHist):
     gsup_sql.DB_insertData          (gglobs.hisConn, gglobs.HistoryDataList)
     gsup_sql.DB_insertParse         (gglobs.hisConn, gglobs.HistoryParseList)
 
-    fprint("Database is created", debug=gglobs.debug)
+    # fprint("Database is created", debug=gglobs.debug)
+    msg = "Database is created"
+    fprint(msg)
+    dprint(msg)
 
     return (0, "")
 
@@ -259,6 +267,16 @@ def parseHIST(hist):
     # as last command for each condition
     # may not be true; CPM save every minute seems to be off by ~30sec!
 
+    # if a timestamp cannot be read, GL crashes because "rectimestamp referenced before assignment".
+    # This is just to avoid it.
+    # same problem with the others following; all serve as dummy defaults
+    rectimestamp = 0        #1646564334=6.3.22  # number here has no impact on hist data
+    savetext     = "Dummy"
+    saveinterval = 1
+    cpxValid     = 1
+    CPSmode      = True
+    cpms         = 1
+
 #    while i < lh - 3:  # if tag is ASCII bytes there will be a call of the 3rd byte
 #                       # ???? what about 3 and 4 byte records???
     while i < lh:       #  range is: 0, 1, 2, ..., lh - 1
@@ -266,10 +284,6 @@ def parseHIST(hist):
         r = rec[i]
         if r == 0x55:
             if rec[i+1] == 0xaa:
-
-#TESTING (for the mess of GQ's redefinitions of the coding 55 AA sequences
-                #if i > 150 and i < 300: rec[i+2] = 2
-
                 if rec[i+2] == 0:   # timestamp coming
                     YY = rec[i+3]
                     MM = rec[i+4]
@@ -291,16 +305,8 @@ def parseHIST(hist):
                         cpms         = 0
 
                     elif dd == 1:
-                        savetext      = "CPS, save every second"
-                        #saveinterval = 1
-                        #~saveinterval = 0.99 # to compensate for the clock running too slow
-                                            #~# timetag is normally sooner than expected from
-                                            #~# advancing by 1 sec increments. Gives problems
-                                            #~# in sorting order
-                        saveinterval = 1 # to compensate for the clock running too slow
-                                            # timetag is normally sooner than expected from
-                                            # advancing by 1 sec increments. Gives problems
-                                            # in sorting order
+                        savetext     = "CPS, save every second"
+                        saveinterval = 1
                         cpxValid     = 1
                         CPSmode      = True
                         cpms         = 1
@@ -308,7 +314,7 @@ def parseHIST(hist):
                     elif dd == 2:
                         # it looks like there is a ~30sec delay before the new
                         # timing loop sets in. NOT taken into account!
-                        savetext      = "CPM, save every minute"
+                        savetext     = "CPM, save every minute"
                         saveinterval = 60
                         cpxValid     = 1
                         CPSmode      = False
@@ -317,7 +323,7 @@ def parseHIST(hist):
                     elif dd == 3:
                         # after changing to hourly saving the next value is saved an hour later
                         # so cpms must be set to plus 1!
-                        savetext      = "CPM, save every hour as hourly average"
+                        savetext     = "CPM, save every hour as hourly average"
                         saveinterval = 3600
                         cpxValid     = 1
                         CPSmode      = False
@@ -326,7 +332,7 @@ def parseHIST(hist):
 
                     elif dd == 4:
                         # save only if exceeding threshold
-                        savetext      = "CPS, save every second if exceeding threshold"
+                        savetext     = "CPS, save every second if exceeding threshold"
                         saveinterval = 1
                         cpxValid     = 1
                         CPSmode      = True
@@ -334,7 +340,7 @@ def parseHIST(hist):
 
                     elif dd == 5:
                         # save only if exceeding threshold
-                        savetext      = "CPM, save every minute if exceeding threshold"
+                        savetext     = "CPM, save every minute if exceeding threshold"
                         saveinterval = 60
                         cpxValid     = 1
                         CPSmode      = False
@@ -342,7 +348,7 @@ def parseHIST(hist):
 
                     else:
                         # ooops. you were not supposed to be here
-                        savetext      = "ERROR: FALSE READING OF HISTORY SAVE-INTERVALL = {:3d} (allowed is: 0,1,2,3,4,5)".format(dd)
+                        savetext     = "ERROR: FALSE READING OF HISTORY SAVE-INTERVALL = {:3d} (allowed is: 0,1,2,3,4,5)".format(dd)
                         dprint(savetext, debug=True)
                         saveinterval = 0        # do NOT advance the time
                         cpxValid     = -1       # make all counts negative to mark illegitimate data

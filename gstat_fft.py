@@ -149,21 +149,16 @@ def plotFFT():
     sigt_std        = np.nanstd     (sigt)          # np.std(sigt)
     sigt_err        = sigt_std / np.sqrt(sigt.size) # sigt_std / np.sqrt(sigt.size)
 
-
-#testing
-    #~print("----------------sigt_mean = ", sigt_mean)
-    #~print("----------------sigt_var = ", sigt_var)
-    #~print("----------------sigt_std = ", sigt_std)
-    #~print("----------------sigt_err = ", sigt_err)
-
+    cdprint("----------------sigt_mean = ", sigt_mean)
+    cdprint("----------------sigt_var  = ", sigt_var)
+    cdprint("----------------sigt_std  = ", sigt_std)
+    cdprint("----------------sigt_err  = ", sigt_err)
 
     if sigt_var == 0:
         gglobs.exgg.showStatusMessage("All data variances are zero; cannot calculate FFT!")
-        setDebugIndent(0)
+        setIndent(0)
         setNormalCursor()
         return
-
-
 
     # FFT calculation #####################################################
     # using amplitude spectrum, not power spectrum; power would be freq^2

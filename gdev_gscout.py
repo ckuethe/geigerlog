@@ -28,61 +28,61 @@ __copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
-"""
-NOTES:
-GeigerLog supports Gamma-Scout models Standard, Alert, Rechargeable, and Online
-Since Standard, Alert, and Rechargeable do not support logging from these devices,
-GeigerLog implements their use for logging such that those GS counters return
-only empty values (= NAN values) as logged data.
 
-The Online Gamma-Scout .... tbd
+# NOTES:
+# GeigerLog supports Gamma-Scout models Standard, Alert, Rechargeable, and Online.
+# Since Standard, Alert, and Rechargeable do not support logging from these devices,
+# GeigerLog implements their use for logging such that those GS counters return
+# only empty values (= NAN values) as logged data.
 
-Logging requires that a connection exists to a GS device, even if only as a
-simulator, see next.
+# The Online Gamma-Scout .... tbd
 
-SIMULATION:
-If a GS device is not available, it can be simulated. To do so start program
-GLgammascoutsim.py in a separate Terminal window as SUDO (!):
-                    sudo gtools/GLgammascoutsim.py
-and start GeigerLog with the command GStesting, like:
-                    python3 geigerlog GStesting
-GS will be connectable and allows downloading from the simulated device (but
-logging will result in empty values only).
+# Logging requires that a connection exists to a GS device, even if only as a
+# simulator, see next.
 
-DOWNLOADING:
-Gamma-Scout_Communication_Interface_V1.7.txt
-from: https://www.gamma-scout.com/wp-content/uploads/Gamma-Scout_Communication_Interface_V1.7.txt
+# SIMULATION:
+# If a GS device is not available, it can be simulated. To do so start program
+# GLgammascoutsim.py in a separate Terminal window as SUDO (!):
+#                     sudo gtools/GLgammascoutsim.py
+# and start GeigerLog with the command gstesting, like:
+#                     python3 geigerlog gstesting
+# GS will be connectable and allows downloading from the simulated device (but
+# logging will result in empty values only).
 
-The contents of the protocol memory consists of either 2 byte pulse entries or
-special codes. It must be interpreted byte by byte. Special codes start with a
-byte with its high-nibble being 0xF. If the high-nibble is not 0xF, this byte
-will be the first byte of a 2 byte pulse entry.
+# DOWNLOADING:
+# Gamma-Scout_Communication_Interface_V1.7.txt
+# from: https://www.gamma-scout.com/wp-content/uploads/Gamma-Scout_Communication_Interface_V1.7.txt
 
-This 2 byte pulse entry represents the number of pulses collected during the
-last protocol interval (or the number of pulse during an out-of-band protocol
-interval, see below). The highest 5 bits contain the exponent, the lower 11
-bits the mantissa. E.g.:
-    0x3E27 = %0011111000100111 = 2^7 (exponent) * 1575 (mantissa) = 201600
+# The contents of the protocol memory consists of either 2 byte pulse entries or
+# special codes. It must be interpreted byte by byte. Special codes start with a
+# byte with its high-nibble being 0xF. If the high-nibble is not 0xF, this byte
+# will be the first byte of a 2 byte pulse entry.
 
-TUBE:
-Gamma-Scout tube: LND712
-https://www.lndinc.com/products/geiger-mueller-tubes/712/
-Spec.Sheet:
-    GAMMA SENSITIVITY CO60 (CPS/mR/HR)                  : 18
-    MAXIMUM BACKGROUND SHIELDED 50MM PB + 3MM AL (CPM)  : 10
+# This 2 byte pulse entry represents the number of pulses collected during the
+# last protocol interval (or the number of pulse during an out-of-band protocol
+# interval, see below). The highest 5 bits contain the exponent, the lower 11
+# bits the mantissa. E.g.:
+#     0x3E27 = %0011111000100111 = 2^7 (exponent) * 1575 (mantissa) = 201600
 
-Calculated:
-Gamma Sensitivity : 18 CPS/mR/h = 1080 CPM/mR/h = 1080 CPM/10µSv/h = 108 CPM/µSv/h
-invers:           : 1/108 = 0.00926 µSv/h/CPM
-Compare with M4011: (0.00926 / 0.0065 = 1.42 (1/1.42=0.70)
-                  : LND712 has only 70% of sensitivity of M4011 for gamma
+# TUBE:
+# Gamma-Scout tube: LND 712
+# https://www.lndinc.com/products/geiger-mueller-tubes/712/
+# Spec.Sheet:
+#     GAMMA SENSITIVITY CO60 (CPS/mR/HR)                  : 18
+#     MAXIMUM BACKGROUND SHIELDED 50MM PB + 3MM AL (CPM)  : 10
 
-Memory: (manual 2018 page 16)
-Wenn im Speicher nur noch 256 Bytes (von den 65280 Bytes) zum Beschreiben
-zur Verfügung stehen, schaltet der GAMMA-SCOUT® automatisch auf 7 Tage
-Protokollintervall zurück. In diesem Fall sind kürzere Protokollintervalle
-erst nach dem Löschen des Speichers wieder einstellbar.
-"""
+# Calculated:
+# Gamma Sensitivity : 18 CPS/mR/h = 1080 CPM/mR/h = 1080 CPM/10µSv/h = 108 CPM/µSv/h
+# invers:           : 1/108 = 0.00926 µSv/h/CPM
+# Compare with M4011: (0.00926 / 0.0065 = 1.42 (1 / 1.42 = 0.70)
+#                   : LND 712 has only 70% of sensitivity of M4011 for gamma
+
+# Memory: (manual 2018 page 16)
+# Wenn im Speicher nur noch 256 Bytes (von den 65280 Bytes) zum Beschreiben
+# zur Verfügung stehen, schaltet der GAMMA-SCOUT® automatisch auf 7 Tage
+# Protokollintervall zurück. In diesem Fall sind kürzere Protokollintervalle
+# erst nach dem Löschen des Speichers wieder einstellbar.
+
 
 
 from   gsup_utils       import *
@@ -119,9 +119,8 @@ protocol_interval_online  = {
 }
 
 
-
 def printTestValues():
-    # test values for floating formatting
+    """test values for floating formatting"""
 
     testraws = [0x3e27,             # = 201600 # example from Gamma Scout company
                 0x00aa,             # = 170
@@ -152,7 +151,8 @@ def printTestValues():
 #
 
 def _getValue(raw):
-    """Gamma-Scout_Communication_Interface; raw is a 2 byte value. The highest
+    """
+    Gamma-Scout_Communication_Interface; raw is a 2 byte value. The highest
     5 bits contain the exponent, the lower 11 bits the mantissa. E.g.:
     0x3E27 = %0011 1  110 0010 0111 = 2^7 (exponent) * 1575 (mantissa) = 201600
     """
@@ -225,7 +225,7 @@ def GSgetParsedHistory(hisbytes, maxbytes=0xFFFF):
 
     fncname = "GSgetParsedHistory: "
     vprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
     try:
         index = hisbytes.index(0xF5) # =245 =start location of history
     except Exception as e:
@@ -260,12 +260,12 @@ def GSgetParsedHistory(hisbytes, maxbytes=0xFFFF):
 
         # interval
             if raw >= 0x00 and raw <= 0x0d:
-                if gglobs.GStype == "Online": interval_offset = 0
+                if gglobs.GS_DeviceDetected == "Online": interval_offset = 0
                 else:                         interval_offset = 1
-                interval = _protocol_interval_online[raw + interval_offset]
+                interval = protocol_interval_online[raw + interval_offset]
                 rtime    = _num2datstr(countertime)
                 dbtype   = "{:20s}: 0x{:02X} ({:3d}), Interval[sec]: old:{} new:{} ".format("Protocol Interval", raw, raw, lastinterval, interval)
-                dbtype2  = HILITECOLOR + dbtype + NORMALCOLOR
+                dbtype2  = TGREEN + dbtype + TDEFAULT
                 wprint("index:{:5d} {:5d} : {:19s}, {}".format(index, 0, rtime, dbtype2))
                 _New_parseCommentAdder(index, countertime, dbtype)
 
@@ -295,7 +295,7 @@ def GSgetParsedHistory(hisbytes, maxbytes=0xFFFF):
                 countertime = datestr2num(tstamp)
                 rtime       = _num2datstr(countertime)
                 dbtype      = "{:20s}: 0x{:02X} ({:3d}): {} ({})".format("Timestamp Online", raw, raw, tbytes, tstamp)
-                dbtype2     = HILITECOLOR + dbtype + NORMALCOLOR
+                dbtype2     = TGREEN + dbtype + TDEFAULT
                 wprint("index:{:5d} {:5d} : {:19s}, {}".format(index, 0, rtime, dbtype2))
                 _New_parseCommentAdder(index, countertime, dbtype)
 
@@ -318,7 +318,7 @@ def GSgetParsedHistory(hisbytes, maxbytes=0xFFFF):
                 countertime = datestr2num(tstamp)
                 rtime       = _num2datstr(countertime)
                 dbtype      = "{:20s}: 0x{:02X} ({:3d}): {} ({})".format("Timestamp Classic", raw, raw, tbytes, tstamp)
-                dbtype2     = HILITECOLOR + dbtype + NORMALCOLOR
+                dbtype2     = TGREEN + dbtype + TDEFAULT
                 wprint("index:{:5d} {:5d} : {:19s}, {}".format(index, 0, rtime, dbtype2))
 
                 _New_parseCommentAdder(index, countertime, dbtype)
@@ -379,7 +379,7 @@ def GSgetParsedHistory(hisbytes, maxbytes=0xFFFF):
             nextbyte = hisbytes[index + 1]
             rtime    = _num2datstr(countertime)
             dbtype   = "{:20s}: 0x{:02X} ({:3d}): Bytes to skip: {}".format("Skip Byte", raw, raw, nextbyte)
-            dbtype2  = HILITECOLOR + dbtype + NORMALCOLOR
+            dbtype2  = TGREEN + dbtype + TDEFAULT
             wprint("index:{:5d} {:5d} : {:19s}, {}".format(index, 0, rtime, dbtype2))
             _New_parseCommentAdder(index, countertime, dbtype)
 
@@ -387,7 +387,7 @@ def GSgetParsedHistory(hisbytes, maxbytes=0xFFFF):
 
 
     # Special code - Dose overflow - Classic Only
-        elif raw == 0xFA and gglobs.GStype == "Classic":
+        elif raw == 0xFA and gglobs.GS_DeviceDetected == "Classic":
             rtime   = _num2datstr(countertime)
             dbtype  = "{:20s}: 0x{:02X} ({:3d}): Dose rate overflowed (> 1000 uSv/h) during the current protocol interval at least once.".format("Overflow Code", raw, raw)
             wprint("index:{:5d} {:5d} : {:19s}, {}".format(index, 0, rtime, dbtype))
@@ -448,7 +448,7 @@ def GSgetParsedHistory(hisbytes, maxbytes=0xFFFF):
         if index >= len(hisbytes) - 1:
             break
 
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def GSreadDataFromFile(dat_path):
@@ -457,7 +457,7 @@ def GSreadDataFromFile(dat_path):
     fncname  = "GSreadDataFromFile: "
     dumpdata = []
     wprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     if not gglobs.Devices["GammaScout"][CONN] : return dumpdata
 
@@ -494,7 +494,7 @@ def GSreadDataFromFile(dat_path):
     for a in dumpdata[-10:]: wprint(a)
     wprint(dashline)
 
-    setDebugIndent(0)
+    setIndent(0)
     return dumpdata
 
 
@@ -502,27 +502,16 @@ def GSclearPipeline():
     """Clearing pipeline"""
 
     if not gglobs.Devices["GammaScout"][CONN] : return
+    if gglobs.GSser is None: return
 
     fncname = "GSclearPipeline: "
-    wprint(fncname)
+    dprint(fncname)
 
-    start2 = time.time()
-    wait2  = 0.1        # sec waiting in while loop
-    try:
-        bw = gglobs.GSser.in_waiting
-    except Exception as e:
-        exceptPrint(e, fncname + "#1 GSser.in_waiting Exception")
-        bw = 0
-    while (time.time() - start2) < wait2 or bw > 0:
-        if bw > 0:
-            bytedata = gglobs.GSser.read(bw)   # reads data as BYTES
-            wprint(fncname + "{:6.1f} ms, waiting bytes:{}  ".format((time.time() - start2) * 1000, bw), bytedata)
-        time.sleep(0.02)
-        try:
-            bw = gglobs.GSser.in_waiting
-        except Exception as e:
-            exceptPrint(e, fncname + "#2 GSser.in_waiting Exception")
-            bw = 0
+    while True:
+        time.sleep(0.1)
+        cnt = globs.GSser.in_waiting
+        if cnt == 0: break
+        globs.GSser.read(cnt)
 
 
 def GSreadAll(bytecount=None, waittime=4):
@@ -530,16 +519,10 @@ def GSreadAll(bytecount=None, waittime=4):
 
     fncname = "GSreadAll: "
 
-    if bytecount == None:   msg = ""
-    else:                   msg = "requested bytes to read: {}".format(bytecount)
-    wprint(fncname + msg)
+    msg = "requested bytes to read: {}".format(bytecount)
 
-    alldata, msg = _GSread_waiting(bytecount=bytecount, waittime=waittime)
-
-    if msg > "":
-        setDebugIndent(1)
-        wprint(fncname + msg)
-        setDebugIndent(0)
+    alldata, rmsg = _GSread_waiting(bytecount=bytecount, waittime=waittime)
+    cdprint(fncname + msg + ",  alldata: '{}'  rmsg: '{}'".format(alldata, rmsg))
 
     return alldata
 
@@ -568,7 +551,7 @@ def _GSread_waiting(bytecount=None, waittime=4):
         time.sleep(0.01)
         if bw > 0: break
     #print()
-    wprint(fncname + "1st   wait: {:6.1f} ms, now waiting: {} bytes".format((time.time() - start1) * 1000, bw)) # 400 ... 1000 ms
+    cdprint(fncname + "1st   wait: {:6.1f} ms, now waiting: {} bytes".format((time.time() - start1) * 1000, bw)) # 400 ... 1000 ms
 
     # at this point there are some bytes waiting
     if bytecount != None:   bytedata += gglobs.GSser.read(bytecount) # reads bytecount data BYTES
@@ -596,7 +579,7 @@ def _GSread_waiting(bytecount=None, waittime=4):
             exceptPrint(e, fncname + "#3 GSser.in_waiting Exception")
             bw = 0
 
-    wprint(fncname + "total wait: {:6.1f} ms, got total  : {} bytes".format((time.time() - start1) * 1000, len(bytedata))) # 400 ... 1000 ms
+    cdprint(fncname + "total wait: {:6.1f} ms, got total  : {} bytes".format((time.time() - start1) * 1000, len(bytedata))) # 400 ... 1000 ms
 
     ######################
     #~sbytedata = bytedata.strip().split(b"\r\n")
@@ -611,9 +594,9 @@ def _GSread_waiting(bytecount=None, waittime=4):
         msg1 += "You can try to unplug/replug \nthe device with the computer.\n"
         msg1 += "Any records containing wrong chracters will be ignored in the anaylsis. "
         msg1 += "You can continue,\nbut be aware of possibly missing records."
-        setDebugIndent(1)
+        setIndent(1)
         edprint(msg0, debug=True)
-        setDebugIndent(0)
+        setIndent(0)
         efprint(msg0 + msg1)
         qefprint("Count of 0x00 in transferred 7-bit bytes: {}. First occurence at position: {} of {}."\
                     .format(bytedata.count(0x00), bytedata.index(0x00), len(bytedata)))
@@ -656,9 +639,9 @@ def GSwriteToDevice(wdata, purpose=""):
             ok = True
         else:
             ok = False
-            setDebugIndent(1)
+            setIndent(1)
             wprint(fncname + "FAILURE writing '{}' to device: {} bytes written, but write data has length {}".format(wdata, bytesWritten, len(wdata)))
-            setDebugIndent(0)
+            setIndent(0)
 
     except Exception as e:
         ok  = False
@@ -679,11 +662,11 @@ def GSconvertDumpToBinList(dumpdata):
     len_dumpdata = len(dumpdata)
 
     vprint(fncname + "len(dumpdata): {}".format(len_dumpdata))
-    setDebugIndent(1)
+    setIndent(1)
 
     if len_dumpdata == 0:
         vprint(fncname + "No data to convert")
-        setDebugIndent(0)
+        setIndent(0)
         return []
 
     index = 0
@@ -750,7 +733,7 @@ def GSconvertDumpToBinList(dumpdata):
     wprint(fncname + "last  30     : ", listdumpdata[-30:])
     wprint(fncname + "======================================")
 
-    setDebugIndent(0)
+    setIndent(0)
     return listdumpdata
 
 
@@ -775,91 +758,105 @@ def GSextractExtendedInfo(infoline):
             703:    infoline = 'Version 7.03xyz 073160 4bde 18.02.21 15:42:39'
     """
 
-    gglobs.GStype           = ""
-    gglobs.GSFirmware       = ("", "")  # major, minor fw number
-    gglobs.GSSerialNumber   = ""
-    gglobs.GSusedMemory     = 0
-    gglobs.GSDateTime       = ""
+    if infoline is None or len(infoline) == 0: return
 
     fncname  = "GSextractExtendedInfo: "
 
     dprint(fncname + "infoline: '{}'".format(infoline))
-    setDebugIndent(1)
+    setIndent(1)
 
-    if infoline is None: return
+    gglobs.GS_DeviceDetected           = ""
+    gglobs.GSDateTime       = ""
+    gglobs.GSSerialNumber   = ""
+    gglobs.GSFirmware       = ("", "")  # major, minor fw numbers
+    gglobs.GSusedMemory     = 0
 
-    if len(infoline) == 0:
-        dprint(fncname + "No data in infoline: '{}'".format(infoline))
+    # if len(infoline) == 0:
+    #     dprint(fncname + "No data in infoline: '{}'".format(infoline))
 
-    else:
+    # else:
+    if 1:
         infolist = infoline.split(" ")
-        wprint(fncname + "infolist: '{}'".format(infolist))
-        #~fwtemp     = infolist[1].split(".", 1)
-        #~wprint(fncname + "fwtemp: '{}'".format(fwtemp))
+        cdprint(fncname + "infolist: '{}'".format(infolist))
         fw = tuple(infolist[1].split(".", 1))
-        wprint(fncname + "fw: '{}'".format(fw))
+        cdprint(fncname + "fw: '{}'".format(fw))
 
-        #~try:
-            #~fw_version = float(re.findall("\d+\.\d+", infolist[1])[0])
-        #~except Exception as e:
-            #~exceptPrint(e, "cannot get float of :{}".format(infolist[1]))
-            #~fw_version = 6.1
-        #~#wprint(fncname + "fw_version: {}".format(fw_version))
-
-        gglobs.GSFirmware       = fw
+        gglobs.GSFirmware = fw
 
         fw0 = fw[0]
         fw1 = fw[1][0:2]
 
 
         if   fw0 < "6":
-            gglobs.GStype   = "Old"
+            gglobs.GS_DeviceDetected   = "Old"
             gglobs.GSfwtype = None
 
+            msg = "Gamma-Scout versions older than Classic are not supported by GeigerLog"
+            dprint(fncname + msg, debug=True)
+            efprint(msg)
+            setIndent(0)
+            return
+
         elif fw0 == "6" and (fw1 > "017" and fw1 < "90"):
-            gglobs.GStype = "Classic"
+            gglobs.GS_DeviceDetected = "Classic"
             gglobs.GSfwtype = "610"
 
-        elif fw0 == "7" and (fw1 >= "01" and fw1 <= "02"):
-            gglobs.GStype = "Online"
-            gglobs.GSfwtype = "702"
-
-        elif fw0 == "7" and (fw1 >= "03"):
-            gglobs.GStype = "Online"
-            gglobs.GSfwtype = "703"
-
-        else:
-            gglobs.GStype = "OnlineX"
-            gglobs.GSfwtype = "999"
-
-        wprint(fncname + "Firmware: fw:{}  GStype:{}  GSfwtype:{}".format(fw, gglobs.GStype, gglobs.GSfwtype))
-
-        if   gglobs.GSfwtype == "610":
             gglobs.GSSerialNumber   = infolist[2]
             gglobs.GSusedMemory     = int(infolist[3], 16)
             dt                      = infolist[4] + " " + infolist[5]   # 14.08.2019 18:37:00
 
-        elif gglobs.GSfwtype == "702":
+        elif fw0 == "7" and (fw1 >= "01" and fw1 <= "02"):
+            gglobs.GS_DeviceDetected = "Online"
+            gglobs.GSfwtype = "702"
+
             gglobs.GSSerialNumber   = infolist[3]
             gglobs.GSusedMemory     = int(infolist[4], 16)
             dt                      = infolist[5] + " " + infolist[6]   # 14.08.2019 18:37:00
 
-        elif gglobs.GSfwtype == "703":
+        elif fw0 == "7" and (fw1 >= "03"):
+            gglobs.GS_DeviceDetected = "Online"
+            gglobs.GSfwtype = "703"
+
             gglobs.GSSerialNumber   = infolist[2]
             gglobs.GSusedMemory     = int(infolist[4], 16)
             dt                      = infolist[5] + " " + infolist[6]   # 14.08.2019 18:37:00
 
-        elif gglobs.GSfwtype == "999": # just guessing
+        else:
+            gglobs.GS_DeviceDetected = "OnlineX"
+            gglobs.GSfwtype = "999"
+
             gglobs.GSSerialNumber   = infolist[2]
             gglobs.GSusedMemory     = int(infolist[4], 16)
             dt                      = infolist[5] + " " + infolist[6]   # 14.08.2019 18:37:00
 
-        else: #gglobs.GStype == "Old", gglobs.GSfwtype = None
-            msg = "Gamma-Scout versions older than Classic are not supported by GeigerLog"
-            dprint(fncname + msg, debug=True)
-            efprint(msg)
-            setDebugIndent(0)
-            return
+        wprint(fncname + "Firmware: fw:{}  GS_DeviceDetected:{}  GSfwtype:{}".format(fw, gglobs.GS_DeviceDetected, gglobs.GSfwtype))
+
+        # if   gglobs.GSfwtype == "610":
+            # gglobs.GSSerialNumber   = infolist[2]
+            # gglobs.GSusedMemory     = int(infolist[3], 16)
+            # dt                      = infolist[4] + " " + infolist[5]   # 14.08.2019 18:37:00
+
+        # elif gglobs.GSfwtype == "702":
+        #     gglobs.GSSerialNumber   = infolist[3]
+        #     gglobs.GSusedMemory     = int(infolist[4], 16)
+        #     dt                      = infolist[5] + " " + infolist[6]   # 14.08.2019 18:37:00
+
+        # elif gglobs.GSfwtype == "703":
+        #     gglobs.GSSerialNumber   = infolist[2]
+        #     gglobs.GSusedMemory     = int(infolist[4], 16)
+        #     dt                      = infolist[5] + " " + infolist[6]   # 14.08.2019 18:37:00
+
+        # elif gglobs.GSfwtype == "999": # just guessing
+        #     gglobs.GSSerialNumber   = infolist[2]
+        #     gglobs.GSusedMemory     = int(infolist[4], 16)
+        #     dt                      = infolist[5] + " " + infolist[6]   # 14.08.2019 18:37:00
+
+        # else: #gglobs.GS_DeviceDetected == "Old", gglobs.GSfwtype = None
+        #     msg = "Gamma-Scout versions older than Classic are not supported by GeigerLog"
+        #     dprint(fncname + msg, debug=True)
+        #     efprint(msg)
+        #     setIndent(0)
+        #     return
 
         try:
             timestamp   = time.mktime(datetime.datetime.strptime(dt, "%d.%m.%y %H:%M:%S").timetuple())
@@ -869,7 +866,7 @@ def GSextractExtendedInfo(infoline):
             device_time = "Failure"
         gglobs.GSDateTime       = device_time
 
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def GSgetCalibData():
@@ -905,15 +902,15 @@ def GSgetCalibData():
 
     fncname = "GSgetCalibData: "
     wprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
-    ok = GSwriteToDevice(b'c', "get calib data")
+    GSwriteToDevice(b'c', "get calib data")
     mode_response = GSreadAll() # decoded and stripped
     #wprint(fncname + "mode_response: ", mode_response)
 
     if mode_response > "": gglobs.GSCalibData = mode_response
 
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def GSgetVersionDetails():
@@ -931,24 +928,30 @@ def GSgetVersionDetails():
     version             = None
 
     fncname = "GSgetVersionDetails: "
-    wprint(fncname)
-    setDebugIndent(1)
+
+    dprint(fncname)
+    setIndent(1)
 
     GSclearPipeline()
+    # print("GSclearPipeline")
     GSgetMode()
+    # print("GSgetMode")
     if gglobs.GScurrentMode == "Failure": return False
 
     if not gglobs.GScurrentMode == "PC":       # if not in PC Mode then switch to it
         GSsetModePC()
+        # print("GS  set Mode")
         dprint(fncname + "1st: Device is in {} Mode".format(gglobs.GScurrentMode))
         GSgetMode() # now to get the version
+        # print("GSgetMode")
         if gglobs.GScurrentMode == "Failure": return False
     else:
         dprint(fncname + "Device is in {} Mode".format(gglobs.GScurrentMode))
 
     GSextractExtendedInfo(gglobs.GSversion)
+    # print("GSextractExtendedInfo")
 
-    setDebugIndent(0)
+    setIndent(0)
 
     return True
 
@@ -959,9 +962,9 @@ def GSreadMemoryData(saveToBin=False, bytecount=None):
     fncname = "GSreadMemoryData: "
 
     vprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
-    Qt_update()
+    QtUpdate()
 
     start       = time.time()
     devicedata  = GSreadAll(bytecount=bytecount)
@@ -978,7 +981,7 @@ def GSreadMemoryData(saveToBin=False, bytecount=None):
     vprint(fncname + msg)
     fprint(msg)
 
-    Qt_update()
+    QtUpdate()
 
     if saveToBin:
         # write device data to bin blob of database
@@ -991,7 +994,7 @@ def GSreadMemoryData(saveToBin=False, bytecount=None):
 
         gsup_sql.DB_insertBin(gglobs.hisConn, newdevicedata)
 
-    setDebugIndent(0)
+    setIndent(0)
 
     return dumpdata
 
@@ -1007,31 +1010,30 @@ def GSmakeHistory(source):  # source == "GSDevice" oder "GSDatFile"
     fncname = "GSmakeHistory: "
 
     dprint(fncname + "make Gamma-Scout history from source: ", source)
-    setDebugIndent(1)
+    setIndent(1)
 
     error           = 0         # default: no error
     message         = ""        # default: no message
 
 # get data from Gamma-Scout device
     if source == "GSDevice":
-        # if not gglobs.GSConnection:
         if not gglobs.Devices["GammaScout"][CONN] :
             msg = "Gamma-Scout device not connected"
             dprint(fncname + msg)
-            setDebugIndent(0)
+            setIndent(0)
             return -1, msg
 
-        ok = GSsetModePC()
+        GSsetModePC()
         ##fprint("PC mode set after {:0.3f} sec".format(time.time() - startMH))
 
         # find the maxbytes value
         dprint(fncname + "# find the maxbytes value")
-        ok = GSgetVersionDetails() # to update GSusedMemory
+        GSgetVersionDetails() # to update GSusedMemory
         ##fprint("Got version details after {:0.3f} sec".format(time.time() - startMH))
 
         # when in PC mode: writing 'b' dumps protocol memory
         # (up to fw 6.1x; but apparently in all other modes too!)
-        ok = GSwriteToDevice(b'b', "Dump Data")
+        GSwriteToDevice(b'b', "Dump Data")
         dumpdata = GSreadMemoryData(saveToBin=True, bytecount= gglobs.GSusedMemory * 2) # *2 because 7 bit serial code
         ##fprint("Done downloading after {:0.3f} sec".format(time.time() - startMH))
 
@@ -1099,10 +1101,10 @@ def GSmakeHistory(source):  # source == "GSDevice" oder "GSDatFile"
         fprint("Got {} records".format(len(gglobs.HistoryDataList)))
         ##fprint("Done Make History after {:0.3f} sec".format(time.time() - startMH))
 
-    ok = GSsetModeNormal()
+    GSsetModeNormal()
     ##fprint("Done setting Normal mode after {:0.3f} sec".format(time.time() - startMH))
 
-    setDebugIndent(0)
+    setIndent(0)
     return error, message
 
 
@@ -1120,7 +1122,7 @@ def GSsaveDatDataToDatFile():
     fprint(header("Save History Data to *.dat File"))
     fprint("from: {}\n".format(gglobs.hisDBPath))
     vprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     hist = gsup_sql.DB_readBinblob(gglobs.hisConn)
     vprint(fncname + "hist: type: ", type(hist))
@@ -1128,7 +1130,7 @@ def GSsaveDatDataToDatFile():
         msg = "No history dat data found in this database"
         vprint(fncname + msg)
         efprint(msg)
-        setDebugIndent(0)
+        setIndent(0)
         return
 
     # need type 'bytes' for binary saving
@@ -1142,7 +1144,7 @@ def GSsaveDatDataToDatFile():
     vprint(fncname + msg)
     fprint(msg)
 
-    setDebugIndent(0)
+    setIndent(0)
     setNormalCursor()
 
 
@@ -1181,6 +1183,9 @@ def getValuesGammaScout(varlist):
     start = time.time()
 
     fncname   = "getValuesGammaScout: "
+    cdprint(fncname, varlist)
+    setIndent(1)
+
     alldata   = {}
     validflag = True
     xtra      = 0
@@ -1222,79 +1227,10 @@ def getValuesGammaScout(varlist):
                         xtra            = scaleVarValues(vname, xtra, gglobs.ValueScale[vname] )
                         alldata.update(  {vname: xtra})
 
-    printLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+    setIndent(0)
+    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
-
-
-def GSautoBaudrate(usbport):
-    """Tries to find a proper baudrate by testing for successful serial
-    communication at up to all possible baudrates, beginning with the
-    highest"""
-
-    """
-    NOTE: the device port can be opened without error at any baudrate,
-    even when no communication can be done, e.g. due to wrong baudrate.
-    Therfore we test for successful communication by checking for the return
-    string on command 'v' containing 'Standard' or 'Online' (latest GS devices)
-    ON success, this baudrate will be returned.
-    A baudrate=0 will be returned when all communication fails.
-    On a serial error, baudrate=None will be returned.
-    """
-
-    fncname = "GSautoBaudrate: "
-
-    dprint(fncname + "Autodiscovery of baudrate on port: '{}'".format(usbport))
-    setDebugIndent(1)
-
-    baudrates = gglobs.GSbaudrates
-    baudrates.sort(reverse=True) # to start with highest baudrate
-    cdprint(fncname + "baudrates: ", baudrates)
-
-    for baudrate in baudrates:
-        try:
-            if gglobs.GStesting: ABRser = serial.Serial(usbport, baudrate, bytesize=8, parity=serial.PARITY_NONE, timeout=0.5, write_timeout=0.5)
-            else:                ABRser = serial.Serial(usbport, baudrate, bytesize=7, parity=serial.PARITY_EVEN, timeout=0.5, write_timeout=0.5)
-
-            ABRser.write(b'v')
-            rec = ABRser.read(8)   # 8 is minimum of len(CRLF+(Standard, Online, Version)); may leave bytes in the pipeline
-            cdprint(fncname + "Trying baudrate: {:6d}, sending: 'v', getting: {}".format(baudrate, rec), debug=True)
-            time.sleep(0.1)
-            start = time.time()
-            #bw = ABRser.in_waiting
-            try:
-                bw = ABRser.in_waiting
-            except Exception as e:
-                exceptPrint(e, fncname + "ABRser.in_waiting Exception")
-                bw = 0
-            while (time.time() - start) < 3 and bw > 0:
-                rbw = ABRser.read(bw)
-                cdprint(fncname + "cleaning bytes: ", rbw)
-                time.sleep(0.1)
-                #bw = ABRser.in_waiting
-                try:
-                    bw = ABRser.in_waiting
-                except Exception as e:
-                    exceptPrint(e, fncname + "ABRser.in_waiting Exception")
-                    bw = 0
-
-            ABRser.close()
-
-            if b"Standa" in rec or b"Online" in rec or b"Version" in rec:
-                dprint(fncname + "Success with {}".format(baudrate), debug=True)
-                break
-
-        except Exception as e:
-            exceptPrint(e, fncname + "ERROR: Serial communication error on finding baudrate")
-            baudrate = None
-            break
-
-        baudrate = 0
-
-    cdprint(fncname + "Chosen baudrate: {}".format(baudrate))
-    setDebugIndent(0)
-
-    return baudrate
 
 
 def GSreboot():
@@ -1303,10 +1239,10 @@ def GSreboot():
     fncname = "GSreboot: "
 
     fprint(header("Gamma-Scout Reboot (Warm-start)"))
-    Qt_update()
+    QtUpdate()
 
     vprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     GSclearPipeline()
     mode    = GSgetMode()
@@ -1338,7 +1274,7 @@ def GSreboot():
         wprint(fncname + "unrecognized mode: '{}'".format(mode))
 
     if newmode == "PC":
-        ok = GSwriteToDevice(b'N', "do a reboot")
+        GSwriteToDevice(b'N', "do a reboot")
         time.sleep(1)           # a byte b'\x00' will be waiting
         GSsetModeNormal()       # clears the waiting byte
 
@@ -1351,7 +1287,7 @@ def GSreboot():
         efprint("Could not reboot; try repeating and/or unplug/replug the device")
         gglobs.GScurrentMode = newmode
 
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def GSgetMode():
@@ -1361,9 +1297,9 @@ def GSgetMode():
 
     fncname = "GSgetMode: "
     wprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
-    ok = GSwriteToDevice(b'v', "get current mode")
+    GSwriteToDevice(b'v', "get current mode")
     response = GSreadAll() # decoded and stripped
     #wprint(fncname + "response: ", response)
 
@@ -1377,7 +1313,7 @@ def GSgetMode():
     wprint(fncname + "mode: ", mode)
     gglobs.GScurrentMode = mode
 
-    setDebugIndent(0)
+    setIndent(0)
 
     return mode
 
@@ -1393,8 +1329,8 @@ def GSsetMode(mode):
     msg = "Set Gamma-Scout to {} Mode".format(mode)
     fprint(header(msg))
     dprint(fncname + msg)
-    setDebugIndent(1)
-    Qt_update() # setting device may take some time
+    setIndent(1)
+    QtUpdate() # setting device may take some time
 
     rmode = None
     if   mode == "Normal":    rmode = GSsetModeNormal()
@@ -1419,7 +1355,7 @@ def GSsetMode(mode):
         else:                                   efprint("Failure setting mode: {}".format(mode))
 
     setNormalCursor()
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def GSsetModeNormal():
@@ -1431,8 +1367,9 @@ def GSsetModeNormal():
     valid up to fw 6.1x"""
 
     fncname = "GSsetModeNormal: "
-    wprint(fncname)
-    setDebugIndent(1)
+
+    dprint(fncname)
+    setIndent(1)
 
     GSclearPipeline()
     mode    = GSgetMode()
@@ -1453,7 +1390,6 @@ def GSsetModeNormal():
     elif mode == "Online":
         ok = GSwriteToDevice(b'X', "exit Online mode")
         if ok:
-
             response = GSreadAll()
             wprint(fncname + "response: '{}'".format(response))
             if   'Online-Mode beendet' in response: newmode = "Normal"
@@ -1471,7 +1407,7 @@ def GSsetModeNormal():
 
     gglobs.GScurrentMode = newmode
 
-    setDebugIndent(0)
+    setIndent(0)
     return newmode
 
 
@@ -1485,18 +1421,17 @@ def GSsetModePC():
     fncname = "GSsetModePC: "
     success = False
     vprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     GSclearPipeline()
     mode    = GSgetMode()
     newmode = None
 
     if mode == "Online":
-        GSsetModeNormal() # must ste back to Normal mode
-
-    GSclearPipeline()
-    mode    = GSgetMode()
-    newmode = None
+        GSsetModeNormal() # must set back to Normal mode
+        GSclearPipeline()
+        mode    = GSgetMode()
+        newmode = None
 
     if mode == "Normal":
         ok = GSwriteToDevice(b'P', "set to PC mode")
@@ -1520,7 +1455,7 @@ def GSsetModePC():
 
     gglobs.GScurrentMode = newmode
 
-    setDebugIndent(0)
+    setIndent(0)
     return newmode
 
 
@@ -1530,7 +1465,7 @@ def GSsetOnline():
     fncname = "GSsetOnline: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     # GS interval
     lqcb = QLabel("Gamma-Scout Log cycle [sec]")
@@ -1588,7 +1523,7 @@ def GSsetOnline():
         #dprint(fncname + "Selection: code:{} text:{}".format(i1, i2))
 
     #print("qcb: ", i1, " ", i2)
-    setDebugIndent(0)
+    setIndent(0)
 
     return (i1, i2)
 
@@ -1676,7 +1611,7 @@ def GSsetModeOnline(interval="0"):
     fncname = "GSsetModeOnline: "
     success = False
     vprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     GSclearPipeline()
     mode    = GSgetMode()
@@ -1691,7 +1626,7 @@ def GSsetModeOnline(interval="0"):
     newmode = None
 
     if mode == "Normal":
-        ok = GSwriteToDevice(b'O', "set to Online mode") # ok= b'I000200000d'
+        ok = GSwriteToDevice(b'O', "set to Online mode")   # ok= b'I000200000d'
         #~ok = GSwriteToDevice(b'R', "set to Online mode") # ok= b'4,854 uSv/h'
         #~ok = GSwriteToDevice(b'D', "set to Online mode") # ok= b'0,000 uSv' # keine Änderung der werte???
         if ok:
@@ -1700,7 +1635,7 @@ def GSsetModeOnline(interval="0"):
 
             if 'Online-Mode gestartet' in response or response.startswith("S0"): # response is: 'S000a0000000000'
 
-                newmode     = "Online"
+                newmode = "Online"
                 try:
                     GScycle    = int(response[1:5], 16) # default=10
                     cpmLogfreq = int(60 / GScycle)
@@ -1725,11 +1660,11 @@ def GSsetModeOnline(interval="0"):
         wprint(fncname + "unrecognized mode: '{}'".format(mode))
 
     intervalbyte = bytes(str(interval), "utf-8")
-    ok = GSwriteToDevice(intervalbyte, "sets online interval t 2 sec")
+    GSwriteToDevice(intervalbyte, "sets online interval t 2 sec")
 
     gglobs.GScurrentMode = newmode
 
-    setDebugIndent(0)
+    setIndent(0)
     return newmode
 
 
@@ -1741,9 +1676,9 @@ def setGSDateTime():
     txt = "Set Date&Time of Gamma-Scout Device"
     fprint(header(txt))
 
-    Qt_update()
+    QtUpdate()
 
-    ok = GSsetModePC()
+    GSsetModePC()
 
     gsdatetime  = datetime.datetime.fromtimestamp(time.time() + 5) # add 5 sec to compensate for delay
     gstime      = gsdatetime.strftime("%d%m%y%H%M%S")
@@ -1751,19 +1686,21 @@ def setGSDateTime():
     wprint("setGSDateTime: bgstime: ", bgstime)
 
     #'t' prepares setting date and time in the form "DDMMYYhhmmss".
-    ok = GSwriteToDevice(b't',    "DateTime setting prep")
+    GSwriteToDevice(b't',    "DateTime setting prep")
     response = GSreadAll() # response is empty
     #fprint("write b't'", response)
 
-    ok = GSwriteToDevice(bgstime, "DateTime setting exec")
+    GSwriteToDevice(bgstime, "DateTime setting exec")
     response = GSreadAll() # response is empty
     #fprint("write DateTime: {}".format(bgstime), response)
 
-    ok = GSgetVersionDetails()
-    ok = GSsetModeNormal()
+    GSgetVersionDetails()
+    GSsetModeNormal()
 
-    fprint("Date & Time from device:",  gglobs.GSDateTime)
-    fprint("Date & Time from computer:", stime())
+    # fprint("Date & Time from device:",  gglobs.GSDateTime)
+    # fprint("Date & Time from computer:", stime())
+    fprint("Device Date & Time:",  gglobs.GSDateTime)
+    fprint("Computer Date & Time:", stime())
 
     setNormalCursor()
 
@@ -1793,44 +1730,37 @@ def getInfoGammaScout(extended = False):
     try:    fw = gglobs.GSFirmware[0] + "." + gglobs.GSFirmware[1]
     except: fw = "unknown"
 
-    GSInfo  = "Configured Connection:        Port:'{}' Baud:{} TimeoutR:{}s TimeoutW:{}s\n"\
-                .format(gglobs.GSusbport, gglobs.GSbaudrate, gglobs.GStimeout, gglobs.GStimeout_write)
-    GSInfo += "                              Stopbits: {}  Bits-per-Byte:{}  Parity:{}\n".format(gglobs.GSstopbits, gglobs.GSbytesize, gglobs.GSparity)
+    GSInfo  = "Configured Connection:        Port:'{}' Baud:{} Timeouts[s]: R:{} W:{}\n".format(
+                                                gglobs.GSusbport,
+                                                gglobs.GSbaudrate,
+                                                gglobs.GStimeoutR,
+                                                gglobs.GStimeoutW)
 
-    if not gglobs.Devices["GammaScout"][CONN]: return GSInfo + "Device is not connected"
+    if not gglobs.Devices["GammaScout"][CONN]: return GSInfo + "<red>Device is not connected</red>"
 
-    GSInfo += "Connected Device:             '{}'  Firmware: {}\n"                      .format(gglobs.Devices["GammaScout"][DNAME], fw)
-    GSInfo += "Configured Variables:         {}\n"                                      .format(gglobs.GSVariables)
-    GSInfo += "Configured Tube Sensitivity:  {:<5.5g} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)\n".format(gglobs.GSSensitivity, 1 / gglobs.GSSensitivity)
-    GSInfo += getDeltaTimeMessage(GSgetDeltaTime(), gglobs.GSDateTime)
-    GSInfo += "Used Memory [bytes]:          {} (0x{:04X}), {:0.1%} of {} (free: {})\n".format(
-                                                    gglobs.GSusedMemory, gglobs.GSusedMemory,            \
-                                                    gglobs.GSusedMemory / gglobs.GSMemoryTotal,          \
-                                                    gglobs.GSMemoryTotal,                                \
-                                                    gglobs.GSMemoryTotal - gglobs.GSusedMemory,          \
-                                                   )
-    GSInfo += "Device status:                {}\n".format(gglobs.GScurrentMode)
-    GSInfo += "Configuration:\n"
-    GSInfo += "- CPS*:                       Counts-Per-X_seconds\n"
-    GSInfo += "- CPM*:                       CPM as sum of CPS* over rolling 1 min interval (True CPM)\n"
-    GSInfo += "- X:                          interval of 10 s, 30 s, 1 min, 2 min, ..., 1 week\n"
+    GSInfo      += "Connected Device:             {}  Firmware: {}\n"                        .format(gglobs.Devices["GammaScout"][DNAME], fw)
+    GSInfo      += "Configured Variables:         {}\n"                                      .format(gglobs.GSVariables)
+    GSInfo      += getTubeSensitivities(gglobs.GSVariables)
+    GSInfo      += getDeltaTimeMessage(GSgetDeltaTime(), gglobs.GSDateTime)
 
     if extended == True:
-        GSInfo += "Serial Number:                {}\n".format(gglobs.GSSerialNumber)
+        GSInfo  += "\n"
+        GSInfo  += "Connection Details:           Stopbits:{}  Bits-per-Byte:{}  Parity:{}\n".format(gglobs.GSstopbits, gglobs.GSbytesize, gglobs.GSparity)
+        GSInfo  += "Device status:                {}\n".format(gglobs.GScurrentMode)
+        GSInfo  += "Used Memory [bytes]:          {} (0x{:04X}), {:0.1%} of {} (free: {})\n".format(
+                                                        gglobs.GSusedMemory, gglobs.GSusedMemory,            \
+                                                        gglobs.GSusedMemory / gglobs.GSMemoryTotal,          \
+                                                        gglobs.GSMemoryTotal,                                \
+                                                        gglobs.GSMemoryTotal - gglobs.GSusedMemory,          \
+                                                    )
+        GSInfo  += "Serial Number:                {}\n".format(gglobs.GSSerialNumber)
+        GSInfo  += "Configuration Variables:\n"
+        GSInfo  += "- CPS*:                       Counts-Per-X_seconds\n"
+        GSInfo  += "- CPM*:                       CPM as sum of CPS* over rolling 1 min interval (True CPM)\n"
+        GSInfo  += "- X:                          interval of 10 s, 30 s, 1 min, 2 min, ..., 1 week\n"
+
 
     return GSInfo
-
-
-########
-########???????????? what is this update doing???
-########
-# def printGSDevInfo(extended=False, update = True):
-#     """prints info on the Gamma-Scout device"""
-#     fncname = "printGSDevInfo: "
-#         if update:
-#             ok = GSgetVersionDetails()
-#             ok = GSsetModeNormal()
-
 
 
 def terminateGammaScout():
@@ -1839,7 +1769,7 @@ def terminateGammaScout():
     fncname = "terminateGammaScout: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     if gglobs.GSser != None:
         if not gglobs.GScurrentMode == "Normal":   GSsetModeNormal()
@@ -1854,159 +1784,260 @@ def terminateGammaScout():
     gglobs.Devices["GammaScout"][DNAME] = None
 
     dprint(fncname + "Terminated")
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def initGammaScout():
     """Initialize Gamma-Scout; switches device into PC Mode."""
 
+
+    ## local ###################################################################################
+    def lcl_getGS_SerialConfig(device):
+        """
+        gets the USB-to-Serial port name and baudrate for GammaScout
+        This tests for a match of USB's vid + pid associated with device. If match found,
+        then it tests for proper communication checking with specific call/answers
+        """
+
+        # The USB-to-Serial chip is an FTDI chip (Vendor=0x0403, Product=0xd678).
+        # lsusb output: https://www.johannes-bauer.com/linux/gammascout/
+        #
+        # output by: lsusb
+        #   bcdUSB               2.00
+        #   idVendor           0x0403 Future Technology Devices International, Ltd
+        #   idProduct          0xd678
+        #   iManufacturer           1 Dr Mirow
+        #   iProduct                2 GammaScout USB
+
+        fncname   = "initGammaScout - lcl_getGS_SerialConfig: "
+
+        dprint(fncname + "for device: '{}'".format(device))
+        setIndent(1)
+
+        portfound   = None
+        baudfound   = None
+        tmplt_port  = "Checking Port:{},  device:{}, product:{}, vid:{}, pid:{}"
+        tmplt_match = "Found Chip ID match for '{}' at: Port:'{}' - vid:0x{:04x}, pid:0x{:04x}"
+        tmplt_found = "Found: Port:{}, Baud:{}, description:{}, vid:0x{:04x}, pid:0x{:04x}"
+
+        ports = getPortList(symlinks=False)
+
+        if gglobs.gstesting:
+            # SIMULATION ONLY !!!
+            portfound = "/dev/ttyS91"
+            baudfound = 9600
+            cdprint(fncname + "SIMULATION: Port:{}, Baud:{}".format( portfound, baudfound))
+
+        else:
+            # testing for real devices
+            for port in ports:
+                if  port.vid == 0x0403 and port.pid == 0xd678:
+                    dprint(fncname, tmplt_match.format(device, port.device, port.vid, port.pid))
+                    baudrate = lcl_GS_autoBaudrate(port.device)
+                    if baudrate is not None and baudrate > 0:
+                        portfound = port.device
+                        baudfound = baudrate
+                        break
+
+            if portfound is not None: cdprint(fncname + tmplt_found.format( portfound,
+                                                                            baudfound,
+                                                                            port.description,
+                                                                            port.vid,
+                                                                            port.pid))
+
+        setIndent(0)
+        return (portfound, baudfound)
+
+
+    def lcl_GS_autoBaudrate(usbport):
+        """Tries to find a proper baudrate by testing for successful serial
+        communication at up to all possible baudrates, beginning with the
+        highest"""
+
+        # NOTE: the device port can be opened without error at any baudrate,
+        # even when no communication can be done, e.g. due to wrong baudrate.
+        # Therefore we test for successful communication by checking for the return
+        # string on command 'v' containing 'Standard' or 'Online' (latest GS devices)
+        #
+        # return:   - on success, this baudrate will be returned.
+        #           - a baudrate=0 will be returned when all communication fails.
+        #           - on a serial error, baudrate=None will be returned.
+
+        fncname = "initGammaScout - lcl_GS_autoBaudrate: "
+
+        dprint(fncname + "Autodiscovery of baudrate on port: '{}'".format(usbport))
+        setIndent(1)
+
+        baudrates = gglobs.GSbaudrates
+        baudrates.sort(reverse=True) # to start with highest baudrate
+        cdprint(fncname + "baudrates: ", baudrates)
+
+        for baudrate in baudrates:
+            # print( usbport,
+            #                     baudrate,
+            #                     gglobs.GSbytesize,
+            #                     gglobs.GSparity,
+            #                     0.5,
+            #                     0.5)
+
+            try:
+                with serial.Serial( usbport,
+                                    baudrate,
+                                    bytesize     =gglobs.GSbytesize,
+                                    parity       =gglobs.GSparity,
+                                    timeout      =0.5,
+                                    write_timeout=0.5)      as ABRser:
+
+                    bwrt = ABRser.write(b'v')
+                    brec = ABRser.read(8)   # 8 is minimum of len(CRLF+(Standard, Online, Version)); may leave bytes in the pipeline
+                    while True:
+                        time.sleep(0.05)
+                        cnt = ABRser.in_waiting
+                        if cnt == 0: break  # while
+                        brec += ABRser.read(cnt)
+                    cdprint(fncname + "Trying baudrate: {:6d}, sending: 'v', getting: {}".format(baudrate, brec), debug=True)
+
+                if b"Standard" in brec or b"Online" in brec or b"Version" in brec:
+                    baudmsg = "SUCCESS with baudrate: {}".format(baudrate)
+                    break  # for
+
+            except Exception as e:
+                exceptPrint(e, "")
+                baudmsg  = "EXCEPTION in Serial communication with baudrate: {}".format(baudrate)
+                baudrate = None
+                break  # for
+
+            baudmsg  = "FAILURE - No success at any baudrate"
+            baudrate = 0
+
+        dprint(fncname + baudmsg)
+        setIndent(0)
+
+        return baudrate
+
+    ## end local ##################################################################################
+
+
     global cpmcalc, cpmLogfreq
 
     fncname = "initGammaScout: "
 
-    dprint(fncname + "Initializing Gamma-Scout")
-    setDebugIndent(1)
+    dprint(fncname)
+    setIndent(1)
 
     gglobs.Devices["GammaScout"][DNAME] = "GammaScout"
 
-    if  gglobs.GSusbport == "auto":
-        port, baud = getSerialConfig("GS")
+    # Gamma-Scout info on firmware & serial port settings.
+    #   type #1: FW < 6.00:              2400,7,e,1
+    #   type #2: 6.00 <= FW < 6.90:      9600,7,e,1
+    #   type #3: FW >= 6.90:           460800,7,e,1
+
+    if gglobs.GSusbport   == "auto" : gglobs.GSusbport  = None
+    if gglobs.GSbaudrate  == "auto" : gglobs.GSbaudrate = 9600      # 2400 | 9600 | 460800
+    if gglobs.GStimeoutR  == "auto" : gglobs.GStimeoutR = 3         # some responses of Gamma-Scout take almost 1 sec!
+    if gglobs.GStimeoutW  == "auto" : gglobs.GStimeoutW = 1
+
+    # next 3 settings will NOT change in code
+    if gglobs.GSstopbits  == "auto" : gglobs.GSstopbits = 1                     # 1;    generic in pyserial
+    if gglobs.GSbytesize  == "auto" : gglobs.GSbytesize = 7                     # 7;    specific to Gamma-Scout
+    if gglobs.GSparity    == "auto" : gglobs.GSparity   = serial.PARITY_EVEN    # "E";  specific to Gamma-Scout
+
+    if gglobs.gstesting:
+        edprint("THIS IS A SIMULATION - (found 'gstesting' on CMD line)")
+        gglobs.GSusbport    = "/dev/ttyS91"                                     # as set by socal command
+        gglobs.GSbytesize   = 8                                                 # don't know how to re-configure socal
+        gglobs.GSparity     = serial.PARITY_NONE                                # "N"; don't know how to re-configure socal
+
+    if  gglobs.GSusbport == None:
+        port, baud = lcl_getGS_SerialConfig("GammaScout")
         if port is None or baud is None:
-            setDebugIndent(0)
-            return "A {} device was not detected.".format(gglobs.Devices["GammaScout"][DNAME])
-            # fprint("A {} was not detected.".format(gglobs.Devices["GammaScout"][DNAME]), debug=True)
-            # fprint("Trying default config", debug=True)
-            # # gglobs.GSusbport  = "/dev/ttyUSB3/"
+            setIndent(0)
+            return "A device {} was not detected.".format(gglobs.Devices["GammaScout"][DNAME])
         else:
             gglobs.GSusbport  = port
             gglobs.GSbaudrate = baud
-            fprint("A {} device was detected at port: {} and baudrate: {}".format(gglobs.Devices["GammaScout"][DNAME], gglobs.GSusbport, gglobs.GSbaudrate))
-    else:
-        fprint("A {} device was configured for port: {} and baudrate: {}".format(gglobs.Devices["GammaScout"][DNAME], gglobs.GSusbport, gglobs.GSbaudrate))
+            fprint("A device {} was detected at port: {} and baudrate: {}".format(
+                                                                gglobs.Devices["GammaScout"][DNAME],
+                                                                gglobs.GSusbport,
+                                                                gglobs.GSbaudrate))
 
-    gglobs.GSser = None
-    port         = gglobs.GSusbport         # default in config = /dev/ttyUSB2/
-    baudrate     = gglobs.GSbaudrate        # default in config = 9600
-    timeoutRead  = gglobs.GStimeout         # default in config = 3 sec
-    timeoutWrite = gglobs.GStimeout_write   # default in config = 3 sec
-    stopbits     = gglobs.GSstopbits        # 1;    generic in pyserial
-    bytesize     = gglobs.GSbytesize        # 7;    specific to Gamma-Scout
-    parity       = gglobs.GSparity          # "E";  specific to Gamma-Scout
+    else:
+        fprint("A device {} was <b>user configured</b> for port: '{}'".format(
+                                                                gglobs.Devices["GammaScout"][DNAME],
+                                                                gglobs.GSusbport,))
+
+        baudrate = lcl_GS_autoBaudrate(gglobs.GSusbport)
+        if baudrate is not None and baudrate > 0:
+            gglobs.GSbaudrate = baudrate
+            fprint("A device {} was detected at port: {} and baudrate: {}".format(
+                                                                            gglobs.Devices["GammaScout"][DNAME],
+                                                                            gglobs.GSusbport,
+                                                                            gglobs.GSbaudrate))
+        else:
+            return "A device {} was not detected at user defined port '{}'.".format(
+                                                                            gglobs.Devices["GammaScout"][DNAME],
+                                                                            gglobs.GSusbport)
 
     cpmLogfreq   = 6                                # number of measurements taken per minute (6 when interval is 10sec)
     cpmcalc      = np.full(cpmLogfreq, gglobs.NAN)  # for storing last 6 * 10 sec of CP10sec values, fill with NANs
 
-    while True:
-        # try to make the serial connection
-        # Gamma-Scout info on firmware & serial port settings.
-        # Set the baudrate in configuration file; other parameters are fixed
-        # type #1: FW < 6.00:              2400,7,e,1
-        # type #2: 6.00 <= FW < 6.90:      9600,7,e,1
-        # type #3: FW >= 6.90:           460800,7,e,1
-        try:
-            if gglobs.GStesting:
-                dprint("GStesting is given")
-                port = "/dev/ttyS91"# as set by socal command
-                gglobs.GSusbport = port
-                #raise serial.SerialException
-                #raise Exception
-                # for Gamma Scout SIMULATOR  gglobs.GSser is like:
-                # Serial<id=0x7f2014d371d0, open=True>
-                # (port='/dev/pts/5', baudrate=9600, bytesize=8, parity='N',
-                # stopbits=1, timeout=3.0, xonxoff=False, rtscts=F)
-                # this is due to socal command:
-                # socat -d -d  pty,b9600,cs8,raw,echo=0    pty,b9600,cs8,raw,echo=0
-                # so far unknown how to set bytesize=7 and parity=E :-(
-                gglobs.GSser = serial.Serial(port           = port,
-                                             baudrate       = baudrate,
-                                             bytesize       = 8,
-                                             parity         = "N",
-                                             stopbits       = stopbits,
-                                             timeout        = timeoutRead,
-                                             write_timeout  = timeoutWrite)
-            else:
-                dprint("NO command GStesting")
-                #raise serial.SerialException
-                #raise Exception
-                # for Gamma Scout   gglobs.GSser is like:
-                # Serial<id=0x7f2014d371d0, open=True>
-                # (port='/dev/ttyUSB0',  baudrate=9600, bytesize=7, parity='E',
-                # stopbits=1, timeout=3, xonxoff=False, rtscts=False, dsrdtr=False)
-                gglobs.GSser = serial.Serial(port           = port,
-                                             baudrate       = baudrate,
-                                             bytesize       = bytesize,
-                                             parity         = parity,
-                                             stopbits       = stopbits,
-                                             timeout        = timeoutRead,
-                                             write_timeout  = timeoutWrite,
-                                             )
+    # try to make the serial connection
+    gglobs.GSser = None
+    try:
+        gglobs.GSser = serial.Serial(port           = gglobs.GSusbport,
+                                     baudrate       = gglobs.GSbaudrate,
+                                     bytesize       = gglobs.GSbytesize,
+                                     parity         = gglobs.GSparity,
+                                     stopbits       = gglobs.GSstopbits,
+                                     timeout        = gglobs.GStimeoutR,
+                                     write_timeout  = gglobs.GStimeoutW,
+                                    )
 
-        except serial.SerialException as e:
-            msg = "SerialException on connecting to port: '{}'".format(port)
-            exceptPrint(e, msg)
-            errmessage1 = msg
-            break
+    except serial.SerialException as e:
+        msg = "SerialException on connecting to port: '{}'".format(gglobs.GSusbport)
+        exceptPrint(e, msg)
+        errmessage1 = msg
 
-        except Exception as e:
-            msg  = "Did you try Gamma-Scout-Simulation but forgot GeigerLog command 'GStesting'?"
-            # stre = str(e)
-            exceptPrint(e, msg)
-            errmessage1 = str(e) + "\n" + msg
-            break
+    except Exception as e:
+        msg  = "Did you try Gamma-Scout-Simulation but forgot GeigerLog command 'gstesting'?"
+        exceptPrint(e, msg)
+        errmessage1 = str(e) + "\n" + msg
 
-        # Serial Connection is made.
-        dprint(fncname + "Serial Connection is made")
-        cdprint(fncname, str(gglobs.GSser)[36:])
-
-        # Now test for successful communication with a Gamma Scout counter,
-        # because the device port can be opened without error even when no
-        # communication can be done, e.g. due to wrong baudrate or wrong device
-        # this is done implicitely in function GSgetMode()
-        dprint(fncname + "Now verifying communication")
-        try:
-            GSclearPipeline()
-            ok = GSgetVersionDetails()
-            if not ok:
-                errmessage1 = "Communication problem"
-                edprint(fncname + errmessage1, debug=True)
-                terminateGammaScout()
-                break
-
-        except Exception as e:
-            errmessage1  = "ERROR: Port opened ok, but Communication failed. Is baudrate correct?"
-            exceptPrint(fncname + str(e), errmessage1)
-            terminateGammaScout()
-            break
-
-        break # regular completion; continue
-    ######## while loop has ended #############################################
 
     if gglobs.GSser == None:
+        # FAILURE making Serial Connection
         terminateGammaScout()
         rmsg = "ERROR: " + errmessage1.replace('[Errno 2]', '')
         gglobs.Devices["GammaScout"][DNAME] = None
 
     else:
-        dprint(fncname + "Communication is verified")
+        # Serial Connection is made.
+        dprint(fncname + "Serial Connection made: ", str(gglobs.GSser)[36:]) # ignore initial 'Serial<id=0x7f1b0ee8b520, open=True>'
+
+        ok = GSgetVersionDetails()
+        if not ok:
+            errmessage1 = "Communication problem"
+            edprint(fncname + errmessage1, debug=True)
+            terminateGammaScout()
+            gglobs.Devices["GammaScout"][DNAME] = None
+            return errmessage1
 
         # get Gamma-Scout internal Calib data
         GSgetCalibData()
-
-        ok = GSsetModeNormal()
+        GSsetModeNormal()
 
         gglobs.Devices["GammaScout"][CONN]  = True
-        gglobs.Devices["GammaScout"][DNAME] = "GammaScout" + " " + gglobs.GStype
+        gglobs.Devices["GammaScout"][DNAME] = "GammaScout" + " " + gglobs.GS_DeviceDetected
 
-        if gglobs.GSSensitivity  == "auto": gglobs.GSSensitivity  = 108 # CPM/(µSv/h)
         if gglobs.GSVariables    == "auto": gglobs.GSVariables    = "CPM3rd, CPS3rd, Xtra"
 
-        setTubeSensitivities(gglobs.GSVariables, gglobs.GSSensitivity)
         setLoggableVariables("GammaScout",  gglobs.GSVariables)
 
         dprint(fncname + "device detected: '{}'".format(gglobs.Devices["GammaScout"][DNAME]))
         rmsg = ""
 
-    setDebugIndent(0)
+    setIndent(0)
 
     return rmsg
+
 

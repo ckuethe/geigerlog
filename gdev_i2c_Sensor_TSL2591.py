@@ -125,12 +125,12 @@ class SensorTSL2591:
         dmsg    = "Sensor {:8s} at address 0x{:02X} with ID 0x{:02x} ".format(self.name, self.addr, self.id)
 
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
 
         # check for presence of an I2C device at I2C address
         if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
             # no device found
-            setDebugIndent(0)
+            setIndent(0)
             return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
         else:
             # device found
@@ -149,7 +149,7 @@ class SensorTSL2591:
             response = (True,  "Initialized " + dmsg)
             gdprint("Sensor {} at address 0x{:02X} has proper ID: 0x{:02X}".format(self.name, self.addr, self.id))
         else:
-            setDebugIndent(0)
+            setIndent(0)
             return (False, "Failure - Did find an I2C device, but it has wrong ID: '{}' instead of {}".format(answ, self.id))
 
         # Get package identification (PID)
@@ -168,11 +168,11 @@ class SensorTSL2591:
                 pass
             else:
                 efprint(fncname + "Package Identification 0b{:02b} not as expected".format(pid))
-                setDebugIndent(0)
+                setIndent(0)
                 return (False, "Failure - Did find sensor, but Package Identification is: '{}' and not: {}".format(pid, self.PID))
         else:
             edprint(fncname + "Package Identification 0b{:02b} not as expected, answ:", answ)
-            setDebugIndent(0)
+            setIndent(0)
             return (False, "Failure - Did find sensor, but Package Identification is: '{}' and not: {}".format(pid, self.PID))
 
         # reset to Power-Up status
@@ -183,7 +183,7 @@ class SensorTSL2591:
         gdprint(fncname + "Enable Measurements")
         self.TSL2591enableMeasurements()
 
-        setDebugIndent(0)
+        setIndent(0)
 
         return response
 
@@ -207,7 +207,7 @@ class SensorTSL2591:
         answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
 
-    def SensorGetValues(self):
+    def SensorgetValues(self):
         """get Lum in Auto mode. 1st run fast with 100ms integration time, then with desired time"""
 
         # duration:
@@ -225,9 +225,9 @@ class SensorTSL2591:
         # ISS dongle: TSL2591:  400 kHz dur: 310 ... 318 ms (avg: 313.3 ms)  15.3 ms    sogar langsamer???
 
         start = time.time()
-        fncname = "SensorGetValues: " + self.name + ": "
-        dprint(fncname)
-        setDebugIndent(1)
+        fncname = "SensorgetValues: " + self.name + ": "
+        cdprint(fncname)
+        setIndent(1)
 
         SensorIntegIndex = "200ms"
         finalatime       = SensorIntegIndex
@@ -311,7 +311,7 @@ class SensorTSL2591:
         duration = (time.time() - start) * 1000
         gdprint(fncname + "Total:  " + dataFormat.format(*lumdata) + ", dur:{:0.0f} ms".format(duration))
 
-        setDebugIndent(0)
+        setIndent(0)
         return (vis, ir)
 
 
@@ -414,7 +414,7 @@ class SensorTSL2591:
             # normalization over Gain and integration factors
             vis    = visraw  / gainFct / intFct
             ir     = irraw   / gainFct / intFct
-            response = vis, ir, visraw, irraw, gainFct, intTime # need visraw for auto function in SensorGetValues
+            response = vis, ir, visraw, irraw, gainFct, intTime # need visraw for auto function in SensorgetValues
 
         else:
             # Error: answ too short or too long

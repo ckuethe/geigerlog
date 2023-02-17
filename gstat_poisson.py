@@ -59,7 +59,7 @@ def plotPoisson():
 
     fncname = "plotPoisson: "
     vprint(fncname + "Plotting Histogram and Poisson Fit")
-    setDebugIndent(1)
+    setIndent(1)
 
     # elimitate all nan data in x (t will always exist)
     counter_isnan = 0
@@ -80,7 +80,7 @@ def plotPoisson():
     if t.size == 0:
         gglobs.exgg.showStatusMessage("No data available")
         setNormalCursor()
-        setDebugIndent(0)
+        setIndent(0)
         return
 
     DataSrc     = os.path.basename(gglobs.currentDBPath)
@@ -115,12 +115,12 @@ def plotPoisson():
 
     if avgx == 0:
         gglobs.exgg.showStatusMessage("All Variable data are zero; cannot calculate Poisson distribution!")
-        setDebugIndent(0)
+        setIndent(0)
         setNormalCursor()
         return
 
 
-    wprint(fncname + "count data: lenx:{}, sumx:{:5.0f}, avgx:{:5.3f}, varx:{:5.3f}, stdx:{:5.3f}, minx:{:5.3f}, maxx:{:5.3f}, std95%:{:5.3f}\n{}\n".\
+    cdprint(fncname + "count data: lenx:{}, sumx:{:5.0f}, avgx:{:5.3f}, varx:{:5.3f}, stdx:{:5.3f}, minx:{:5.3f}, maxx:{:5.3f}, std95%:{:5.3f}\n{}\n".\
                 format(lenx,   sumx,         avgx,          varx,         stdx,         minx,         maxx,         std95,           x))
 
     # take the lower of (the lowest count rate) and (the average minus 2 StdDev), but must be at least zero
@@ -403,6 +403,7 @@ def plotPoisson():
     #labout.append(txtChi2Poiss)
 
     if gglobs.stattest:
+        # Normal statistics r-squared
         labout.append("Goodness of Fit Normal  :  r²  = {:5.3f}".format(r2N))
         # chi stuff all removed, see above
         #~labout.append(txtChi2Norm)
@@ -454,7 +455,7 @@ def plotPoisson():
 
 # show window
     fig2.canvas.draw_idle()
-    setDebugIndent(0)
+    setIndent(0)
     d.exec()
     plt.close(fig2)
 

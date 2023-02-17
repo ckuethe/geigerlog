@@ -115,7 +115,7 @@ class IOWdongle:
 
         fncname = "DongleInit: {} ".format(self.name)
         dprint(fncname)
-        # setDebugIndent(1) # tto many returns following
+        # setIndent(1) # tto many returns following
 
         if 'linux' not in sys.platform:             # Py3:'linux', Py2:'linux2'
             return (False,  "This dongle is currently supported only on Linux.")
@@ -228,10 +228,12 @@ class IOWdongle:
             self.iow = None
 
         if self.iow is None:                                               # must check for None, not 0 (zero)
-            return (False,  "No such dongle detected on USB bus")
+            # return (False,  "No such dongle detected on USB bus")
+            return (False,  "A '{}' dongle was not detected".format(self.name))
 
 
-        setDebugIndent(1)
+
+        setIndent(1)
 
         # set Read Timeout
         ito = iowkit.IowKitSetTimeout(self.iow, self.readtimeout)
@@ -251,7 +253,7 @@ class IOWdongle:
         # Set IOWarrior to I2C mode
         cdprint(fncname + self.IOWsetModeI2C())
 
-        setDebugIndent(0)
+        setIndent(0)
         portmsg = "USB"
         return True,  "Initialized Dongle " + self.name
 
@@ -402,14 +404,14 @@ class IOWdongle:
         fncname = "   {:15s}: {:15s} ".format("DongleWriteReg", msg)
         cdprint(fncname, " addr:{:02X} reg:{:04X}  data:{}".format(addr, register, data))
 
-        setDebugIndent(1)
+        setIndent(1)
         wrt = self.IOWwriteData(addr, register, data, addrScheme=addrScheme, msg=msg)
 
         # "Any write transactions are acknowledged by a report via interrupt-in endpoint 2"
         # must read the report, or it interferes with data reading!
         ret, rep = self.IOWreadData(0, msg=msg)
 
-        setDebugIndent(0)
+        setIndent(0)
 
         return wrt
 
@@ -428,7 +430,7 @@ class IOWdongle:
             return []
 
         cdprint(fncname, " addr:{:02X} readbytes:{}".format(addr, readbytes))
-        setDebugIndent(1)
+        setIndent(1)
 
         # init the read
         gglobs.I2CDongle.IOWInitRead(addr, readbytes, msg=msg)
@@ -457,7 +459,6 @@ class IOWdongle:
             else:
                 # sometimes repID==2 is found; loop until correct (helpful?)
                 edprint(fncname + "--------------- Wrong reportID - got:#{:02X}, expected #03 - Repeating Read in loop: #{}".format(rep[0], loop))
-                click()
                 repcounts += 1
 
             # if repcounts > 3: return []  # if more than 3 errors return []
@@ -468,7 +469,7 @@ class IOWdongle:
         answ  = sumrep[:readbytes]      # reports give multiple of 6 bytes; take only as many a called for
         cdprint(fncname + "Answer:  ", convertB2Hex(answ))
 
-        setDebugIndent(0)
+        setIndent(0)
 
         return answ
 

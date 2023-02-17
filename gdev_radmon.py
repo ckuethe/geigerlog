@@ -113,8 +113,7 @@ def on_connect(client, userdata, flags, rc):
     #gglobs.rm_client.subscribe("$SYS/#") # gives huge amount of traffic! Careful!!!
     gglobs.rm_client.subscribe(gglobs.RMServerFolder + "#", qos=2)
 
-    # edprint(fncname + "gglobs.RMConnection: ", gglobs.RMConnection)
-    edprint(">RadMon: on_connect: RMconnectionState: ", RMconnectionState)
+    dprint(">RadMon: on_connect: RMconnectionState: ", RMconnectionState)
 
 
 def on_disconnect (client, userdata, rc):
@@ -146,9 +145,7 @@ def on_disconnect (client, userdata, rc):
     dprint(">        {:20s}: {}".format("with userdata"     , userdata))
     dprint(">        {:20s}: {}".format("with result"       , src), "(Result Code: {})".format(rc))
 
-    # edprint(fncname + "gglobs.RMConnection: ", gglobs.RMConnection)
-    # edprint(fncname + "RMconnectionState: ", RMconnectionState)
-    edprint(">RadMon: on_disconnect: RMconnectionState: ", RMconnectionState)
+    dprint(">RadMon: on_disconnect: RMconnectionState: ", RMconnectionState)
 
 
 def on_subscribe(client, userdata, mid, granted_qos):
@@ -163,9 +160,7 @@ def on_subscribe(client, userdata, mid, granted_qos):
     dprint(">        {:20s}: {}".format("with mid"          , mid))
     dprint(">        {:20s}: {}".format("with granted_qos"  , granted_qos))
 
-    # edprint(fncname + "gglobs.RMConnection: ", gglobs.RMConnection)
-    # edprint(fncname + "RMconnectionState: ", RMconnectionState)
-    edprint(">RadMon: on_subscribe: RMconnectionState: ", RMconnectionState)
+    dprint(">RadMon: on_subscribe: RMconnectionState: ", RMconnectionState)
 
 
 def on_message(client, userdata, msg):
@@ -275,7 +270,7 @@ def getValuesRadMon(varlist):
                 gglobs.rm_cpm   = None
                 alldata.update({vname: cpm})
 
-    printLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
 
@@ -289,7 +284,7 @@ def initRadMon():
     errmsg  = ""
 
     dprint(fncname + "Initializing RadMon")
-    setDebugIndent(1)
+    setIndent(1)
 
     # gglobs.RMDeviceName              = "RadMon+"
     gglobs.Devices["RadMon"][DNAME] = "RadMon+"
@@ -328,7 +323,7 @@ def initRadMon():
         errmsg += "\nERROR: '{}'".format(sys.exc_info()[1])
         errmsg += "\n{} not connected. Is server offline? Verify server IP and server port".format(gglobs.Devices["RadMon"][DNAME])
 
-        setDebugIndent(0)
+        setIndent(0)
         return errmsg
 
     #
@@ -365,15 +360,13 @@ def initRadMon():
         RMconnectDuration = "Failure, timeout after {} sec".format(gglobs.RMTimeout)
     else:
         # set only after successful AND confirmed connect!
-        if gglobs.RMSensitivity  == "auto":    gglobs.RMSensitivity = 154  # inverse of 0.0065
         if gglobs.RMVariables    == "auto":    gglobs.RMVariables   = "CPM3rd, Temp, Press, Humid"
 
-        setTubeSensitivities(gglobs.RMVariables, gglobs.RMSensitivity)
         setLoggableVariables("RadMon", gglobs.RMVariables)
 
     gglobs.Devices["RadMon"][CONN] = RMconnectionState
 
-    setDebugIndent(0)
+    setIndent(0)
     return errmsg
 
 
@@ -385,7 +378,7 @@ def terminateRadMon():
     fncname = "terminateRadMon: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     gglobs.rm_client.loop_stop()
     dprint(fncname + "client.loop was stopped")
@@ -417,7 +410,7 @@ def terminateRadMon():
     gglobs.Devices["RadMon"][CONN] = RMconnectionState
 
     dprint(fncname + "Terminated")
-    setDebugIndent(0)
+    setIndent(0)
 
 
 
@@ -427,22 +420,17 @@ def getInfoRadMon(extended=False):
     RMInfo = "Configured Connection:        MQTT on {}:{} topic:'{}'\n".\
         format(gglobs.RMServerIP, gglobs.RMServerPort, gglobs.RMServerFolder)
 
-    if not gglobs.Devices["RadMon"][CONN]: return RMInfo + "Device is not connected"
+    if not gglobs.Devices["RadMon"][CONN]: return RMInfo + "<red>Device is not connected</red>"
 
-    RMInfo += """Connected Device:             '{}'
-Configured Variables:         {}
-Configured Tube Sensitivity:  {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
-""".format(\
-                    gglobs.Devices["RadMon"][DNAME],    \
-                    gglobs.RMVariables,         \
-                    gglobs.RMSensitivity,       \
-                    1 / gglobs.RMSensitivity    \
-            )
-
-    if gglobs.rm_rssi    == None:   rssi = "Not available"
-    else:                           rssi = str(gglobs.rm_rssi)
+    RMInfo += "Connected Device:             {}\n".format(gglobs.Devices["RadMon"][DNAME])
+    RMInfo += "Configured Variables:         {}\n".format(gglobs.RMVariables)
+    RMInfo += getTubeSensitivities(gglobs.RMVariables)
 
     if extended == True:
+
+        if gglobs.rm_rssi    == None:   rssi = "Not available"
+        else:                           rssi = str(gglobs.rm_rssi)
+
         RMInfo += """
 Connecting Duration:          {}
 Folder:                       '{}'

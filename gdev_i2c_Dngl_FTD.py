@@ -64,7 +64,7 @@ class FTDdongle:
 
         fncname = "DongleInit: {} ".format(self.name)
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
 
         # Instantiate an I2C controller
         self.DongleHndl = pyftdi.i2c.I2cController()
@@ -88,7 +88,7 @@ class FTDdongle:
         # rdprint("poll 0x77:     ", self.DongleHndl.poll(0x77, write=False, relax=True))
         # rdprint("poll 0x78:     ", self.DongleHndl.poll(0x78, write=False, relax=True))
 
-        setDebugIndent(0)
+        setIndent(0)
 
         return (True,  "Initialized Dongle " + self.name)
 

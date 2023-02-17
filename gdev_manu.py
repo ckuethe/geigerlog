@@ -5,7 +5,6 @@
 gdev_manu.py - GeigerLog commands to handle the manual entry of data
 """
 
-
 ###############################################################################
 #    This file is part of GeigerLog.
 #
@@ -35,38 +34,36 @@ from   gsup_utils       import *
 def initManu():
     """Start the device"""
 
-    fncname ="initManu: "
-    dprint(fncname + "Initializing Manu Device")
-    setDebugIndent(1)
+    fncname = "initManu: "
 
-    errmsg  = ""                            # what errors can be here?
-    gglobs.Devices["Manu"][DNAME] = "GeigerLog " + "Manu"
+    dprint(fncname + "Initializing Manu Device")
+    setIndent(1)
+
+    gglobs.Devices["Manu"][DNAME] = "Manual Data"
 
     if gglobs.ManuVariables    == "auto": gglobs.ManuVariables    = "Temp, Press, Humid, Xtra"
-    if gglobs.ManuSensitivity  == "auto": gglobs.ManuSensitivity  = 154               # CPM/(µSv/h), = 0.065 µSv/h/CPM
-    if gglobs.ManuRecordStyle  == "auto": gglobs.ManuRecordStyle  = "Point"           # alt: Step
+    if gglobs.ManuRecordStyle  == "auto": gglobs.ManuRecordStyle  = "Point"                         # alternative: "Step"
 
-    # bring vars into order and make sure no more than 1 of each is present
-    gglobs.ManuValues = 0
-    ManuVars          = gglobs.ManuVariables.split(",")
-    mvs               = ""
-    for i, mv in enumerate(ManuVars):   ManuVars[i] = mv.strip() # remove blanks
+    ManuVars = gglobs.ManuVariables.split(",")
+    # MUST remove blanks on vars
+    for i, mv in enumerate(ManuVars):   ManuVars[i] = mv.strip()
+
+    # weed out any wrong vnames and put into right sequence as defined in varsCopy
+    # then redefine gglobs.ManuVariables with cleaned version
+    mvs = ""
     for vname in gglobs.varsCopy:
-        if vname in ManuVars:
-            mvs += "{}, ".format(vname)
-            gglobs.ManuValues += 1
+        if vname in ManuVars:  mvs += "{}, ".format(vname)
     gglobs.ManuVariables = mvs[:-2]
 
-    setTubeSensitivities(gglobs.ManuVariables, gglobs.ManuSensitivity)
+    # set standards
     setLoggableVariables("Manu", gglobs.ManuVariables)
-    # edprint(fncname + " gglobs.ManuVariables: ",  gglobs.ManuVariables)
 
     # device is connected
     gglobs.Devices["Manu"][CONN] = True
 
-    setDebugIndent(0)
+    setIndent(0)
 
-    return errmsg
+    return ""  # no errmsg for return
 
 
 def terminateManu():
@@ -75,12 +72,12 @@ def terminateManu():
     fncname ="terminateManu: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     gglobs.Devices["Manu"][CONN]  = False
 
     dprint(fncname + "Terminated")
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def getValuesManu(varlist):
@@ -92,11 +89,10 @@ def getValuesManu(varlist):
 
     alldata = {}
     for i, vname in enumerate(varlist):
-        alldata.update({vname:   gglobs.ManuValue[i]})                          # manually entered value#i
-        if gglobs.ManuRecordStyle == "Point":
-            gglobs.ManuValue[i] = gglobs.NAN  # reset after read-out
+        alldata.update({vname:   gglobs.ManuValue[i]})
+        if gglobs.ManuRecordStyle == "Point": gglobs.ManuValue[i] = gglobs.NAN  # if Style is Point: reset after read-out
 
-    printLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
 
@@ -107,15 +103,17 @@ def setManuValue():
     fncname = "setManuValue: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
-    lv = [None] * gglobs.ManuValues
-    v  = [None] * gglobs.ManuValues
-    for i in range(gglobs.ManuValues):
+    countManuVars = len(gglobs.ManuVariables.split(","))
+
+    lv = [None] * countManuVars
+    v  = [None] * countManuVars
+    for i in range(countManuVars):
         lv[i] = QLabel("Value #{:<2n} for Variable: {}".format(i + 1, gglobs.Devices["Manu"][VNAME][i]))
         lv[i].setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
         v[i]  = QLineEdit()
-        v[i].setToolTip("Enter a value manually for variable #{}".format(i))
+        v[i].setToolTip("Enter a value manually for variable: {}".format(gglobs.Devices["Manu"][VNAME][i]))
         v[i].setText("")
 
     lvR = QLabel("Select Record Style")
@@ -140,9 +138,9 @@ def setManuValue():
     graphOptions=QGridLayout()
     graphOptions.setContentsMargins(10,10,10,10) # spacing around the graph options
 
-    for i in range(gglobs.ManuValues):
-        graphOptions.addWidget(lv[i],     i, 0)
-        graphOptions.addWidget(v[i],      i, 1)
+    for i in range(countManuVars):
+        graphOptions.addWidget(lv[i],   i, 0)
+        graphOptions.addWidget(v[i],    i, 1)
 
     graphOptions.addWidget(lvR,     i + 1, 0)
     graphOptions.addLayout(hboxR,   i + 1, 1)
@@ -177,20 +175,19 @@ def setManuValue():
 
     else:
         # OK pressed
-        for i in range(gglobs.ManuValues):
+        # fill up all the ManuValue with manually entered data
+        for i in range(countManuVars):
             mval = v[i].text().strip().replace(",", ".")
             if mval > "":
                 try:    nval = float(mval)
                 except: nval = gglobs.NAN
                 gglobs.ManuValue[i] = nval
 
-        gglobs.forceSaving = True   # make MiniMon save even if not due for the other conditions
-
         if rR1.isChecked():     gglobs.ManuRecordStyle = "Point"
         else:                   gglobs.ManuRecordStyle = "Step"
 
         msg = ""
-        for i in range(gglobs.ManuValues):
+        for i in range(countManuVars):
             msg += "Value #{:<2d} for Variable: {:6s} : {:0.3f}\n".format(i + 1, gglobs.Devices["Manu"][VNAME][i], gglobs.ManuValue[i])
         msg +=     "Record Style: {}\n".format(gglobs.ManuRecordStyle)
 
@@ -198,18 +195,20 @@ def setManuValue():
         fprint(msg)
         dprint(msg.replace("\n", "  "))
 
-    setDebugIndent(0)
+        runLogCycle()   # to force saving, displaying and plotting of the new data
+
+    setIndent(0)
 
 
 def getInfoManu(extended = False):
     """Info on settings of the sounddev thread"""
 
-    ManuInfo  = "Configured Connection:        GeigerLog Manu Device\n"
-    if not gglobs.Devices["Manu"][CONN]: return ManuInfo + "Device is not connected"
+    ManuInfo  = "Configured Connection:        Plugin\n"
+    if not gglobs.Devices["Manu"][CONN]: return ManuInfo + "<red>Device is not connected</red>"
 
-    ManuInfo += "Connected Device:             '{}'\n"  .format(gglobs.Devices["Manu"][DNAME])
-    ManuInfo += "Configured Variables:         {}\n"    .format(gglobs.ManuVariables)
-    ManuInfo += "Configured Tube Sensitivity:  {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)\n".format(gglobs.ManuSensitivity, 1 / gglobs.ManuSensitivity)
+    ManuInfo += "Connected Device:             {}\n"  .format(gglobs.Devices["Manu"][DNAME])
+    ManuInfo += "Configured Variables:         {}\n"  .format(gglobs.ManuVariables)
+    ManuInfo += getTubeSensitivities(gglobs.ManuVariables)
 
     if extended == True:
         ManuInfo += ""

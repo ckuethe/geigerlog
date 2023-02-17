@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-gdev_audio.py - GeigerLog commands to handle the audio clicks as CPM/CPS input
+gdev_audio.py - GeigerLog commands to handle the audio-clicks as CPM/CPS input
                 using module sounddevice
 """
 
@@ -28,22 +28,24 @@ __copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
 
-"""
-NOTES:
-Manu:       on Manu sounddevice cannot be installed until libffi-dev is installed per 'sudo apt install libffi-dev'
-Windows:    on Windows: make sure the soundsettings for input and output are set for 'standard' using Windows settings
-Linux       with garbled sound and message in the terminal:
-                "ALSA lib pcm.c:7963:(snd_pcm_recover) underrun occurred"
-            execute 'pulseaudio -k' as regular user (not sudo!) this should solve it
 
-            if not enough: look into '/etc/pulse/daemon.conf'. It may have lines:
-                ; default-fragments = 4
-                ; default-fragment-size-msec = 25
-            uncommenting, and changing to:
-                default-fragments = 5
-                default-fragment-size-msec = 2
-            might help
-"""
+# NOTE:
+# Raspi:      on Raspi module sounddevice cannot be installed until libffi-dev is installed
+#             per 'sudo apt install libffi-dev'
+# Windows:    make sure the soundsettings for input and output are set for 'standard'
+#             using Windows settings
+# Linux       with garbled sound and message in the terminal:
+#                 "ALSA lib pcm.c:7963:(snd_pcm_recover) underrun occurred"
+#             execute 'pulseaudio -k' as regular user (not sudo!) this should solve it
+#
+#             if not enough: look into '/etc/pulse/daemon.conf'. It may have lines:
+#                 ; default-fragments = 4
+#                 ; default-fragment-size-msec = 25
+#             uncommenting, and changing to:
+#                 default-fragments = 5
+#                 default-fragment-size-msec = 2
+#             might help
+
 
 # LATENCY:
 #
@@ -92,10 +94,9 @@ def initAudio():
     fncname ="initAudio: "
 
     dprint(fncname + "Initializing AudioCounter")
-    setDebugIndent(1)
+    setIndent(1)
 
-    errmsg  = "No Error"                            # what errors can be here? e.g no input device!
-    # gglobs.AudioDeviceName         = "Audio"
+    errmsg = ""                            # potential errors:  no input device!
     gglobs.Devices["Audio"][DNAME] = "Audio"
 
     if gglobs.AudioDevice       == "auto": gglobs.AudioDevice       = (None, None)      # the system's defaults
@@ -103,14 +104,11 @@ def initAudio():
     if gglobs.AudioPulseMax     == "auto": gglobs.AudioPulseMax     = 32768             # +/- 15 bit
     if gglobs.AudioPulseDir     == "auto": gglobs.AudioPulseDir     = False             # => negative
     if gglobs.AudioThreshold    == "auto": gglobs.AudioThreshold    = 60                # % of max
-    if gglobs.AudioSensitivity  == "auto": gglobs.AudioSensitivity  = 154               # CPM/(µSv/h), = 0.065 µSv/h/CPM
     if gglobs.AudioVariables    == "auto": gglobs.AudioVariables    = "CPM3rd, CPS3rd"
-
-    setTubeSensitivities(gglobs.AudioVariables, gglobs.AudioSensitivity)
 
     setLoggableVariables("Audio", gglobs.AudioVariables)
 
-    #Sound Driver settings
+    # print sound driver settings
     vprint(fncname + "Query Devices: \n",   sd.query_devices() )
     vprint(fncname + "Query Host Apis:")
     if gglobs.verbose:
@@ -153,6 +151,10 @@ def initAudio():
         gglobs.AudioRate        = sd.default.samplerate
         gglobs.AudioChunk       = 32
 
+        #testing #########
+        gglobs.AudioChunk       *= 4  # -> 128 to make longer pulses visible (reduces maximum count rate)
+        # end testing
+
         dprint(fncname + "DEVICE:{}, CHANNELS:{}, FORMAT:{}, Latency:{}, Host API Index:{}, RATE:{}, CHUNK:{}"\
                         .format(
                                 gglobs.AudioDevice,
@@ -165,18 +167,18 @@ def initAudio():
                                )
              )
 
-        # gglobs.AudioConnection = True
         gglobs.Devices["Audio"][CONN] = True
 
-        AudioCounterThread = threading.Thread(target=AudioCounterThreadTarget, args=(None,))
-        gglobs.AudioThreadStop = False
+        gglobs.AudioThreadStop  = False
+
+        AudioCounterThread      = threading.Thread(target=AudioCounterThreadTarget, args=(None,))
         AudioCounterThread.start()
         dprint(fncname + "Thread-status: is alive: ", AudioCounterThread.is_alive())
 
     else:
         errmsg  = "No Sound Input detected! Is there a proper connection?"
 
-    setDebugIndent(0)
+    setIndent(0)
 
     return errmsg
 
@@ -189,7 +191,7 @@ def terminateAudio():
     fncname ="terminateAudio: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     dprint(fncname + "stopping thread")
     gglobs.AudioThreadStop = True
@@ -205,7 +207,7 @@ def terminateAudio():
     gglobs.Devices["Audio"][CONN] = False
 
     dprint(fncname + "Terminated")
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def AudioCounterThreadTarget(Dummy):
@@ -239,7 +241,6 @@ def AudioCounterThreadTarget(Dummy):
         return
 
     while not gglobs.AudioThreadStop:
-        #~wstart = time.time()
         try:
             record, overflowed = CHUNKstream.read(gglobs.AudioChunk)
             npdata = record.reshape(-1)     # convert from '[ [1] [0] [3] ...[2] ]'  to '[1, 0, 3, ..., 2]'
@@ -248,10 +249,7 @@ def AudioCounterThreadTarget(Dummy):
             info = fncname + "Exception reading stream "
             exceptPrint(e, info)
             npdata = np.array([0])
-        #~print("npdata:  ", type(npdata), npdata[:10])
-        #~wdt = (time.time() - wstart) * 1000
 
-        #~xstart = time.time()
         if overflowed:
             # Input overflow.
             # In a stream opened with blocksize=0, indicates that data prior to
@@ -279,8 +277,6 @@ def AudioCounterThreadTarget(Dummy):
         if gotCount:
             cps_count  += 1
             gglobs.AudioMultiPulses   = np.concatenate((gglobs.AudioMultiPulses, nandata, npdata))[-chunks40:]
-            #~print("AudioMultiPulses: ", len(gglobs.AudioMultiPulses), gglobs.AudioMultiPulses)
-            #print("got count: Stream calls: {:7.3f}ms, record len:{}, overflowed:{}".format(dt, len(record), overflowed) )
 
         deltat = time.time() - cstart
         if deltat >= 1:
@@ -288,9 +284,6 @@ def AudioCounterThreadTarget(Dummy):
             gglobs.AudioLast60CPS = np.append(gglobs.AudioLast60CPS, gglobs.AudioLastCps)[1:]
             cps_count             = 0
             cstart                = time.time()
-
-        #~xdt = (time.time() - xstart) * 1000
-        #print("wdt:{:0.3f}ms, xdt:{:0.3f}ms".format(wdt, xdt))
 
     CHUNKstream.stop()
     CHUNKstream.close()
@@ -304,16 +297,11 @@ def getInfoAudio(extended = False):
 
     AudioInfo  = "Configured Connection:        Default Audio Input\n"
 
-    if not gglobs.Devices["Audio"][CONN]: return AudioInfo + "Device is not connected"
+    if not gglobs.Devices["Audio"][CONN]: return AudioInfo + "<red>Device is not connected</red>"
 
-    AudioInfo += """Connected Device:             '{}'
-Configured Variables:         {}
-Configured Tube Sensitivity:  {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
-""".format(
-                        gglobs.Devices["Audio"][DNAME],
-                        gglobs.AudioVariables,
-                        gglobs.AudioSensitivity, 1 / gglobs.AudioSensitivity
-                       )
+    AudioInfo += "Connected Device:             {}\n".format(gglobs.Devices["Audio"][DNAME])
+    AudioInfo += "Configured Variables:         {}\n".format(gglobs.AudioVariables)
+    AudioInfo += getTubeSensitivities(gglobs.AudioVariables)
 
     if extended == True:
         AudioInfo += """
@@ -384,7 +372,7 @@ def getValuesAudio(varlist):
             cps             = scaleVarValues(vname, cps, gglobs.ValueScale[vname] )
             alldata.update(  {vname: cps})
 
-    printLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
 
@@ -748,10 +736,10 @@ def showLiveAudioSignal():
         with stream: # not doing anything, but still needed!
             pass
 
-        Qt_update() # ohne dies nur leerer Fensterrahmen
-        #d.show() # kein Zusatznutzen; ohne Qt_update nur leeres Bild
+        QtUpdate() # ohne dies nur leerer Fensterrahmen
+        #d.show() # kein Zusatznutzen; ohne QtUpdate nur leeres Bild
         #time.sleep(0.2)
-        print("time delta: {:0.3f} ms".format(1000*(time.time() -start))) # alle 300 - 400 ms
+        cdprint("time delta: {:0.3f} ms".format(1000*(time.time() -start))) # alle 300 - 400 ms
         start = time.time()
 
         if ende: break

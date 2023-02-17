@@ -32,188 +32,60 @@ __license__         = "GPL3"
 from   gsup_utils       import *
 
 
-"""
-from the config file; currently not used
-
-################ NOT IN USE ###################################################
-# Simul Device PREDICTIVE
-# Determines whether CPM is let to accumulate or a prediction is made after
-# first counts.
-#
-# Option auto defaults to 'no'
-#
-# Options:        auto | yes | no
-# Default       = auto
-#~SimulPredictive   = auto
-SimulPredictive   = no
-
-
-# Simul Device PREDICTLIMIT
-# Sets the count limit which CPM must have reached before a first CPM-prediction
-# is given. Before CPM will be reported as NAN.
-# Statistical certainty from Std.Dev = Sqrt(N) (valid for Poisson):
-# CPM =  10:   ~30%
-# CPM =  25:    20%
-# CPM = 100:    10%
-#
-# Option auto defaults to 25
-#
-# Options:          auto | <any number >= 0 >
-# Default         = auto
-SimulPredictLimit = auto
-###############################################################################
-"""
-
-
-def getNTPDateTime(NTPversion = 4):
-    """Call NTP server and return offset in seconds as reported by NTP"""
-
-
-    try:
-        import ntplib
-        ntplib_available = True
-    except:
-        edprint("ntplib not found. Cannot use NTP server!")
-        ntplib_available = False
-        return gglobs.NAN
-
-
-    # typical offset is in the order of 10 milli second (offset = +/- 0.010
-
-    # latest NTP version is now: 4;     working versions are 2, 3, 4 (not 1!)
-    # https://www.eecis.udel.edu/~mills/ntp/html/release.html
-    #
-    # ntplib: def request(self, host, version=2, port='ntp', timeout=5):
-    #
-    # NTP document by IETF:       https://tools.ietf.org/html/rfc5905
-    # see: page 23, Figure 7 for functions, and ff for details
-    #
-    # Reference Timestamp:
-    # Time when the system clock was last set or corrected, in NTP timestamp format.
-    #
-    # Origin Timestamp (org):
-    # Time at the client when the request departed for the server, in NTP timestamp format.
-    #
-    # Receive Timestamp (rec):
-    # Time at the server when the request arrived from the client, in NTP timestamp format.
-    #
-    # Transmit Timestamp (xmt):
-    # Time at the server when the response left for the client, in NTP timestamp format.
-    #
-    # Destination Timestamp (dst):
-    # Time at the client when the reply arrived from the server, in NTP timestamp format.
-
-    if not ntplib_available:
-        edprint("Cannot call NTP Server as ntplib is not available!")
-        return gglobs.NAN
-
-
-    NTP_SERVERS = [ #'pool.ntp.org',
-                    #'asia.pool.ntp.org',
-                    #~'oceania.pool.ntp.org',
-                    #'north-america.pool.ntp.org',
-                    #~'south-america.pool.ntp.org',
-                    #'europe.pool.ntp.org',
-                    'de.pool.ntp.org',
-                    #~'0.de.pool.ntp.org',
-                    #~'1.de.pool.ntp.org',
-                    #~'2.de.pool.ntp.org',
-                    #~'3.de.pool.ntp.org',
-                    #~'uk.pool.ntp.org',
-                    #~'0.uk.pool.ntp.org',
-                  ]
-
-    fncname     = "getNTPDateTime: "
-    vprint(fncname)
-    setDebugIndent(1)
-    orig = recv = dest = offset = gglobs.NAN
-
-    client = ntplib.NTPClient()
-    for ntpserver in NTP_SERVERS:
-        ntps     = []
-        try:
-            response = client.request(ntpserver, version=NTPversion, timeout=0.2)
-        except Exception as e:
-            msg = fncname + "NTPversion:{} ".format(NTPversion)
-            exceptPrint(e, msg)
-            setDebugIndent(0)
-            #return gglobs.NAN
-            continue
-
-        #print("response.orig_time: ", response.orig_time) # like: 1614266943.3662605
-
-        orig   = response.orig_time     # all times in seconds
-        recv   = response.recv_time
-        tx     = response.tx_time
-        dest   = response.dest_time
-        offset = response.offset
-
-        ntps.append( ["orig"     , orig - orig]) # always zero
-        ntps.append( ["recv"     , recv - orig])
-        ntps.append( ["tx  "     , tx   - orig])
-        ntps.append( ["dest"     , dest - orig])
-        ntps.append( ["offset"   , offset])
-        #ntps.append( ["calc offset"   , ((recv - orig) + (tx - dest)) / 2])
-
-        # vprint for each server
-        if gglobs.verbose:
-            for  a in ntps: vprint("NTP Version: {}  {:20s}  {:15s}  {:10.3f} ".format(NTPversion, ntpserver, a[0], a[1]))
-            print("")
-
-    setDebugIndent(0)
-
-    return offset # offset in seconds
-
-
-# NTP
-###############################################################################
-# Simul Device
-
-
 def initSimul():
     """Start the simulator"""
 
-    global cps_record, cps_record_NORMAL, SimulCounterCalls, prevtimePointNopa, prevtimePointPara, M, tau, lasteventPara, lasteventNopa
+    global cps_record_POISSON, cps_record_NORMAL, SimulCounterCalls, prevtimePointNopa, prevtimePointPara, M, tau, lasteventPara, lasteventNopa
 
     fncname ="initSimul: "
 
     dprint(fncname + "Initializing Simul Device")
-    setDebugIndent(1)
+    setIndent(1)
 
     errmsg  = "" # what errors can be here?
-    gglobs.Devices["Simul"][DNAME]  = "Poisson Simulator"
+    gglobs.Devices["Simul"][DNAME] = "Simulator"
 
-    if gglobs.SimulMean         == "auto": gglobs.SimulMean         = 0.3                       # "background"
-    if gglobs.SimulSensitivity  == "auto": gglobs.SimulSensitivity  = 154                       # CPM/(µSv/h), = 0.065 µSv/h/CPM
-    if gglobs.SimulVariables    == "auto": gglobs.SimulVariables    = "CPM, CPS"                # non-predictive;
-    if gglobs.SimulDeadtime     == "auto": gglobs.SimulDeadtime     = 120                       # 120 µs deadtime
-    #if gglobs.SimulPredictive   == "auto": gglobs.SimulPredictive   = False                     # let CPM accumulate
-    #if gglobs.SimulPredictLimit == "auto": gglobs.SimulPredictLimit = 25                        # CPM prediction after this count was reached
+    if gglobs.SimulMean         == "auto": gglobs.SimulMean         = 0.3         # "background"
+    if gglobs.SimulVariables    == "auto": gglobs.SimulVariables    = "CPM, CPS"  # non-predictive;
+    if gglobs.SimulDeadtime     == "auto": gglobs.SimulDeadtime     = 120         # 120 µs deadtime
 
-    setTubeSensitivities(gglobs.SimulVariables, gglobs.SimulSensitivity)
+    #if gglobs.SimulPredictive   == "auto": gglobs.SimulPredictive   = False      # let CPM accumulate
+    #if gglobs.SimulPredictLimit == "auto": gglobs.SimulPredictLimit = 25         # CPM prediction after this count was reached
+
     setLoggableVariables("Simul", gglobs.SimulVariables)
+
+    makeStartRecord(gglobs.SimulMean)
 
     gglobs.Devices["Simul"][CONN] = True
 
-    # create full records of 60 entries
-    np.random.seed(666666)                                                      # seed the random number generator with a develish sequence
-    cps_record         = np.random.poisson(gglobs.SimulMean, size=60)           # generates 1 record of "CPS counts" from POISSON
-    stdDev             = np.sqrt(gglobs.SimulMean)                              # NORMAL must have StdDev to match POISSON
-    cps_record_NORMAL  = np.random.normal(gglobs.SimulMean, stdDev, size=60)    # generates 1 record of "CPS counts" from NORMAL
-    for i in range(60):
-        # print(cps_record_NORMAL[i])
-        if cps_record_NORMAL[i] < 0: cps_record_NORMAL[i] = 0                   # negative values from NORMAL eliminated
-    # print(cps_record_NORMAL)
-
-    SimulCounterCalls  = 0                                                      # how many times the get data routine was called
-    prevtimePointNopa  = 0
-    prevtimePointPara  = 0
+    SimulCounterCalls  =  0   # how many times the get data routine was called (??? not used anywhere)
+    prevtimePointNopa  =  0
+    prevtimePointPara  =  0
     lasteventNopa      = -1
     lasteventPara      = -1
 
-    setDebugIndent(0)
+    setIndent(0)
 
     return errmsg
+
+
+def makeStartRecord(mean):
+    """sets the first 60 CPS values to get full cpm reading"""
+
+    global cps_record_POISSON, cps_record_NORMAL
+
+    stddev              = np.sqrt(mean) # StdDev must be same for POISSON and NORMAL
+    gglobs.SimulStdDev  = stddev
+
+    # make POISSON record
+    cps_record_POISSON = np.random.poisson(mean, size=60)           # POISSON: generates 1 record of 60 "CPS counts"
+
+    # make NORMAL record
+    cps_record_NORMAL  = np.random.normal(mean, stddev, size=60)    # NORMAL: generates 1 record of 60 "CPS counts"
+    # clean NORMAL to POISSON-like
+    for i in range(60):
+        if cps_record_NORMAL[i] < 0: cps_record_NORMAL[i] = 0                              # eliminate negative values
+        else:                        cps_record_NORMAL[i] = round(cps_record_NORMAL[i], 0) # round positiv values to integer
 
 
 def terminateSimul():
@@ -222,25 +94,26 @@ def terminateSimul():
     fncname ="terminateSimul: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     gglobs.Devices["Simul"][CONN] = False
 
     dprint(fncname + "Terminated")
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def getValuesSimul(varlist):
     """Read all data; return empty dict when not available"""
 
+    ##############################################################
     def FixNANtoInt(value):
         """if value is NAN, it returns NAN, otherwise a value rounded to integer"""
 
         if np.isnan(value): return gglobs.NAN
-        else:               return round(value, 1)
+        else:               return round(value, 0)
+    ##############################################################
 
-
-    global cps_record, cps_record_NORMAL, SimulCounterCalls, prevtimePointNopa, prevtimePointPara, lasteventPara, lasteventNopa
+    global cps_record_POISSON, cps_record_NORMAL, SimulCounterCalls, prevtimePointNopa, prevtimePointPara, lasteventPara, lasteventNopa
 
     start = time.time()
     fncname = "getValuesSimul: "
@@ -252,183 +125,219 @@ def getValuesSimul(varlist):
     size               = int(max(1, gglobs.logCycle))
     SimulCounterCalls += size
 
-    # now add the fresh counts
-    stdDev             = np.sqrt(gglobs.SimulMean)                              # StdDev for NORMAL to match with POISON
-    simulcps           = np.random.poisson(gglobs.SimulMean, size=size)         # generates the "CPS counts"
-    cps_record         = np.append(cps_record, simulcps)[-60:]                  # append, but then take last 60 values only
-    simulcpsNORMAL     = np.random.normal(gglobs.SimulMean, stdDev, size=size)  # generates the "CPS counts" from NORMAL dist
+    # now add the fresh counts for POISSON
+    simulcpsPOISSON    = np.random.poisson(gglobs.SimulMean, size=size)             # generates the POISSON "CPS counts"
+    cps_record_POISSON = np.append(cps_record_POISSON, simulcpsPOISSON)[-60:]       # append, but then take last 60 values only
+
+    # now add the fresh counts for NORMAL
+    simulcpsNORMAL     = np.random.normal(gglobs.SimulMean, gglobs.SimulStdDev, size=size)  # generates the NORMAL "CPS counts"
     for i in range(size):
         # print(simulcpsNORMAL[i])
-        if simulcpsNORMAL[i] < 0: simulcpsNORMAL[i] = 0                         # negative values eliminated
+        if   simulcpsNORMAL[i] < 0: simulcpsNORMAL[i] = 0                           # negative values eliminated
+        else:                       simulcpsNORMAL[i] = round(simulcpsNORMAL[i], 0) # positiv values rounded to integer
+    cps_record_NORMAL  = np.append(cps_record_NORMAL, simulcpsNORMAL)[-60:]         # append, but then take last 60 values only
 
-    cps_record_NORMAL  = np.append(cps_record_NORMAL, simulcpsNORMAL)[-60:]     # append, but then take last 60 values only
-
-    #~print("--------size: ", size, ", simulcps:", simulcps)
-    #~print("cps_record: nansum", np.nansum(cps_record), "cps_record:\n", cps_record)
+    #~print("--------size: ", size, ", simulcpsPOISSON:", simulcpsPOISSON)
+    #~print("cps_record_POISSON: nansum", np.nansum(cps_record_POISSON), "cps_record_POISSON:\n", cps_record_POISSON)
 
     for vname in varlist:
-        # CPM
+        # CPM from Poisson
         if   vname == "CPM":
-            cpm             = float(np.nansum(cps_record))        # must do conversion or blob will be stored in db
+            cpm             = float(np.nansum(cps_record_POISSON))        # must do float conversion or a blob will be stored in db
             cpm             = FixNANtoInt(scaleVarValues(vname, cpm, gglobs.ValueScale[vname]))
             alldata.update(  {vname: cpm})
 
-        # CPS
+        # CPS from Poisson
         elif vname == "CPS":
-            cps             = float(cps_record[-1])               # must do conversion or blob will be stored in db
+            cps             = float(cps_record_POISSON[-1])               # must do float conversion or a blob will be stored in db
             cps             = FixNANtoInt(scaleVarValues(vname, cps, gglobs.ValueScale[vname] ))
             alldata.update(  {vname: cps})
 
-        # CPM1st
+        # CPM1st from NORMAL
         elif vname == "CPM1st":
-            cpm             = float(np.nansum(cps_record_NORMAL)) # must do conversion or blob will be stored in db
+            cpm             = float(np.nansum(cps_record_NORMAL)) # must do float conversion or a blob will be stored in db
             cpm             = FixNANtoInt(scaleVarValues(vname, cpm, gglobs.ValueScale[vname]))
             alldata.update(  {vname: cpm})
 
-        # CPS1st
+        # CPS1st from NORMAL
         elif vname == "CPS1st":
-            cps             = float(cps_record_NORMAL[-1])        # must do conversion or blob will be stored in db
-            # print("cps: ", cps)
-            # if cps < 0: cps = 0
+            cps             = float(cps_record_NORMAL[-1])        # must do float conversion or a blob will be stored in db
             cps             = FixNANtoInt(scaleVarValues(vname, cps, gglobs.ValueScale[vname] ))
             alldata.update(  {vname: cps})
 
-# NOPA
+## testing
         # CPM2nd
-        # used for CPS with ***non-paralyzing deadtime*** correction
-        # die nicht verlängerbare und die verlängerbare Totzeit. https://de.wikipedia.org/wiki/Totzeit_(Teilchenmesstechnik)
         elif vname == "CPM2nd":
-            mean                = gglobs.SimulMean              # mean in CPS
-            dt                  = gglobs.SimulDeadtime / 1E6    # deadtime[s] converted from deadtime[µs] as given in config
-            cps_counted         = 0                             # counts detected within present collection cycle
-            cps_missed          = 0                             # counts UN-detected because too soon after last
-            timePoint           = prevtimePointNopa             # duration in sec of this current second of collection; starting with leftover from last cycle
+            alldata.update(  {vname: int(np.random.poisson(600))} )
 
-            # print("prevtimePointNopa: {:10.6f}".format(prevtimePointNopa))
+        # CPS2nd
+        elif vname == "CPS2nd":
+            alldata.update(  {vname: int(np.random.poisson(25))} )
 
-            if prevtimePointNopa >= 1:      # more than 1 sec; skip counting for this 1 sec interval
-                prevtimePointNopa -= 1
+        # CPM3rd
+        elif vname == "CPM3rd":
+            alldata.update(  {vname: int(np.random.poisson(6000))} )
 
-            else:
-                if prevtimePointNopa > 0:
-                    cps_counted += 1        # count set in last cycle
+        # CPS3rd
+        elif vname == "CPS3rd":
+            alldata.update(  {vname: int(np.random.poisson(77))} )
 
-                counter = 0
-                while True:
-                    gap        = np.random.exponential(1 / mean)     # gap between two pulse starts in sec
-                    timePoint += gap
-                    # print("{} mean= {:0.2f}, timepoint= {:9.6f}s  lastevent:{:9.6f}, tpnt-lastev: {:6.0f}µs ".format(counter, mean, timePoint, lasteventNopa, 1e6*(timePoint - lasteventNopa)))
-                    counter += 1
-                    if timePoint > 1:                                # count up to 1 sec only; beyond 1 sec events will be counted in next cycle
-                        prevtimePointNopa = timePoint - 1            # The pulse begins in next cycle
-                        lasteventNopa    -= 1                        # subtract 1 sec to have last event at proper position
-                        # print("mean= {:0.0f}, t= {:7.3f} totd= {:0.6f} prevtimePointNopa: {:3.0f} break".format(mean, t * 1e6, timePoint, prevtimePointNopa * 1e6))
-                        break                                        # nothing more to do in this cycle
-
-                    else:  # timePoint <= 1 sec                      # still in the current cycle
-                        if (timePoint - lasteventNopa) >= dt:        # and time to last pulse is > deadtime,
-                            cps_counted += 1                         # so count it as CPS, ...
-                            lasteventNopa = timePoint                # make this to the last pulse time oint
-                        else:
-                            cps_missed += 1                          # ... otherwise count it as missed CPS!
-                                                                     # NOTE: lasteventNopa has NOT changed, as non-paralyzing event!
-                # end while
-
-            cps             = cps_counted + cps_missed
-            cps             = FixNANtoInt(scaleVarValues(vname, cps, gglobs.ValueScale[vname] ))
-            alldata.update(  {vname: cps})
-
-            # counts after correction based on counted counts
-            vnameX = "CPS2nd"
-            if vnameX in varlist:
-                # Die NOPADEC Gleichung ist  N = M / (1 - M * τ)
-                localValueScale = "nopadec(VAL, {})".format(gglobs.SimulDeadtime)
-                cps_corr        = cps_counted
-                cps_corr        = FixNANtoInt(scaleVarValues(vnameX, cps_corr, localValueScale))
-                # print("CPS2nd: cps_counted:{} cps_corr:{}".format(cps_counted, cps_corr))
-                alldata.update(  {vnameX: cps_corr})
-
-            # counted counts
-            vnameX = "CPM3rd"
-            if vnameX in varlist:
-                cps        = cps_counted
-                cps        = FixNANtoInt(scaleVarValues(vnameX, cps, gglobs.ValueScale[vnameX] ))
-                alldata.update(  {vnameX: cps})
-
-            # missed counts
-            vnameX = "CPS3rd"
-            if  vnameX in varlist:
-                cps        = cps_missed
-                cps        = FixNANtoInt(scaleVarValues(vnameX, cps, gglobs.ValueScale[vnameX] ))
-                alldata.update(  {vnameX: cps})
-
-# PARA
-        # T
-        # used for CPS with ***paralyzing deadtime*** correction
-        # die nicht verlängerbare und die verlängerbare Totzeit. https://de.wikipedia.org/wiki/Totzeit_(Teilchenmesstechnik)
+        # Temp
         elif vname == "Temp":
-            mean                = gglobs.SimulMean              # mean in CPS
-            dt                  = gglobs.SimulDeadtime / 1E6    # deadtime[s] converted from deadtime[µs] as given in config
-            cps_counted         = 0                             # counts detected within present collection cycle
-            cps_missed          = 0                             # counts UN-detected because too soon after last
-            timePoint           = prevtimePointPara               # duration in sec of this current second of collection; starting with leftover from last cycle
+            alldata.update(  {vname: np.random.normal(25, 2.5)} )
 
-            # print("prevtimePointPara: {:10.6f}".format(prevtimePointPara))
-            # print("mean= {:0.2f}, totd= {:9.6f}s  lasteventPara:{}, prevtimePointPara: {:9.6f}s ".format(mean, timePoint, lasteventPara, prevtimePointPara))
-            if prevtimePointPara >= 1:
-                prevtimePointPara -= 1
-            else:
-                if prevtimePointPara > 0:
-                    cps_counted += 1               # count coming from last cycle
+        # Press
+        elif vname == "Press":
+            alldata.update(  {vname: np.random.normal(1000, 10)} )
 
-                while True:
-                    gap        = np.random.exponential(1 / mean)        # gap between two pulse-starts in sec
-                    timePoint += gap
-                    #print("mean= {:0.2f}, dt= {:9.6f}s  tPoint= {:9.6f}s  prevtimePointPara: {:9.6f}s ".format(mean, dt, timePoint, prevtimePointPara))
+        # # Humid
+        # elif vname == "Humid":
+        #     alldata.update(  {vname: np.random.normal(50, 5)} )
 
-                    if timePoint > 1:                                   # count up to 1 sec only; then events will be counter in next cycle
-                        prevtimePointPara = timePoint - 1               # The pulse extends into next counting cycle
-                        lasteventPara    -= 1
-                        # print("mean= {:0.0f}, t= {:7.3f} totd= {:0.6f} prevtimePointPara: {:3.0f} break".format(mean, t * 1e6, timePoint, prevtimePointPara * 1e6))
-                        break
-                    else:
-                        if (timePoint - lasteventPara) >= dt:
-                            cps_counted += 1                            # if time to last pulse is > deadtime then count it as CPS
-                            lasteventPara = timePoint
+        # # Xtra
+        # elif vname == "Xtra":
+        #     alldata.update(  {vname: np.random.normal(70, 7)} )
+## end testing ##################
 
-                        else:
-                            cps_missed += 1                             # otherwise increment missed CPS!
-                            lasteventPara = timePoint                   # but ALSO extent duration, as the event has increased the deadtime!
-                # end while
+# # NOPA
+#         # CPM2nd
+#         # used for CPS with ***non-paralyzing deadtime*** correction
+#         # die nicht verlängerbare und die verlängerbare Totzeit. https://de.wikipedia.org/wiki/Totzeit_(Teilchenmesstechnik)
+#         elif vname == "CPM2nd":
+#             mean                = gglobs.SimulMean              # mean in CPS
+#             dt                  = gglobs.SimulDeadtime / 1E6    # deadtime[s] converted from deadtime[µs] as given in config
+#             cps_counted         = 0                             # counts detected within present collection cycle
+#             cps_missed          = 0                             # counts UN-detected because too soon after last
+#             timePoint           = prevtimePointNopa             # duration in sec of this current second of collection; starting with leftover from last cycle
 
-            cps             = cps_counted + cps_missed
-            cps             = FixNANtoInt(scaleVarValues(vname, cps, gglobs.ValueScale[vname] ))
-            alldata.update(  {vname: cps})
+#             # print("prevtimePointNopa: {:10.6f}".format(prevtimePointNopa))
 
-            # counts after correction based on counted counts
-            vnameX = "Press"
-            if vnameX in varlist:
-                # Die PADEC Gleichung ist  m = n * exp(− n τ)
-                localValueScale        = "padec(VAL, {})".format(gglobs.SimulDeadtime)
-                cps_corr               = cps_counted
-                cps_corr               = FixNANtoInt(scaleVarValues(vnameX, cps_corr, localValueScale)) # do I need to round() this?
-                alldata.update(  {vnameX: cps_corr})
+#             if prevtimePointNopa >= 1:      # more than 1 sec; skip counting for this 1 sec interval
+#                 prevtimePointNopa -= 1
 
-            # counted counts
-            vnameX = "Humid"
-            if vnameX in varlist:
-                cps        = cps_counted
-                cps        = FixNANtoInt(scaleVarValues(vnameX, cps, gglobs.ValueScale[vnameX] ))
-                alldata.update(  {vnameX: cps})
+#             else:
+#                 if prevtimePointNopa > 0:
+#                     cps_counted += 1        # count set in last cycle
 
-            # missed counts
-            vnameX = "Xtra"
-            if  vnameX in varlist:
-                cps        = cps_missed
-                cps        = FixNANtoInt(scaleVarValues(vnameX, cps, gglobs.ValueScale[vnameX] ))
-                alldata.update(  {vnameX: cps})
+#                 counter = 0
+#                 while True:
+#                     gap        = np.random.exponential(1 / mean)     # gap between two pulse starts in sec
+#                     timePoint += gap
+#                     # print("{} mean= {:0.2f}, timepoint= {:9.6f}s  lastevent:{:9.6f}, tpnt-lastev: {:6.0f}µs ".format(counter, mean, timePoint, lasteventNopa, 1e6*(timePoint - lasteventNopa)))
+#                     counter += 1
+#                     if timePoint > 1:                                # count up to 1 sec only; beyond 1 sec events will be counted in next cycle
+#                         prevtimePointNopa = timePoint - 1            # The pulse begins in next cycle
+#                         lasteventNopa    -= 1                        # subtract 1 sec to have last event at proper position
+#                         # print("mean= {:0.0f}, t= {:7.3f} totd= {:0.6f} prevtimePointNopa: {:3.0f} break".format(mean, t * 1e6, timePoint, prevtimePointNopa * 1e6))
+#                         break                                        # nothing more to do in this cycle
 
-    printLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+#                     else:  # timePoint <= 1 sec                      # still in the current cycle
+#                         if (timePoint - lasteventNopa) >= dt:        # and time to last pulse is > deadtime,
+#                             cps_counted += 1                         # so count it as CPS, ...
+#                             lasteventNopa = timePoint                # make this to the last pulse time oint
+#                         else:
+#                             cps_missed += 1                          # ... otherwise count it as missed CPS!
+#                                                                      # NOTE: lasteventNopa has NOT changed, as non-paralyzing event!
+#                 # end while
+
+#             cps             = cps_counted + cps_missed
+#             cps             = FixNANtoInt(scaleVarValues(vname, cps, gglobs.ValueScale[vname] ))
+#             alldata.update(  {vname: cps})
+
+#             # counts after correction based on counted counts
+#             vnameX = "CPS2nd"
+#             if vnameX in varlist:
+#                 # Die NOPADEC Gleichung ist  N = M / (1 - M * τ)
+#                 localValueScale = "nopadec(VAL, {})".format(gglobs.SimulDeadtime)
+#                 cps_corr        = cps_counted
+#                 cps_corr        = FixNANtoInt(scaleVarValues(vnameX, cps_corr, localValueScale))
+#                 # print("CPS2nd: cps_counted:{} cps_corr:{}".format(cps_counted, cps_corr))
+#                 alldata.update(  {vnameX: cps_corr})
+
+#             # counted counts
+#             vnameX = "CPM3rd"
+#             if vnameX in varlist:
+#                 cps        = cps_counted
+#                 cps        = FixNANtoInt(scaleVarValues(vnameX, cps, gglobs.ValueScale[vnameX] ))
+#                 alldata.update(  {vnameX: cps})
+
+#             # missed counts
+#             vnameX = "CPS3rd"
+#             if  vnameX in varlist:
+#                 cps        = cps_missed
+#                 cps        = FixNANtoInt(scaleVarValues(vnameX, cps, gglobs.ValueScale[vnameX] ))
+#                 alldata.update(  {vnameX: cps})
+
+# # PARA
+#         # T
+#         # used for CPS with ***paralyzing deadtime*** correction
+#         # die nicht verlängerbare und die verlängerbare Totzeit. https://de.wikipedia.org/wiki/Totzeit_(Teilchenmesstechnik)
+#         elif vname == "Temp":
+#             mean                = gglobs.SimulMean              # mean in CPS
+#             dt                  = gglobs.SimulDeadtime / 1E6    # deadtime[s] converted from deadtime[µs] as given in config
+#             cps_counted         = 0                             # counts detected within present collection cycle
+#             cps_missed          = 0                             # counts UN-detected because too soon after last
+#             timePoint           = prevtimePointPara               # duration in sec of this current second of collection; starting with leftover from last cycle
+
+#             # print("prevtimePointPara: {:10.6f}".format(prevtimePointPara))
+#             # print("mean= {:0.2f}, totd= {:9.6f}s  lasteventPara:{}, prevtimePointPara: {:9.6f}s ".format(mean, timePoint, lasteventPara, prevtimePointPara))
+#             if prevtimePointPara >= 1:
+#                 prevtimePointPara -= 1
+#             else:
+#                 if prevtimePointPara > 0:
+#                     cps_counted += 1               # count coming from last cycle
+
+#                 while True:
+#                     gap        = np.random.exponential(1 / mean)        # gap between two pulse-starts in sec
+#                     timePoint += gap
+#                     #print("mean= {:0.2f}, dt= {:9.6f}s  tPoint= {:9.6f}s  prevtimePointPara: {:9.6f}s ".format(mean, dt, timePoint, prevtimePointPara))
+
+#                     if timePoint > 1:                                   # count up to 1 sec only; then events will be counter in next cycle
+#                         prevtimePointPara = timePoint - 1               # The pulse extends into next counting cycle
+#                         lasteventPara    -= 1
+#                         # print("mean= {:0.0f}, t= {:7.3f} totd= {:0.6f} prevtimePointPara: {:3.0f} break".format(mean, t * 1e6, timePoint, prevtimePointPara * 1e6))
+#                         break
+#                     else:
+#                         if (timePoint - lasteventPara) >= dt:
+#                             cps_counted += 1                            # if time to last pulse is > deadtime then count it as CPS
+#                             lasteventPara = timePoint
+
+#                         else:
+#                             cps_missed += 1                             # otherwise increment missed CPS!
+#                             lasteventPara = timePoint                   # but ALSO extent duration, as the event has increased the deadtime!
+#                 # end while
+
+#             cps             = cps_counted + cps_missed
+#             cps             = FixNANtoInt(scaleVarValues(vname, cps, gglobs.ValueScale[vname] ))
+#             alldata.update(  {vname: cps})
+
+#             # counts after correction based on counted counts
+#             vnameX = "Press"
+#             if vnameX in varlist:
+#                 # Die PADEC Gleichung ist  m = n * exp(− n τ)
+#                 localValueScale        = "padec(VAL, {})".format(gglobs.SimulDeadtime)
+#                 cps_corr               = cps_counted
+#                 cps_corr               = FixNANtoInt(scaleVarValues(vnameX, cps_corr, localValueScale)) # do I need to round() this?
+#                 alldata.update(  {vnameX: cps_corr})
+
+#             # counted counts
+#             vnameX = "Humid"
+#             if vnameX in varlist:
+#                 cps        = cps_counted
+#                 cps        = FixNANtoInt(scaleVarValues(vnameX, cps, gglobs.ValueScale[vnameX] ))
+#                 alldata.update(  {vnameX: cps})
+
+#             # missed counts
+#             vnameX = "Xtra"
+#             if  vnameX in varlist:
+#                 cps        = cps_missed
+#                 cps        = FixNANtoInt(scaleVarValues(vnameX, cps, gglobs.ValueScale[vnameX] ))
+#                 alldata.update(  {vnameX: cps})
+
+    duration = 1000 * (time.time() - start)
+    if gglobs.devel: alldata.update({"Humid": duration})
+
+    vprintLoggedValues(fncname, varlist, alldata, duration)
 
     return alldata
 
@@ -438,7 +347,7 @@ def getSimulProperties():
 
     fncname = "getSimulProperties: "
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     lmean = QLabel("CPS Mean\n(0 ... 100000)")
     lmean.setAlignment(Qt.AlignLeft)
@@ -461,12 +370,12 @@ def getSimulProperties():
     graphOptions=QGridLayout()
     graphOptions.addWidget(lmean,           0, 0)
     graphOptions.addWidget(mean,            0, 1)
-    graphOptions.addWidget(ldeadtime,       1, 0)
-    graphOptions.addWidget(deadtime,        1, 1)
+    # graphOptions.addWidget(ldeadtime,       1, 0)
+    # graphOptions.addWidget(deadtime,        1, 1)
     #~graphOptions.addWidget(lplimit,         1, 0) # do not show
     #~graphOptions.addWidget(plimit,          1, 1) # do not show
 
-    d = QDialog() # set parent to None to popup in center of screen
+    d = QDialog()
     d.setWindowIcon(gglobs.iconGeigerLog)
     d.setFont(gglobs.fontstd)
     d.setWindowTitle("Simul Device Properties")
@@ -487,14 +396,15 @@ def getSimulProperties():
 
     if retval == 0:
         dprint(fncname + "Cancelled, Properties unchanged")
-        #fprint("\nSet Properties: Cancelled, Properties unchanged")
     else:
         # mean
         mean        = mean.text().replace(",", ".")    #replace any comma with dot
-        try:    lm  = round(abs(float(mean)), 1)
+        try:    lm  = round(abs(float(mean)), 2)
         except: lm  = gglobs.SimulMean
         if lm <= 100000: gglobs.SimulMean = lm
         else:            efprint("Illegal entry for mean: ", lm)
+
+        makeStartRecord(gglobs.SimulMean)   # make full CPS records to have correct CPM from the beginning
 
         # # plimit
         #     plimit      = plimit.text().replace(",", ".")  #replace any comma with dot
@@ -509,39 +419,33 @@ def getSimulProperties():
 
         # dprint(fncname + "ok, new settings: Mean: {}  Tube Deadtime: {} µs  Prediction Limit: {}".\
         #             format(gglobs.SimulMean, gglobs.SimulDeadtime, gglobs.SimulPredictLimit))
-        dprint(fncname + "ok, new settings: Mean: {}  Tube Deadtime: {} µs".\
-                    format(gglobs.SimulMean, gglobs.SimulDeadtime))
+        dprint(fncname + "ok, new settings: Mean: {}  Tube Deadtime: {} µs".format(
+                                                                                    gglobs.SimulMean,
+                                                                                    gglobs.SimulDeadtime))
 
         fprint(getInfoSimul())
 
-    setDebugIndent(0)
+    setIndent(0)
 
 
 def getInfoSimul(extended = False):
     """Info on the Simul Device"""
 
-    SimulInfo = "Configured Connection:        GeigerLog Simul Device\n"
+    SimulInfo = "Configured Connection:        Plugin\n"
 
     if not gglobs.Devices["Simul"][CONN]:
-        SimulInfo += "Device is not connected"
+        SimulInfo += "<red>Device is not connected</red>"
     else:
-        SimulInfo += """Connected Device:             '{}'
-Configured Variables:         {}
-Configured Tube Sensitivity:  {:0.1f} CPM/(µSv/h) ({:0.4f} µSv/h/CPM)
-CPS Mean:                     {:0.1f} --> CPM={:0.1f}
-Tube Deadtime:                {} µs
-"""\
-                            .format(
-                                    gglobs.Devices["Simul"][DNAME],
-                                    gglobs.SimulVariables,
-                                    gglobs.SimulSensitivity, 1 / gglobs.SimulSensitivity,
-                                    gglobs.SimulMean, gglobs.SimulMean * 60,
-                                    gglobs.SimulDeadtime,
-                                )
+        SimulInfo += "Connected Device:             {}\n".format(gglobs.Devices["Simul"][DNAME])
+        SimulInfo += "Configured Variables:         {}\n".format(gglobs.SimulVariables)
+        SimulInfo += "Counts-Per-Second Mean:       {:0.2f} --> CPM={:0.2f}\n".format(gglobs.SimulMean, gglobs.SimulMean * 60,)
+        SimulInfo += getTubeSensitivities(gglobs.SimulVariables)
 
     return SimulInfo
 
 
+
+# ## from the config file; currently not used
 #
 # Extended geigerlog.cfg content for simul
 #
@@ -574,15 +478,6 @@ Tube Deadtime:                {} µs
 # # SimulMean    = auto
 # SimulMean    = 300
 
-# # Simul Device SENSITIVITY:
-# # To be given in units of CPM/(µSv/h), see discussion at the top at Defaults
-# #
-# # Option auto defaults to 154
-# #
-# # Options:          auto | <any positive number>
-# # Default         = auto
-# # SimulSensitivity  = auto
-# SimulSensitivity  = 100
 
 # # Simul Device VARIABLES:
 # # Available are all variables CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd, Temp, Press, Humid, Xtra.
@@ -662,4 +557,33 @@ Tube Deadtime:                {} µs
 # # Default      = auto
 # # SimulDeadtime  = auto
 # SimulDeadtime  = 200
+#
+#
+# ################ NOT IN USE ###################################################
+# # Simul Device PREDICTIVE
+# # Determines whether CPM is let to accumulate or a prediction is made after
+# # first counts.
+# #
+# # Option auto defaults to 'no'
+# #
+# # Options:        auto | yes | no
+# # Default       = auto
+# #~SimulPredictive   = auto
+# SimulPredictive   = no
+
+
+# # Simul Device PREDICTLIMIT
+# # Sets the count limit which CPM must have reached before a first CPM-prediction
+# # is given. Before CPM will be reported as NAN.
+# # Statistical certainty from Std.Dev = Sqrt(N) (valid for Poisson):
+# # CPM =  10:   ~30%
+# # CPM =  25:    20%
+# # CPM = 100:    10%
+# #
+# # Option auto defaults to 25
+# #
+# # Options:          auto | <any number >= 0 >
+# # Default         = auto
+# SimulPredictLimit = auto
+# ###############################################################################
 

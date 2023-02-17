@@ -38,11 +38,6 @@ class ELVdongle:
 
     # Serial port
     DongleSer       = None                      # serial port pointer
-    usbport         = gglobs.I2Cusbport
-    baudrate        = gglobs.I2Cbaudrate
-    timeout         = gglobs.I2Ctimeout
-    timeout_write   = gglobs.I2Ctimeout_write
-
 
     def __init__(self):
         """make instance of dongle"""
@@ -55,53 +50,27 @@ class ELVdongle:
         fncname = "DongleInit: {}: ".format(self.name)
 
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
+
+        if gglobs.I2Cusbport   == "auto" : gglobs.I2Cusbport  = None    # None results in auto-find of port
+        if gglobs.I2Cbaudrate  == "auto" : gglobs.I2Cbaudrate = 115200  # baudrate tested ok: 230400, 460800
+        if gglobs.I2CtimeoutR  == "auto" : gglobs.I2CtimeoutR = 3
+        if gglobs.I2CtimeoutW  == "auto" : gglobs.I2CtimeoutW = 1
 
         # open serial port
         success, portmsg = self.ELVOpenPort()
         if not success:
-            setDebugIndent(0)
-            return success, portmsg
+            setIndent(0)
+            return False, portmsg
 
-        # get info:
-        #   - send b'?'
-        #   - read ~179 bytes:
-        #           b'\r\nELV USB-I2C-Interface v1.8 (Cal:5E)
-        #             \r\nLast Adress:0xC5
-        #             \r\nBaudrate:115200 bit/s
-        #             \r\nI2C-Clock:99632 Hz
-        #             \r\nY00
-        #             \r\nY10
-        #             \r\nY20
-        #             \r\nY30
-        #             \r\nY40
-        #             \r\nY50
-        #             \r\nY60
-        #             \r\nY70
-        #             \r\n'
-        wrt  = self.ELVwriteBytes(b'?')     # request info
-        rec  = self.ELVreadBytes(100)       # get info (~179 bytes, depending on some settings)
-        rec  = rec.strip()
-        if b"ELV USB-I2C" in rec:
+        # set dongle defaults
+        cdprint(fncname + "Setting dongle defaults")
+        wrt = self.ELVwriteBytes(b'<')     # stop macro with '<' (Should be default)
+        wrt = self.ELVwriteBytes(b'y30')   # set 'y30' in order to NOT get ACK and NACK (is default)
 
-            # # Reset Dongle
-            # Factory Reset takes >3 sec
-            # gdprint(fncname + "Factory-Reset dongle")
-            # self.DongleReset(type="Factory")
+        setIndent(0)
 
-            # set dongle defaults
-            gdprint(fncname + "Setting dongle defaults")
-            wrt = self.ELVwriteBytes(b'<')     # stop macro with '<' (Should be default)
-            wrt = self.ELVwriteBytes(b'y30')   # set 'y30' in order to NOT get ACK and NACK (is default)
-
-            msg = True,  "Initialized Dongle " + self.name            # an ELV dongle
-
-        else:
-            msg = False, "Failure - Not an {} dongle!\nat {}".format(self.name, portmsg)   # not an ELV dongle
-
-        setDebugIndent(0)
-
-        return msg
+        return (True,  "Initialized Dongle " + self.name)
 
 
     def DongleTerminate(self):
@@ -126,9 +95,10 @@ class ELVdongle:
         # returns: Factory: b'\r\nFull Init...'   (14 bytes) # takes ~7.2 ms
         #          else:    b'\r\nReset...'       (10 bytes) # takes ~6.9 ms
         # HOWEVER: this is followed in both commands by:
-        #                   b'\r\nELV USB-I2C-Interface v1.8 (Cal:5E)\r\n'
-        # but it takes seconds before this second part is sent. If another
-        # command is issued in that time, it interferes with that new command!
+        #             b'\r\nELV USB-I2C-Interface v1.8 (Cal:5E)\r\n'
+        # but it takes seconds before this second part is sent by the ELV device.
+        # If another command is issued in that time, it interferes with that new
+        # command!
         # The total duration on my system is:
         #                   ZAA Factory Reset:  takes 3.25 sec
         #                   Z4B Reset:          takes 1.80 sec
@@ -154,7 +124,6 @@ class ELVdongle:
                 brec += wbrec
                 break
 
-        # edprint(fncname + "total dur: {:0.1f} ms".format((time.time() - start)*1000))
         duration = 1000 * (time.time() - start)
 
         return str(brec) + "  Total dur: {:0.1f} ms".format(duration)
@@ -163,16 +132,32 @@ class ELVdongle:
     def DongleGetInfo(self):
         """get the ELV's startup info"""
 
+        # get ELV info:
+        #   - send b'?'
+        #   - read approx. 179 bytes:
+        #           b'\r\nELV USB-I2C-Interface v1.8 (Cal:5E)
+        #             \r\nLast Adress:0xC5
+        #             \r\nBaudrate:115200 bit/s
+        #             \r\nI2C-Clock:99632 Hz
+        #             \r\nY00
+        #             \r\nY10
+        #             \r\nY20
+        #             \r\nY30
+        #             \r\nY40
+        #             \r\nY50
+        #             \r\nY60
+        #             \r\nY70
+        #             \r\n'
+
         wrt  = self.ELVwriteBytes(b'?')
         brec = self.ELVreadBytes(100)
-        srec = (brec.strip().decode() + "\n\n").replace("\r", "")
+        srec = (brec.strip().decode()).replace("\r", "")
 
-        portmsg = "Port: {} Baud: {} TimeoutR: {}s TimeoutW: {}s".format(self.usbport, self.baudrate, self.timeout, self.timeout_write)
+        info = []
+        for line in srec.split("\n"):
+            info.append("           - {}".format(line))
 
-        info  = "- Connection:      {}\n"               .format(portmsg)
-        info += srec
-
-        return info.split("\n")
+        return info
 
 
     def DongleScanPrep(self, type):
@@ -204,8 +189,7 @@ class ELVdongle:
         # use when checking multiple addr in a row
         # write Start-Addr-Stop and check for ACK or NACK
 
-        # start = time.time()
-        fncname = "DongleAddrIsUsed: "
+        fncname   = "DongleAddrIsUsed: "
 
         readbytes = 1
         saddr     = "{:02X}".format((addr << 1) + 0)                      # note: +0!
@@ -213,10 +197,8 @@ class ELVdongle:
         wrt       = self.ELVwriteBytes(bcommand)
         answ      = self.ELVreadBytes(readbytes)
 
-        # duration2 = 1000 * (time.time() - start)
-        # edprint(fncname + "dur chk: {:0.2f}".format(duration2))
-
         msg = fncname + "command: {:12s}  addr: 0x{:02X}  answ: {}".format(str(bcommand), addr, answ)
+
         if   answ == b"N":  # NACK
             rdprint(msg)
             return False
@@ -225,10 +207,9 @@ class ELVdongle:
             cdprint(msg)
             return True
 
-        else:               # crap
-            playWav("err")
-            edprint(fncname + "Wow this should not have happened! Please, try restarting GeigerLog")
-            sys.exit(1)
+        else:               # crap, like:  b'', b'\r\nnot recognized', ...
+            edprint(msg)
+            return False
 
 
     def DongleWriteRead(self, addr, register, readbytes, data, addrScheme=1, msg="", wait=0):
@@ -239,7 +220,7 @@ class ELVdongle:
         wait it wait phase between write and read call
         """
 
-        wrt       = self.DongleWriteReg(addr, register, readbytes, data, addrScheme=addrScheme, msg=msg)
+        wrt = self.DongleWriteReg(addr, register, readbytes, data, addrScheme=addrScheme, msg=msg)
         if wrt == -99:
             # failure in writing
             return []
@@ -367,33 +348,162 @@ class ELVdongle:
         """open serial port for ELV dongle"""
         # on Linux this is a "/dev/ttyUSB*" port
 
+
+        ## local ###################################################################################
+        def lcl_ELV_getSerialPortBaud(device):
+            """
+            gets the USB-to-Serial port name and baudrate for ISS
+            This tests for a match of USB's vid + pid associated with device. If match found,
+            then it tests for proper communication checking with specific call/answers
+            """
+
+            # output by: lsusb
+            # ELV I2C dongle
+            #   bcdUSB               1.10
+            #   idVendor           0x10c4 Cygnal Integrated Products, Inc.
+            #   idProduct          0xea60 CP210x UART Bridge / myAVR mySmartUSB light
+            #   iManufacturer           1 Silicon Labs
+            #   iProduct                2 ELV USB-I2C-Interface
+            #   iSerial                 3 TL4E6D5KBAHDFQF0
+
+            fncname   = "ELVOpenPort - lcl_ELV_getSerialPortBaud: "
+
+            dprint(fncname + "for device '{}'".format(device))
+            setIndent(1)
+
+            portfound   = None
+            baudfound   = None
+            tmplt_match = "Found Chip ID match for device '{}' at Port:'{}' - vid:0x{:04x}, pid:0x{:04x}"
+            tmplt_found = "Found: Port:{}, Baud:{}, description:'{}', vid:0x{:04x}, pid:0x{:04x}"
+
+            ports = getPortList(symlinks=False)
+
+            for port in ports:
+                if  port.vid == 0x10C4 and port.pid == 0xEA60:
+                    gdprint(fncname, tmplt_match.format(device, port.device, port.vid, port.pid))
+                    baudrate = lcl_ELVautoBaudrate(port.device)
+                    if baudrate is not None and baudrate > 0:
+                        portfound = port.device
+                        baudfound = baudrate
+                        break
+
+            if portfound is not None: gdprint(fncname + tmplt_found.format(portfound, baudfound, port.description, port.vid, port.pid))
+            else:                     rdprint(fncname + tmplt_found.format(portfound, baudfound, "", 0, 0))
+            # edprint(fncname + "Returning: ", (portfound, baudfound))
+
+            setIndent(0)
+            return (portfound, baudfound)
+
+
+        def lcl_ELVautoBaudrate(usbport):
+            """Tries to find a proper baudrate by testing for successful serial
+            communication at up to all possible baudrates, beginning with the
+            highest"""
+
+            """
+            NOTE: the device port can be opened without error at any baudrate, even
+            when no communication can be done, e.g. due to wrong baudrate. Therefore we
+            test for successful communication by checking for the return string
+            containing 'ELV'.
+            On success, this baudrate will be returned. A baudrate=0 will be returned
+            when all communication fails. On a serial error, baudrate=None will be returned.
+            """
+
+            fncname = "lcl_ELVautoBaudrate: "
+
+            dprint(fncname + "on port: '{}'".format(usbport))
+            setIndent(1)
+
+            baudrates = gglobs.I2Cbaudrates
+            baudrates.sort(reverse=True)                # to start with highest baudrate
+            for baudrate in baudrates:
+                dprint(fncname + "Trying baudrate: ", baudrate)
+                try:
+                    ABRser = serial.Serial(usbport, baudrate, timeout=0.5, write_timeout=0.5)
+                    ABRser.write(b'?')
+                    # expect rec:     b'\r\nELV USB-I2C-Interface v1.8 (Cal:5E)\r\nLast Adress:0x91\r\nBaudrate:115200 bit/s\r\n
+                    # (approx 179 b)    I2C-Clock:99632 Hz\r\nY00\r\nY10\r\nY20\r\nY30\r\nY40\r\nY50\r\nY60\r\nY70\r\n'
+                    rec = ABRser.read(100)  # normally 179 bytes
+                    while True:
+                        time.sleep(0.05)
+                        try:
+                            cnt = ABRser.in_waiting
+                            ABRser.read(cnt)
+                        except Exception as e:
+                            exceptPrint(e, fncname + "ABRser.in_waiting Exception at dongle: {}".format(gglobs.I2CDongleCode))
+                            cnt = 0
+                        if cnt == 0: break
+
+                    ABRser.close()
+
+                    # raise Exception("testing")
+
+                    if b"ELV" in rec:
+                        baudmsg = "SUCCESS with baudrate: {}".format(baudrate)
+                        gglobs.I2CDeviceDetected = "ELV USB-I2C"
+                        break
+
+                except Exception as e:
+                    exceptPrint(e, "")
+                    baudmsg  = "EXCEPTION in Serial communication with baudrate: {}".format(baudrate)
+                    baudrate = None
+                    break
+
+                baudmsg  = "FAILURE - No success at any baudrate"
+                baudrate = 0
+
+            dprint(fncname + baudmsg)
+            setIndent(0)
+
+            return baudrate
+
+        ## end local ##################################################################################
+
+
         fncname = "ELVOpenPort: "
 
-        if self.usbport == "auto":
-            # in auto mode try to find port and baud
-            port, baud = getSerialConfig("ELV")
+        if gglobs.I2Cusbport == None:
+
+            # try to auto-find port and baud
+            port, baud = lcl_ELV_getSerialPortBaud("ELV")
             if port is None or baud is None:
-                return (False,  "No such dongle detected")
+                return (False,  "A '{}' dongle was not detected".format(self.name))
+
             else:
-                self.usbport  = port
-                self.baudrate = baud
-                fprint("A {} dongle was detected at port: {} and baudrate: {}".format(self.name, self.usbport, self.baudrate), debug=True)
+                gglobs.I2Cusbport  = port
+                gglobs.I2Cbaudrate = baud
+                msg = "A {} dongle was detected at port: {} and baudrate: {}".format(self.name, gglobs.I2Cusbport, gglobs.I2Cbaudrate)
+                fprint(msg)
+                dprint(msg)
+
         else:
-            # in non-auto mode take the configured value for port and baud
-            self.usbport  = gglobs.I2Cusbport
-            self.baudrate = gglobs.I2Cbaudrate
 
+            # in non-auto mode take the configured value for port and baud,
+            # but do check for proper communication
+            newbaudrate = lcl_ELVautoBaudrate(gglobs.I2Cusbport)
+            if newbaudrate == 0 or newbaudrate is None:
+                setIndent(0)
+                return False, "Could not find a device"
 
-        portmsg = "Port:{} Baud:{} TimeoutR:{}s TimeoutW:{}s".format(self.usbport, self.baudrate, self.timeout, self.timeout_write)
-        try:
-            gglobs.I2CDongle.DongleSer = serial.Serial(self.usbport, self.baudrate, timeout=self.timeout, write_timeout=self.timeout_write)
-            gglobs.I2CDongle.DongleSer.flushInput() # helful?
+        portmsg = "Port:'{}' Baud:{} TimeoutR:{}s TimeoutW:{}s"\
+                    .format(gglobs.I2Cusbport, gglobs.I2Cbaudrate, gglobs.I2CtimeoutR, gglobs.I2CtimeoutW)
 
-            msg = "Serial device opened at {}".format(portmsg)
-            gdprint(msg)
-            return (True,  portmsg)
-        except Exception as e:
-            exceptPrint(e, fncname + "ERROR Serial port for dongle {} could not be opened".format(self.name))
-            errmsg = "No such dongle detected at:\n{}".format(portmsg)
+        if os.path.exists(gglobs.I2Cusbport):
+            try:
+                gglobs.I2CDongle.DongleSer = serial.Serial\
+                    (gglobs.I2Cusbport, gglobs.I2Cbaudrate, timeout=gglobs.I2CtimeoutR, write_timeout=gglobs.I2CtimeoutW)
+                # gglobs.I2CDongle.DongleSer.flushInput() # helful?
+
+                msg = "Serial device opened at {}".format(portmsg)
+                gdprint(fncname + msg)
+                return (True,  portmsg)
+
+            except Exception as e:
+                exceptPrint(e, fncname + "ERROR Serial port for dongle {} could not be opened".format(self.name))
+                errmsg = "A '{}' dongle was not detected at:\n{}".format(self.name, portmsg)
+                return (False,  errmsg)
+        else:
+            errmsg  = "The USB port '{}' does NOT exist.".format(gglobs.I2Cusbport)
+            dprint(fncname + errmsg)
             return (False,  errmsg)
 

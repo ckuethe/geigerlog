@@ -58,9 +58,16 @@ def createSyntheticData():
 
     setBusyCursor()
 
-    fprint(header("Create Synthetic Log CSV file"), debug=True)
-    fprint("Create logs for mean(s):", "{}\n".format(shd(meanlist)), debug=True)
-    Qt_update() # needed to show fprints
+    # fprint(header("Create Synthetic Log CSV file"), debug=True)
+    # fprint("Create logs for mean(s):", "{}\n".format(shd(meanlist)), debug=True)
+    msg1 = header("Create Synthetic Log CSV file")
+    msg2 = "Create logs for mean(s):", "{}\n".format(shd(meanlist))
+    fprint(msg1)
+    fprint(msg2)
+    dprint(msg1)
+    dprint(msg2)
+
+    QtUpdate() # needed to show fprints
 
     for mean in meanlist:
     # get time
@@ -124,7 +131,10 @@ def createSyntheticData():
             writeFileA(path, writestring)
             if i < maxprints or i >= (records - maxprints): print(writestring)
 
-        fprint("Saved to file: {}\n".format(path), debug=True)
+        # fprint("Saved to file: {}\n".format(path), debug=True)
+        msg = "Saved to file: {}\n".format(path)
+        fprint(msg)
+        dprint(msg)
 
     setNormalCursor()
 
@@ -141,7 +151,10 @@ def getDeltaTimePoisson(records, mean):
     x       = np.random.exponential(1 / mean, size=records) * 1E6    # duration before next pulse in µs
 
     xtext   = fncname + "size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
-    fprint("Resulting Data:", xtext, debug=True)
+    # fprint("Resulting Data:", xtext, debug=True)
+    msg = "Resulting Data:", xtext
+    fprint(msg)
+    dprint(msg)
 
     return x, DataSrc
 
@@ -155,7 +168,11 @@ def getWhiteNoisePoisson(records, mean):
     x       = np.random.poisson(mean, size=records)
 
     xtext   = fncname + "size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
-    fprint("Resulting Data:", xtext, debug=True)
+    # fprint("Resulting Data:", xtext, debug=True)
+    msg = "Resulting Data:", xtext
+    fprint(msg)
+    dprint(msg)
+
 
     return x, DataSrc
 
@@ -169,7 +186,11 @@ def getWhiteNoiseNormal(records, mean, stddev):
     x       = np.random.normal(mean, stddev, size=records)
 
     xtext   = fncname + "size:{}, mean={:0.3f}, var={:0.3f}, std={:0.3f}".format(x.size, np.mean(x), np.var(x), np.std(x))
-    fprint("Resulting Data:", xtext, debug=True)
+    # fprint("Resulting Data:", xtext, debug=True)
+    msg = "Resulting Data:", xtext
+    fprint(msg)
+    dprint(msg)
+
 
     return x, DataSrc
 

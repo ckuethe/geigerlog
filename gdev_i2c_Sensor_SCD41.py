@@ -60,12 +60,12 @@ class SensorSCD41:
         dmsg    = "Sensor {:8s} at address 0x{:02X}".format(self.name, self.addr)
 
         dprint(fncname)
-        setDebugIndent(1)
+        setIndent(1)
 
         # check for presence of an I2C device at I2C address
         if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
             # no device found
-            setDebugIndent(0)
+            setIndent(0)
             return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
         else:
             # device found
@@ -98,7 +98,7 @@ class SensorSCD41:
         # gdprint(fncname + "Triggering Auto-Measurement")
         wrt  = self.SCD41StartPeriodicMeasurement()
 
-        setDebugIndent(0)
+        setIndent(0)
 
         return (True,  "Initialized " + dmsg)
 
@@ -310,11 +310,11 @@ class SensorSCD41:
         return ready
 
 
-    def SensorGetValues(self):
+    def SensorgetValues(self):
         """Read the CO2, Temp and Humid values if available"""
 
         # any result only after 5 sec after start and after EACH reading;
-        # Data sheet: "... the buffer is emptied upon read-out."
+        # from Data sheet: "... the buffer is emptied upon read-out."
 
         # 3.5.2 read_measurement
         # write 0xec05
@@ -327,30 +327,30 @@ class SensorSCD41:
         # RH  [%]   = word[2] / 2^16 * 100
 
         # measurement duration:
-        #   mit dongle ISS:  SCD41: CO2:829.000, Temp:24.182, Humid:32.088  duration:  4.3 ...  5.5 ms (avg: 4.8 ms)  1.0x
-        #   mit dongle ELV:  SCD41: CO2:922.000, Temp:24.524, Humid:31.822  duration: 11.7 ... 24.7 ms (avg:13.1 ms)  2,7x
-        #   mit dongle IOW:  SCD41: CO2:837.000, Temp:26.841, Humid:30.222  duration: 39.2 ... 40.4 ms (avg:39.9 ms)  8.3x
-        #   mit dongle FTD:  SCD41: CO2:837.000, Temp:26.841, Humid:30.222  duration: 65.8 ... 70.1 ms (avg:67.1 ms) 14.0x
+        #   with dongle ISS:  SCD41: CO2:829.000, Temp:24.182, Humid:32.088  duration:  4.3 ...  5.5 ms (avg: 4.8 ms)  1.0x
+        #   with dongle ELV:  SCD41: CO2:922.000, Temp:24.524, Humid:31.822  duration: 11.7 ... 24.7 ms (avg:13.1 ms)  2,7x
+        #   with dongle IOW:  SCD41: CO2:837.000, Temp:26.841, Humid:30.222  duration: 39.2 ... 40.4 ms (avg:39.9 ms)  8.3x
+        #   with dongle FTD:  SCD41: CO2:837.000, Temp:26.841, Humid:30.222  duration: 65.8 ... 70.1 ms (avg:67.1 ms) 14.0x
 
-        #   mit dongle ISS:  100 kHz    SCD41:  duration:  4.3 ...  5.5 ms (avg: 4.8 ms)  1.0x
-        #   mit dongle ISS:  400 kHz    SCD41:  duration:  3.0 ...  5.9 ms (avg: 3.5 ms) 0.73x      1.37x
+        #   with dongle ISS:  100 kHz    SCD41:  duration:  4.3 ...  5.5 ms (avg: 4.8 ms)  1.0x
+        #   with dongle ISS:  400 kHz    SCD41:  duration:  3.0 ...  5.9 ms (avg: 3.5 ms) 0.73x      1.37x
 
         # @ 9600 baud
-        #   mit dongle ISS:  100 kHz    SCD41:  duration:  4.5 ...  6.1 ms (avg: 5.2 ms)
-        #   mit dongle ISS:  400 kHz    SCD41:  duration:  2.9 ...  4.7 ms (avg: 3.3 ms)
-        #   mit dongle ISS: 1000 kHz    SCD41:  duration:  2.6 ...  5.0 ms (avg: 3.4 ms)  # slower!
+        #   with dongle ISS:  100 kHz    SCD41:  duration:  4.5 ...  6.1 ms (avg: 5.2 ms)
+        #   with dongle ISS:  400 kHz    SCD41:  duration:  2.9 ...  4.7 ms (avg: 3.3 ms)
+        #   with dongle ISS: 1000 kHz    SCD41:  duration:  2.6 ...  5.0 ms (avg: 3.4 ms)  # slower!
 
 
 
         start   = time.time()
-        fncname = "SensorGetValues: " + self.name + ": "
+        fncname = "SensorgetValues: " + self.name + ": "
         sgvdata = (gglobs.NAN,) * 3
 
-        dprint(fncname)
-        setDebugIndent(1)
+        cdprint(fncname)
+        setIndent(1)
 
         dataReady = self.SCD41DataReady()
-        # ################ test xyz
+        # ################ test
         # dataReady = 1
         # ##########################
 
@@ -360,7 +360,7 @@ class SensorSCD41:
             pass
 
         else:
-            # data are ready - dataReady == 1
+            # data are ready: dataReady == 1
             tmsg      = "getval"
             register  = 0xec05
             readbytes = 9
@@ -388,9 +388,9 @@ class SensorSCD41:
             else:
                 msg = TYELLOW + fncname + "Failure reading proper byte count"
 
-            dprint(msg)
+            gdprint(msg)
 
-        setDebugIndent(0)
+        setIndent(0)
 
         return sgvdata
 

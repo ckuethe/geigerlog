@@ -157,7 +157,7 @@ from   gsup_utils       import *
 import ctypes
 try:
     l = ctypes.CDLL("liblabjackusb.so", use_errno=False)            # errno False/True: no effect seen
-    gdprint("gdev_labjack.py - " + "LabJack driver is installed: ", l)
+    # gdprint("gdev_labjack.py - " + "LabJack driver is installed: ", l)
     foundDriver = True
 except Exception as e:
     exceptPrint(e, "ctypes.CDLL(liblabjackusb.so errno=false")
@@ -185,7 +185,6 @@ if foundDriver:
 
 
 
-
 def initLabJack():
     """Initialize LabJack U3 (with probe EI1050 if activated)"""
 
@@ -193,8 +192,6 @@ def initLabJack():
 
     fncname = "initLabJack: "
     dprint(fncname + "Initializing LabJack on Linux")
-
-    edprint("LabJackPython.staticLib: ", LabJackPython.staticLib)
 
     if 'linux' not in sys.platform:             # Py3:'linux', Py2:'linux2'
         msg = "LabJack is currently supported only on Linux."
@@ -214,6 +211,9 @@ def initLabJack():
     else:
         gdprint("   " + fncname + "Python module 'LabJackPython' is installed")
         gglobs.versions["LabJackPython"]  = LabJackPython.__version__
+
+
+    # rdprint("LabJackPython.staticLib: ", LabJackPython.staticLib)
 
     # U3
     if not gglobs.LJimportU3:
@@ -238,39 +238,42 @@ def initLabJack():
             gdprint("   " + fncname + "Python module 'EI1050' is installed")
             gglobs.versions["EI1050"]   = ei1050.__version__
 
-    setDebugIndent(1)
+    setIndent(1)
 
     # List All paramter for device type 3: LabJackPython.listAll(3)
     # this shows only an empty dict after LJdevice = u3.U3() command,
     # and back to original data after a LJdevice.close() command!
-    cdprint(fncname + " LabJackPython.listAll(3):")
+    cdprint(fncname + "LabJackPython.listAll(3):")
     try:
         listAll = LabJackPython.listAll(3)
     except Exception as e:
         exceptPrint(e, "listAll(3)")
         msg  = "The Exodriver required for LabJack appears to be missing."
-        setDebugIndent(0)
+        setIndent(0)
         return msg
 
     # print the list
-    for a in listAll:
-        for aa in listAll[a]:
-            cdprint("   {:20s}  '{}'".format(aa, listAll[a][aa]))
-    cdprint("")
+    if len(listAll) > 0:
+        for a in listAll:
+            for aa in listAll[a]:
+                cdprint("   {:20s}  '{}'".format(aa, listAll[a][aa]))
+        cdprint("")
+    else:
+        cdprint(fncname + "   list is empty")
 
     # open the device
-    # first detach from USB in case it is still attached
-    try:    LJdevice.close()                                    # important to detach from USB!
+    # IMPORTANT: first detach from USB in case it is still attached
+    try:    LJdevice.close()
     except: pass
 
     try:
         LJdevice = u3.U3()
         #LJdevice.debug = True
     except Exception as e:
-        exceptPrint(e, "LJdevice = u3.U3()")
-        stre    = str(e)
+        exceptPrint(e, "@ LJdevice = u3.U3()")
+        stre = str(e)
         if   "Couldn't open device. Please check that the device you are trying to open is connected." in stre:
-            errmsg = "No LabJack device found. Is it connected?"
+            errmsg = "No LabJack device found."
         elif "Couldn't open device. Device access or claim error" in stre:
             errmsg = "A LabJack device was found, but it may already be in use by a different program."
         elif "name 'u3' is not defined" in stre:
@@ -281,7 +284,7 @@ def initLabJack():
         edprint(fncname + "ERROR: U3 exception: " + errmsg)
 
         gglobs.Devices["LabJack"][CONN] = False
-        setDebugIndent(0)
+        setIndent(0)
 
         return errmsg
 
@@ -331,7 +334,7 @@ def initLabJack():
     gglobs.Devices["LabJack"][CONN] = True
     getValuesLabJack(gglobs.Devices["LabJack"][1])      # do a first read (data may not be settled)
 
-    setDebugIndent(0)
+    setIndent(0)
 
     return ""
 
@@ -344,7 +347,7 @@ def terminateLabJack():
     fncname = "terminateLabJack: "
 
     dprint(fncname)
-    setDebugIndent(1)
+    setIndent(1)
 
     if gglobs.LJEI1050Activation and gglobs.LJimportEI1050:
         try:
@@ -358,7 +361,7 @@ def terminateLabJack():
         gglobs.Devices["LabJack"][CONN]   = False
 
     dprint(fncname + "Terminated")
-    setDebugIndent(0)
+    setIndent(0)
 
 
 # # def setLabJackSettings(a = 0, b = 0, c = 0):
@@ -397,9 +400,9 @@ def getInfoLabJack(extended = False):
 
     LJInfo      = "Configured Connection:        USB (auto-configuration)\n"
 
-    if not gglobs.Devices["LabJack"][CONN]: return LJInfo + "Device is not connected"
+    if not gglobs.Devices["LabJack"][CONN]: return LJInfo + "<red>Device is not connected</red>"
 
-    LJInfo     += "Connected Device:             '{}'\n".format(gglobs.Devices["LabJack"][DNAME])
+    LJInfo     += "Connected Device:             {}\n".format(gglobs.Devices["LabJack"][DNAME])
     if gglobs.LJEI1050Activation:
         LJInfo += "Connected Probe:              {} (Status: {})\n".format("EI1050", gglobs.LJEI1050status)
     else:
@@ -600,7 +603,7 @@ def getValuesLabJack(varlist):
     #~LJdevice.getFeedback(u3.LED( False) )
 
     stop = time.time()
-    printLoggedValues(fncname, varlist, alldata, (stop - start) * 1000)
+    vprintLoggedValues(fncname, varlist, alldata, (stop - start) * 1000)
 
     return alldata
 
