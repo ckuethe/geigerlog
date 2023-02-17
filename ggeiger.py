@@ -3892,15 +3892,34 @@ class ggeiger(QMainWindow):
 
             return statusTip
 
-        def getVarText(selUnit1, value, scaleIndex, counttype):
 
-            # if selUnit1 == "CPM":   varText = "{:0.0f} CP{}".format(value, counttype)
-            if selUnit1 == "CPM":   varText = "{:0.5g} CP{}".format(value, counttype)
-            else:                   varText = "{:0.5g} µSv/h".format(value * 60 * scale[scaleIndex])
-            # if selUnit1 == "CPM":   varText = "{:0.3g} CP{}".format(value, counttype)
-            # else:                   varText = "{:0.3g} µSv/h".format(value * 60 * scale[scaleIndex])
+        # original version of 1.4.0
+        #~def getVarText(selUnit1, value, scaleIndex, counttype):
+
+            #~# if selUnit1 == "CPM":   varText = "{:0.0f} CP{}".format(value, counttype)
+            #~if selUnit1 == "CPM":   varText = "{:0.5g} CP{}".format(value, counttype)
+            #~else:                   varText = "{:0.5g} µSv/h".format(value * 60 * scale[scaleIndex])
+            #~# if selUnit1 == "CPM":   varText = "{:0.3g} CP{}".format(value, counttype)
+            #~# else:                   varText = "{:0.3g} µSv/h".format(value * 60 * scale[scaleIndex])
+
+            #~return varText
+
+        # the fixed version of 1.4.1
+        def getVarText(selUnit1, svalue, scaleIndex, counttype):
+            """the text to show in the last variable field"""
+
+            if counttype == "M": value = svalue         # CPM
+            else:                value = svalue * 60    # CPS
+
+            if selUnit1 == "CPM":
+                # rdprint("CPM")
+                varText = "{:0.5g} CP{}".format(value, counttype)
+            else:
+                # rdprint("µSv/h")
+                varText = "{:0.4g} µSv/h".format(value * scale[scaleIndex])
 
             return varText
+
 
         #***********************************************************************************************
 

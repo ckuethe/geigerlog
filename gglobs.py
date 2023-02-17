@@ -29,8 +29,8 @@ __author__          = "ullix"
 __copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
 __credits__         = [""]
 __license__         = "GPL3"
-__version__         = "1.4"               # version of next GeigerLog
-__version__         = "1.4.0pre21"
+__version__         = "1.4.1"               # version of next GeigerLog
+#__version__         = "1.4.0pre21"
 
 
 # constants
