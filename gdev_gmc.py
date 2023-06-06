@@ -69,25 +69,57 @@ cfgKeyLowDefault = {
 
 
 # only WiFi enabled counters
-cfgKeyHighDefault = {
-# gglobs.GMC_WifiIndex:  0         1           2                    3                      4
-#                   GMCmap    cfgMap      cfg256ndx            cfg512ndx
-#                   from GL   from GMC
-#                   config    device    # only GMC-320+V5     # GMC-500/600          # GMC500+2.24
-    "SSID"      : [ None,     None,     (69,     69 + 16),    (69,     69 + 32) ,    (69,     69 + 64) ],
-    "Password"  : [ None,     None,     (85,     85 + 16),    (101,   101 + 32) ,    (133,   133 + 64) ],
-    "Website"   : [ None,     None,     (101,   101 + 25),    (133,   133 + 32) ,    (197,   197 + 32) ],
-    "URL"       : [ None,     None,     (126,   126 + 12),    (165,   165 + 32) ,    (229,   229 + 32) ],
-    "UserID"    : [ None,     None,     (138,   138 + 12),    (197,   197 + 32) ,    (261,   261 + 32) ],
-    "CounterID" : [ None,     None,     (150,   150 + 12),    (229,   229 + 32) ,    (293,   293 + 32) ],
+# FET (FastEstTime): on 500+ series: 5, 10, 15, 20, 30, 60=sec, 3=dynamic (firmware >= 2.28)
+#                  : on 300, 320 series not defined
+#
 
-    # entries for 320V5 modified: 112 -> 162, 113 -> 163                                                                                             not on 300 series
-    "Period"    : [ None,     None,     (162,   162 +  1),    (261,   261 +  1) ,    (325,   325 +  1) ], # 0 ... 255
-    "WiFi"      : [ None,     None,     (163,   163 +  1),    (262,   262 +  1) ,    (326,   326 +  1) ], # WiFi On=1 Off=0
-    "FET"       : [ None,     None,     (255,   255 +  1),    (263,   263 +  1) ,    (328,   328 +  1) ], # FET
-    # FET (FastEstTime): on 500+ series: 5, 10, 15, 20, 30, 60=sec, 3=dynamic (firmware >= 2.28)
-    #                  : on 300, 320 series not defined
+# cfgKeyHiDefault = {
+cfgKeyHighDefault = {
+# g.GMC_WifiIndex:          0         1           2                    3                      4                     5
+#                           from      from      cfg256ndx             cfg512ndx              cfg512ndx              cfg256ndx
+#                           GL cfg    counter   HI only GMC-320+V5    GMC-500/600            GMC500+2.24            only GMC-300S
+#                                                                                                                   no WiFi but FET
+    "SSID"              : [ None,     None,     (69,     69 + 16),    (69,     69 + 32) ,    (69,     69 + 64),     (69,     69 + 16) ],  # user specific value
+    "Password"          : [ None,     None,     (85,     85 + 16),    (101,   101 + 32) ,    (133,   133 + 64),     (85,     85 + 16) ],  # user specific value
+    "Website"           : [ None,     None,     (101,   101 + 25),    (133,   133 + 32) ,    (197,   197 + 32),     (101,   101 + 25) ],  # default: www.gmcmap.com
+    "URL"               : [ None,     None,     (126,   126 + 12),    (165,   165 + 32) ,    (229,   229 + 32),     (126,   126 + 12) ],  # default: log2.asp
+    "UserID"            : [ None,     None,     (138,   138 + 12),    (197,   197 + 32) ,    (261,   261 + 32),     (138,   138 + 12) ],  # user specific value
+    "CounterID"         : [ None,     None,     (150,   150 + 12),    (229,   229 + 32) ,    (293,   293 + 32),     (150,   150 + 12) ],  # user specific value
+
+    "Period"            : [ None,     None,     (162,   162 +  1),    (261,   261 +  1) ,    (325,   325 +  1),     (253,   253 +  1) ],  # value can be 1 ... 255
+    "WiFi"              : [ None,     None,     (163,   163 +  1),    (262,   262 +  1) ,    (326,   326 +  1),     (253,   253 +  1) ],  # WiFi On=1 Off=0
+
+    "FET"               : [ None,     None,     (253,   253 +  1),    (510,   510 +  1) ,    (328,   328 +  1),     (69,    69  +  1) ],  # FET
+    "DEADTIME_ENABLE"   : [ None,     None,     (253,   253 +  1),    (510,   510 +  1) ,    (335,   335 +  1),     (253,   253 +  1) ],  # enable dead time setting (fw 2.41+)
+    "DEADTIME_TUBE1"    : [ None,     None,     (253,   253 +  2),    (510,   510 +  2) ,    (336,   336 +  2),     (253,   253 +  2) ],  # DEADTIME_TUBE1_HIBYTE, LOBYTE
+    "DEADTIME_TUBE2"    : [ None,     None,     (253,   253 +  2),    (510,   510 +  2) ,    (338,   338 +  2),     (253,   253 +  2) ],  # DEADTIME_TUBE2_HIBYTE, LOBYTE
+    "TARGET_HV"         : [ None,     None,     (253,   253 +  2),    (510,   510 +  2) ,    (346,   346 +  2),     (253,   253 +  2) ],  # Voltage read out
+    "HV_CALIB"          : [ None,     None,     (253,   253 +  1),    (510,   510 +  1) ,    (348,   348 +  1),     (253,   253 +  1) ],  # HV_CALIB (?)
+    "DATETIME"          : [ None,     None,     (253,   253 +  1),    (379,   379 +  6) ,    (348,   348 +  1),     ( 70,    70 +  6) ],  # DateTime (for what?) YY,MM,DD,hh,mm,ss
 }
+# cfgKeyHi = cfgKeyHiDefault.copy()    # shallow copy
+
+
+# # only WiFi enabled counters
+# cfgKeyHighDefault = {
+# # gglobs.GMC_WifiIndex:  0         1           2                    3                      4
+# #                   GMCmap    cfgMap      cfg256ndx            cfg512ndx
+# #                   from GL   from GMC
+# #                   config    device    # only GMC-320+V5     # GMC-500/600          # GMC500+2.24
+#     "SSID"      : [ None,     None,     (69,     69 + 16),    (69,     69 + 32) ,    (69,     69 + 64) ],
+#     "Password"  : [ None,     None,     (85,     85 + 16),    (101,   101 + 32) ,    (133,   133 + 64) ],
+#     "Website"   : [ None,     None,     (101,   101 + 25),    (133,   133 + 32) ,    (197,   197 + 32) ],
+#     "URL"       : [ None,     None,     (126,   126 + 12),    (165,   165 + 32) ,    (229,   229 + 32) ],
+#     "UserID"    : [ None,     None,     (138,   138 + 12),    (197,   197 + 32) ,    (261,   261 + 32) ],
+#     "CounterID" : [ None,     None,     (150,   150 + 12),    (229,   229 + 32) ,    (293,   293 + 32) ],
+
+#     # entries for 320V5 modified: 112 -> 162, 113 -> 163                                                                                             not on 300 series
+#     "Period"    : [ None,     None,     (162,   162 +  1),    (261,   261 +  1) ,    (325,   325 +  1) ], # 0 ... 255
+#     "WiFi"      : [ None,     None,     (163,   163 +  1),    (262,   262 +  1) ,    (326,   326 +  1) ], # WiFi On=1 Off=0
+#     "FET"       : [ None,     None,     (255,   255 +  1),    (263,   263 +  1) ,    (328,   328 +  1) ], # FET
+#     # FET (FastEstTime): on 500+ series: 5, 10, 15, 20, 30, 60=sec, 3=dynamic (firmware >= 2.28)
+#     #                  : on 300, 320 series not defined
+# }
 
 
 # the History mode of saving
@@ -875,36 +907,94 @@ def getGMC_VOLT():
     # -> Digital Volt Meter reading is: 4.18V
     #
     # GMC 500/600 is different. Delivers 5 ASCII bytes
-    # z.B.[52, 46, 49, 49, 118] = "4.11v"
+    # z.B.[52, 46, 49, 118, 0] = "4.1v\x00"
 
-    fncname = "getGMC_VOLT: "
-    dprint(fncname)
+    defname = "getGMC_VOLT: "
+    dprint(defname)
     setIndent(1)
 
     rec, error, errmessage = serialGMC_COMM(b'<GETVOLT>>', gglobs.GMC_voltagebytes, orig(__file__))
-    dprint(fncname + "VOLT: raw:", rec)
+    try:
+        dprint(defname + "VOLT: raw: {}  (len:{})".format(rec, len(rec)))
+    except Exception as e:
+        exceptPrint(e, "Voltage format is not matching expectations!")
+        error = 99
 
-    ######## TESTING (uncomment all 4) #############
-    #rec         = b'3.76v'              # 3.76 Volt
+    ######## TESTING (uncomment all 4) ####################################
+    # ATTENTION: Voltage in Firmware 2.42 does NOT have the Null character!
+    #######################################################################
+    #rec         = b'3.76v\x00'              # 3.76 Volt
     #error       = 1
     #errmessage  = "testing"
-    #dprint(fncname + "TESTING with rec=", rec, debug=True)
+    #dprint(defname + "TESTING with rec=", rec, debug=True)
     ################################################
 
     if error == 0 or error == 1:
-        if   gglobs.GMC_voltagebytes == 1:  rec = str(rec[0]/10.0)
-        elif gglobs.GMC_voltagebytes == 5:  rec = rec.decode('UTF-8')
-        else:                               rec = str(rec) + " @config: GMC_voltagebytes={}".format(gglobs.GMC_voltagebytes)
+        if   gglobs.GMC_voltagebytes == 1:
+            rec = str(rec[0]/10.0)
 
+        elif gglobs.GMC_voltagebytes == 5:
+            reccopy = rec[:]
+            reccopy = reccopy.replace(b"\x00", b"").replace(b"v", b"")  # it ends with \x00:  b'4.6v\x00'
+            rec     = reccopy.decode('UTF-8')
+
+        else:
+            rec = str(rec) + " Unexpected voltage format @config: GMC_voltagebytes={}".format(gglobs.GMC_voltagebytes)
     else:
-        rec         = "ERROR"
+        rec         = "ERROR: Voltage has unexpected format!"
         error       = 1
-        errmessage  = fncname + "ERROR getting voltage"
+        errmessage  = defname + "ERROR getting voltage"
 
-    dprint(fncname + "Using config setting GMC_voltagebytes={}:  Voltage='{}', err={}, errmessage='{}'".format(gglobs.GMC_voltagebytes, rec, error, errmessage))
+    dprint(defname + "Using config setting GMC_voltagebytes={}:  Voltage='{}', err={}, errmessage='{}'".format(gglobs.GMC_voltagebytes, rec, error, errmessage))
     setIndent(0)
 
     return (rec, error, errmessage)
+
+
+
+# def getGMC_VOLT():
+#     # Get battery voltage status
+#     # send <GETVOLT>> and read 1 byte
+#     # returns one byte voltage value of battery (X 10V)
+#     # e.g.: return 62(hex) is 9.8V
+#     # Example: Geiger counter GMC-300E+
+#     # with Li-Battery 3.7V, 800mAh (2.96Wh)
+#     # -> getGMC_VOLT reading is: 4.2V
+#     # -> Digital Volt Meter reading is: 4.18V
+#     #
+#     # GMC 500/600 is different. Delivers 5 ASCII bytes
+#     # z.B.[52, 46, 49, 49, 118] = "4.11v"
+
+#     fncname = "getGMC_VOLT: "
+#     dprint(fncname)
+#     setIndent(1)
+
+#     rec, error, errmessage = serialGMC_COMM(b'<GETVOLT>>', gglobs.GMC_voltagebytes, orig(__file__)) # raw:b'4.7v\x00'
+#     rec = rec[:-2]  # remove trailing 'v' and NULL value
+#     dprint(fncname + "VOLT: raw:", rec)
+
+
+#     ######## TESTING (uncomment all 4) #############
+#     #rec         = b'3.76v'              # 3.76 Volt
+#     #error       = 1
+#     #errmessage  = "testing"
+#     #dprint(fncname + "TESTING with rec=", rec, debug=True)
+#     ################################################
+
+#     if error == 0 or error == 1:
+#         if   gglobs.GMC_voltagebytes == 1:  rec = str(rec[0]/10.0)
+#         elif gglobs.GMC_voltagebytes == 5:  rec = rec.decode('UTF-8')
+#         else:                               rec = str(rec) + " @config: GMC_voltagebytes={}".format(gglobs.GMC_voltagebytes)
+
+#     else:
+#         rec         = "ERROR"
+#         error       = 1
+#         errmessage  = fncname + "ERROR getting voltage"
+
+#     dprint(fncname + "Using config setting GMC_voltagebytes={}:  Voltage='{}', err={}, errmessage='{}'".format(gglobs.GMC_voltagebytes, rec, error, errmessage))
+#     setIndent(0)
+
+#     return (rec, error, errmessage)
 
 
 def getGMC_SPIR(address = 0, datalength = 4096):
@@ -1017,21 +1107,22 @@ def GMC_EraseMemByFacRESET():
     # write the new config data
     writeGMC_Config(origcfg)
 
-    # read the config
-    checkCFG, error, errmessage = getGMC_Config()
+    # # mod of 1.4.1 --> 1.4.2: no verification of written config
+    # # read the config
+    # checkCFG, error, errmessage = getGMC_Config()
 
-    if origcfg == checkCFG:
-        fprint("Verifying written data:", "Ok")
-        gdprint("Verifying written data: Ok")
-    else:
-        efprint("Error in written data")
-        edprint("Error in written data")
-        edprint("intended cfg:\n", BytesAsHex(origcfg))
-        fprint("Try to re-write!")
+    # if origcfg == checkCFG:
+    #     fprint("Verifying written data:", "Ok")
+    #     gdprint("Verifying written data: Ok")
+    # else:
+    #     efprint("Error in written data")
+    #     edprint("Error in written data")
+    #     edprint("intended cfg:\n", BytesAsHex(origcfg))
+    #     fprint("Try to re-write!")
 
-        for i in range(len(origcfg)):
-            if origcfg[i] != checkCFG[i]:
-                rdprint("byte addr:{:<3d} w:{:#04X} r:{:#04X}".format(i, origcfg[i], checkCFG[i]))
+    #     for i in range(len(origcfg)):
+    #         if origcfg[i] != checkCFG[i]:
+    #             rdprint("byte addr:{:<3d} w:{:#04X} r:{:#04X}".format(i, origcfg[i], checkCFG[i]))
 
 
     # cleaning pipeline
@@ -1156,7 +1247,6 @@ def origgetGMC_ExtraByte(SerPointerEB):
     fncname = "origgetGMC_ExtraByte: "
     xrec    = b""
 
-    # time.sleep(0.010) # this code may be running too fast and missing waiting bytes. Happened with 500+
     time.sleep(0.005) # this code may be running too fast and missing waiting bytes. Happened with 500+
 
     if os.path.exists(gglobs.GMC_usbport):
@@ -1427,7 +1517,7 @@ def writeGMC_Config(config):
     5. <CFGUPDATE>>
     """
 
-    start = time.time()
+    wgcstart = time.time()
 
     fncname = "writeGMC_Config: "
 
@@ -1458,10 +1548,6 @@ def writeGMC_Config(config):
     cdprint(fncname + "ECFG: Duration: {:0.3f} sec".format(time.time() - startecfg))
     # GMC-300E+: ECFG: Duration: 0.204 sec (??), 0.045 sec, 0.044 sec, 0.041 sec
     # GMC-500+:  ECFG: Duration: 0.155 sec
-    # sleeping is NOT needed
-    ##testing
-    time.sleep(0.1) # sleep anyway
-    ##
 
     # ecfgcfg = getGMC_Config()   # don't need the call: all config bytes are now 0xff
     # rdprint("ecfgcfg", ecfgcfg)
@@ -1481,30 +1567,26 @@ def writeGMC_Config(config):
     #           All 256 bytes :        up to addr: 0x043 (=67)   Full Duration: 1.0 sec
     ###################################################################################
 
-
+    # mod of 1.4.1 --> 1.4.2: no time.sleeps, opening Serial outside of loop
     startAllups = time.time()
     pfs = "addr:{:>3d} (0x{:03X}), cfgval:{:>3d} (0x{:02X})"
-    for i, cfgval in enumerate(cfgstrip):
-        startsingle = time.time()
+    with serial.Serial(gglobs.GMC_usbport, gglobs.GMC_baudrate, timeout=0.3) as GMCserData:
+        for i, cfgval in enumerate(cfgstrip):
+            startsingle = time.time()
 
-        if doUpdate == 256: A0 = bytes([i])           # SINGLE byte : address writing config of up to 256 bytes
-        else:               A0 = struct.pack(">H", i) # DOUBLE bytes: pack address into 2 bytes, big endian, for address writing config of up to 512 bytes
+            if doUpdate == 256: A0 = bytes([i])           # SINGLE byte : address writing config of up to 256 bytes
+            else:               A0 = struct.pack(">H", i) # DOUBLE bytes: pack address into 2 bytes, big endian, for address writing config of up to 512 bytes
 
-        D0 = bytes([cfgval])
-        if D0 == ">": edprint("D0 == > !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
-        with serial.Serial(gglobs.GMC_usbport, gglobs.GMC_baudrate, timeout=0.3) as GMCserData:
-            bwrt   = GMCserData.write(b'<WCFG' + A0 + D0 + b'>>')             # bwrt: Number of bytes written, type: <class 'int'>
-            brec   = GMCserData.read(1)  # brec: data record of type: <class 'bytes'>
-            time.sleep(0.001)
-            ##testing
-            time.sleep(0.01)
-            ##
+            D0 = bytes([cfgval])
+            if D0 == ">": edprint("D0 == > !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            GMCserData.write(b'<WCFG' + A0 + D0 + b'>>')
+            GMCserData.read(1)
 
-        duration   = 1000 * (time.time() - startsingle)
-        extra      = "  Duration: {:0.1f} ms".format(duration)
-        ix         = int.from_bytes(A0, byteorder='big')
-        cx         = int.from_bytes(D0, byteorder='big')
-        mdprint(fncname + pfs.format(i, ix, cfgval, cx), extra)
+            duration   = 1000 * (time.time() - startsingle)
+            extra      = "  Duration: {:0.1f} ms".format(duration)
+            ix         = int.from_bytes(A0, byteorder='big')
+            cx         = int.from_bytes(D0, byteorder='big')
+            mdprint(fncname + pfs.format(i, ix, cfgval, cx), extra)
 
     cdprint(fncname + "Duration All Bytes: {:0.1f} sec".format(time.time() - startAllups))
 
@@ -1512,7 +1594,7 @@ def writeGMC_Config(config):
     updateGMC_Config()
 
     # overall
-    cdprint(fncname + "Duration w. Update: {:0.1f} sec".format(time.time() - start))
+    cdprint(fncname + "Duration Overall w. Update: {:0.1f} sec".format(time.time() - wgcstart))
 
     setIndent(0)
 
@@ -1659,28 +1741,30 @@ def setGMC_ConfigSettings():
 
     # write the new config data
         writeGMC_Config(bytes(gcfg))
-        fprint("Writing is complete; now verifying ...")
-#xyz
-    # read the config
-        checkCFG, error, errmessage = getGMC_Config()
+        fprint("Writing is complete; new configuration is activated.")
 
-        if gcfg == checkCFG:
-            fprint("<green>Verifying written data:", "Ok")
-            gdprint(fncname + "Verifying written data: Ok")
 
-        else:
-            msg = "Error in written data"
-            efprint(msg)
-            fprint("Try to re-write!")
+    # # mod of 1.4.1 --> 1.4.2: no verification of written config
+    # # read the config
+    #     checkCFG, error, errmessage = getGMC_Config()
 
-            edprint(fncname + msg)
-            ydprint(fncname + "intended cfg:\n", BytesAsHex(gcfg))
+    #     if gcfg == checkCFG:
+    #         fprint("<green>Verifying written data:", "Ok")
+    #         gdprint(fncname + "Verifying written data: Ok")
 
-            ydprint(fncname + "Comparing")
-            for i in range(len(gcfg)):
-                if gcfg[i] != checkCFG[i]:
-                    # ydprint(fncname + "Wrong byte at: addr:{:<3d} written:{:#04X} read:{:#04X}".format(i, gcfg[i], checkCFG[i]))
-                    ydprint(fncname + "Wrong byte at: addr:{:#04x} written:{:#04x} read:{:#04x}".format(i, gcfg[i], checkCFG[i]))
+    #     else:
+    #         msg = "Error in written data"
+    #         efprint(msg)
+    #         fprint("Try to re-write!")
+
+    #         edprint(fncname + msg)
+    #         ydprint(fncname + "intended cfg:\n", BytesAsHex(gcfg))
+
+    #         ydprint(fncname + "Comparing")
+    #         for i in range(len(gcfg)):
+    #             if gcfg[i] != checkCFG[i]:
+    #                 # ydprint(fncname + "Wrong byte at: addr:{:<3d} written:{:#04X} read:{:#04X}".format(i, gcfg[i], checkCFG[i]))
+    #                 ydprint(fncname + "Wrong byte at: addr:{:#04x} written:{:#04x} read:{:#04x}".format(i, gcfg[i], checkCFG[i]))
 
         break   # final exit from while
 
@@ -2449,7 +2533,7 @@ def getGMC_GYRO():
         z = rec[4] * 256 + rec[5]
         srec = "X=0x{:04x}, Y=0x{:04x}, Z=0x{:04x}   ({}, {}, {})".format(x, y, z, x, y, z)
     else:
-        srec = "Failure getting Gyro data:  rec='{}' errmsg='{}".format(rec, errmsg)
+        srec = "Failure getting Gyro data:  rec='{}' errmsg='{}".format(rec, errmessage)
 
     dprint(fncname + srec)
 
@@ -2947,11 +3031,9 @@ def origserialGMC_COMM(sendtxt, RequestLength, caller=("", "", -1)):
 
                 time.sleep(0.5) # extra sleep after not reading enough data
 
-                # extra = getGMC_ExtraByte()   # just to make sure the pipeline is clean
                 extra = getGMC_ExtraByte(gglobs.GMCser)   # just to make sure the pipeline is clean
 
                 gglobs.GMCser.write(sendtxt)
-                # time.sleep(0.3) # after sending
 
                 rtime = time.time()
                 brec   = gglobs.GMCser.read(RequestLength)
@@ -2963,7 +3045,6 @@ def origserialGMC_COMM(sendtxt, RequestLength, caller=("", "", -1)):
                     else:             sbah = ", brec:" + bah
                     dprint(fncname + "RETRY: RequestLength is {} bytes. OK now. Continuing normal cycle".format(len(brec)), sbah, debug=True)
                     errmessage += "; ok after {} retry".format(count)
-                    # extra = getGMC_ExtraByte()   # just to make sure the pipeline is clean
                     extra = getGMC_ExtraByte(gglobs.GMCser)   # just to make sure the pipeline is clean
                     fprint("{} Retry successful.".format(stime()))
                     gglobs.exgg.addGMC_Error(errmessage)
@@ -3649,6 +3730,23 @@ def getGMC_DeviceProperties():
         GMC_baudrate             = 57600
 
 
+    elif "GMC-300SRe 1." in gglobs.GMCDeviceDetected:
+        #######################################################################
+        # new counter "GMC-300SRe 1.03" as of 2023-02-23
+        #######################################################################
+        GMC_memory               = 2**16
+        GMC_SPIRpage             = 4096
+        GMC_SPIRbugfix           = True
+        GMC_configsize           = 256
+        GMC_voltagebytes         = 1
+        GMC_endianness           = "little"
+        GMC_Variables            = "CPM1st, CPS1st"
+        GMC_Bytes                = 2
+        GMC_baudrate             = 57600
+        GMC_FETenabled           = True
+        # GMC_WifiIndex            = 5
+        GMC_WifiIndex            = None            # to not show WiFi
+
     elif "GMC-300" in gglobs.GMCDeviceDetected:
         #######################################################################
         # last resort for GMC-300 anything counters
@@ -3726,6 +3824,24 @@ def getGMC_DeviceProperties():
         GMC_Variables            = "CPM1st, CPS1st"
         GMC_Bytes                = 2
         GMC_WifiIndex            = 2    # 320v5 device with WiFi
+
+
+    elif "GMC-320SRe 1." in gglobs.GMCDeviceDetected:
+        #######################################################################
+        # guessing:  new counter "GMC-320SRe 1.03" as of 2023-02-23
+        #######################################################################
+        GMC_memory               = 2**20
+        GMC_SPIRpage             = 4096
+        GMC_SPIRbugfix           = True
+        GMC_configsize           = 256
+        GMC_voltagebytes         = 1
+        GMC_endianness           = "little"
+        GMC_Variables            = "CPM1st, CPS1st"
+        GMC_Bytes                = 2
+        GMC_baudrate             = 57600
+        GMC_FETenabled           = True
+        # GMC_WifiIndex            = 5
+        GMC_WifiIndex            = None            # to not show WiFi
 
 
     elif "GMC-320" in gglobs.GMCDeviceDetected:
@@ -3914,23 +4030,24 @@ def getGMC_DeviceProperties():
         GMC_WifiIndex            = 3      # 500er, 600er
 
 
-    # WITHOUT "PLUS"
-    elif "GMC-600" in gglobs.GMCDeviceDetected:
-        #######################################################################
-        # sensitivity: using LND's 348, not GQ's 379; see note in ceigerlog.cfg
-        #######################################################################
-        GMC_memory               = 2**20
-        GMC_SPIRpage             = 2048   # ist bug jetzt behoben oder auf altem Stand? erstmal auf 2048 bytes
-        GMC_SPIRbugfix           = False
-        GMC_configsize           = 512
-        GMC_sensitivityDef       = 348    # CPM/(µSv/h)
-        GMC_sensitivity1st       = 348    # CPM/(µSv/h)
-        GMC_voltagebytes         = 5
-        GMC_endianness           = 'big'
-        GMC_Variables            = "CPM1st, CPS1st"
-        GMC_Bytes                = 2
-        GMC_WifiIndex            = 3      # 500er, 600er
-        GMC_FETenabled           = True   # does it have?
+    # this absorbs all 600 calls!!! should have come last
+    # # WITHOUT "PLUS"
+    # elif "GMC-600" in gglobs.GMCDeviceDetected:
+    #     #######################################################################
+    #     # sensitivity: using LND's 348, not GQ's 379; see note in ceigerlog.cfg
+    #     #######################################################################
+    #     GMC_memory               = 2**20
+    #     GMC_SPIRpage             = 2048   # ist bug jetzt behoben oder auf altem Stand? erstmal auf 2048 bytes
+    #     GMC_SPIRbugfix           = False
+    #     GMC_configsize           = 512
+    #     GMC_sensitivityDef       = 348    # CPM/(µSv/h)
+    #     GMC_sensitivity1st       = 348    # CPM/(µSv/h)
+    #     GMC_voltagebytes         = 5
+    #     GMC_endianness           = 'big'
+    #     GMC_Variables            = "CPM1st, CPS1st"
+    #     GMC_Bytes                = 2
+    #     GMC_WifiIndex            = 3      # 500er, 600er
+    #     GMC_FETenabled           = True   # does it have?
 
 
     # WITH "PLUS"
@@ -3989,7 +4106,7 @@ def getGMC_DeviceProperties():
         GMC_endianness           = 'big'
         GMC_Variables            = "CPM1st, CPS1st"
         GMC_Bytes                = 4
-        GMC_WifiIndex            = 4      # 600+ version 2.22 is version from Ihab
+        GMC_WifiIndex            = 4
         GMC_FETenabled           = True
 
 
