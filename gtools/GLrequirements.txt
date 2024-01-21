@@ -18,3 +18,4 @@ soundfile   ==  0.10.3.post1
 # psutil        ==  5.9.1
 
 
+pillow>=10.2.0 # not directly required, pinned by Snyk to avoid a vulnerability
