@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-gdev_manu.py - GeigerLog commands to handle the manual entry of data
+gdev_manu.py - GeigerLog commands to handle manually entering data
 """
 
 ###############################################################################
@@ -23,76 +23,70 @@ gdev_manu.py - GeigerLog commands to handle the manual entry of data
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 
 def initManu():
     """Start the device"""
 
-    fncname = "initManu: "
+    defname = "initManu: "
 
-    dprint(fncname + "Initializing Manu Device")
+    dprint(defname + "Initializing")
     setIndent(1)
 
-    gglobs.Devices["Manu"][DNAME] = "Manual Data"
+    g.Devices["Manu"][g.DNAME] = "Manual Data Entry"
 
-    if gglobs.ManuVariables    == "auto": gglobs.ManuVariables    = "Temp, Press, Humid, Xtra"
-    if gglobs.ManuRecordStyle  == "auto": gglobs.ManuRecordStyle  = "Point"                         # alternative: "Step"
+    # if g.ManuRecordStyle  == "auto": g.ManuRecordStyle  = "Point"                        # choose from: "Point", "Step"
+    if g.ManuVariables    == "auto": g.ManuVariables    = "Temp, Press, Humid, Xtra"
 
-    ManuVars = gglobs.ManuVariables.split(",")
-    # MUST remove blanks on vars
-    for i, mv in enumerate(ManuVars):   ManuVars[i] = mv.strip()
+    # set variables
+    g.ManuVariables = setLoggableVariables("Manu", g.ManuVariables)
 
-    # weed out any wrong vnames and put into right sequence as defined in varsCopy
-    # then redefine gglobs.ManuVariables with cleaned version
-    mvs = ""
-    for vname in gglobs.varsCopy:
-        if vname in ManuVars:  mvs += "{}, ".format(vname)
-    gglobs.ManuVariables = mvs[:-2]
-
-    # set standards
-    setLoggableVariables("Manu", gglobs.ManuVariables)
+    # set all active g.ManuValue to nan
+    for vname in g.Devices["Manu"][g.VNAMES]:
+        g.ManuValue[vname] = g.NAN
 
     # device is connected
-    gglobs.Devices["Manu"][CONN] = True
+    g.Devices["Manu"][g.CONN] = True
 
     setIndent(0)
 
-    return ""  # no errmsg for return
+    return ""  # empty means no errmsg for return
 
 
 def terminateManu():
     """Stop the Manu counting"""
 
-    fncname ="terminateManu: "
+    defname ="terminateManu: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
-    gglobs.Devices["Manu"][CONN]  = False
+    g.Devices["Manu"][g.CONN]  = False
 
-    dprint(fncname + "Terminated")
+    dprint(defname, "Terminated")
     setIndent(0)
 
 
 def getValuesManu(varlist):
-    """provide entered values"""
+    """get the manually entered values"""
 
     start = time.time()
-    fncname = "getValuesManu: "
-    # print(fncname + "varlist: ", varlist)
+    defname = "getValuesManu: "
 
     alldata = {}
-    for i, vname in enumerate(varlist):
-        alldata.update({vname:   gglobs.ManuValue[i]})
-        if gglobs.ManuRecordStyle == "Point": gglobs.ManuValue[i] = gglobs.NAN  # if Style is Point: reset after read-out
+    for vname in varlist:
+        alldata[vname] = applyValueFormula(vname, g.ManuValue[vname], g.ValueScale[vname], info=defname)
 
-    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+        # if g.ManuRecordStyle == "Point": g.ManuValue[vname] = g.NAN  # if Style is Point: reset value to NAN after read-out
+        g.ManuValue[vname] = g.NAN  # reset value to NAN after read-out
+
+    vprintLoggedValues(defname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
 
@@ -100,58 +94,27 @@ def getValuesManu(varlist):
 def setManuValue():
     """Enter a value manually"""
 
-    fncname = "setManuValue: "
+    defname = "setManuValue: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
-    countManuVars = len(gglobs.ManuVariables.split(","))
+    fbox = QFormLayout()
+    fbox.setFieldGrowthPolicy (QFormLayout.AllNonFixedFieldsGrow)
+    fbox.addRow(QLabel("<span style='font-weight:900;'>Manu Variables</span>"))
 
-    lv = [None] * countManuVars
-    v  = [None] * countManuVars
-    for i in range(countManuVars):
-        lv[i] = QLabel("Value #{:<2n} for Variable: {}".format(i + 1, gglobs.Devices["Manu"][VNAME][i]))
-        lv[i].setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        v[i]  = QLineEdit()
-        v[i].setToolTip("Enter a value manually for variable: {}".format(gglobs.Devices["Manu"][VNAME][i]))
-        v[i].setText("")
-
-    lvR = QLabel("Select Record Style")
-    lvR.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-    rR1=QRadioButton("Point")
-    rR1.setToolTip("A single point is drawn")
-    rR2=QRadioButton("Step")
-    rR2.setToolTip("The value is repeated until changed")
-    enstyle = True if (gglobs.ManuRecordStyle == "Point" or gglobs.ManuRecordStyle == "auto") else False
-    rR1.setChecked(enstyle)
-    rR2.setChecked(not enstyle)
-    rR1.setEnabled(True)
-    rR2.setEnabled(True)
-    rstylegroup = QButtonGroup()
-    rstylegroup.addButton(rR1)
-    rstylegroup.addButton(rR2)
-    hboxR=QHBoxLayout()
-    hboxR.addWidget(rR1)
-    hboxR.addWidget(rR2)
-    hboxR.addStretch()
-
-    graphOptions=QGridLayout()
-    graphOptions.setContentsMargins(10,10,10,10) # spacing around the graph options
-
-    for i in range(countManuVars):
-        graphOptions.addWidget(lv[i],   i, 0)
-        graphOptions.addWidget(v[i],    i, 1)
-
-    graphOptions.addWidget(lvR,     i + 1, 0)
-    graphOptions.addLayout(hboxR,   i + 1, 1)
+    vnamebox = {}
+    for vname in g.ManuValue:
+        vnamebox.update({vname: QLineEdit()})
+        fbox.addRow(QLabel(vname), vnamebox[vname])
 
     # Dialog box
     d = QDialog()
-    d.setWindowIcon(gglobs.iconGeigerLog)
-    d.setFont(gglobs.fontstd)
-    d.setWindowTitle("Enter Manual Value")
+    d.setWindowIcon(g.iconGeigerLog)
+    d.setFont(g.fontstd)
+    d.setWindowTitle("Enter Values Manually")
     d.setWindowModality(Qt.WindowModal)
-    d.setMinimumWidth(400)
+    d.setMinimumWidth(250)
 
     # Buttons
     bbox = QDialogButtonBox()
@@ -159,59 +122,77 @@ def setManuValue():
     bbox.accepted.connect(lambda: d.done(1))
     bbox.rejected.connect(lambda: d.done(-1))
 
-    gglobs.btn = bbox.button(QDialogButtonBox.Ok)
-    gglobs.btn.setEnabled(True)
-
     layoutV = QVBoxLayout(d)
-    layoutV.addLayout(graphOptions)
+    layoutV.addLayout(fbox)
     layoutV.addWidget(bbox)
 
     retval = d.exec()
     #print("reval:", retval)
 
     if retval != 1:
-        # ESCAPE pressed or Cancel Button
-        dprint(fncname + "Canceling; no changes made")
+        # ESCAPE key or Cancel Button
+        dprint(defname + "Canceling; no changes made")
 
     else:
         # OK pressed
-        # fill up all the ManuValue with manually entered data
-        for i in range(countManuVars):
-            mval = v[i].text().strip().replace(",", ".")
+        msg = ""
+        for vname in g.ManuValue:
+            rdprint(defname, "vname: ", vname)
+            mval = vnamebox[vname].text().strip().replace(",", ".")
             if mval > "":
                 try:    nval = float(mval)
-                except: nval = gglobs.NAN
-                gglobs.ManuValue[i] = nval
+                except: nval = g.NAN
+                g.ManuValue[vname] = nval
+                msg += "Variable {:6s} :  {:0.9g}\n".format(vname, g.ManuValue[vname])
+            else:
+                g.ManuValue[vname] = g.NAN
+                msg += "Variable {:6s} :  {}     \n".format(vname, "Nothing entered")
 
-        if rR1.isChecked():     gglobs.ManuRecordStyle = "Point"
-        else:                   gglobs.ManuRecordStyle = "Step"
-
-        msg = ""
-        for i in range(countManuVars):
-            msg += "Value #{:<2d} for Variable: {:6s} : {:0.3f}\n".format(i + 1, gglobs.Devices["Manu"][VNAME][i], gglobs.ManuValue[i])
-        msg +=     "Record Style: {}\n".format(gglobs.ManuRecordStyle)
-
-        fprint(header("Manual Values"))
+        fprint(header("Manu Device Values"))
         fprint(msg)
-        dprint(msg.replace("\n", "  "))
-
-        runLogCycle()   # to force saving, displaying and plotting of the new data
+        dprint("\n", msg)
 
     setIndent(0)
 
 
-def getInfoManu(extended = False):
-    """Info on settings of the sounddev thread"""
+def getInfoManu(extended=False):
+    """Info on settings of the Manu device"""
 
-    ManuInfo  = "Configured Connection:        Plugin\n"
-    if not gglobs.Devices["Manu"][CONN]: return ManuInfo + "<red>Device is not connected</red>"
+    ManuInfo  = "Configured Connection:        GeigerLog PlugIn\n"
+    if not g.Devices["Manu"][g.CONN]: return ManuInfo + "<red>Device is not connected</red>"
 
-    ManuInfo += "Connected Device:             {}\n"  .format(gglobs.Devices["Manu"][DNAME])
-    ManuInfo += "Configured Variables:         {}\n"  .format(gglobs.ManuVariables)
-    ManuInfo += getTubeSensitivities(gglobs.ManuVariables)
+    ManuInfo += "Connected Device:             {}\n"  .format(g.Devices["Manu"][g.DNAME])
+    ManuInfo += "Configured Variables:         {}\n"  .format(g.ManuVariables)
+    ManuInfo += getTubeSensitivities(g.ManuVariables)
 
     if extended == True:
-        ManuInfo += ""
+        ManuInfo += "\n"
 
     return ManuInfo
 
+
+
+# from the geigerlog.cfg:
+# not used anymore in config
+#
+# # MANU RECORD STYLE
+# # Determines the treatment of the entered data, Point or Step:
+# #
+# # Point: A single value is entered. Upon entering a subsequent value, a
+# #        straight line will be drawn to connect the two points.
+# #        Good for ambient values changing "by itself", like temperature,
+# #        sunlight, or CO2.
+# #
+# # Step:  A value is entered and is reused in all following cycles until
+# #        a new value is entered. This results in a horizontal line and
+# #        stepwise changes between points.
+# #        Good for values which have to be changed intentionally, like
+# #        distance of radioactive source from Geiger counter, or applied
+# #        anode voltage.
+# #
+# # Option auto defaults to point
+# #
+# # Options:        auto | point | step
+# # Default       = auto
+# ManuRecordStyle = auto
+# # ManuRecordStyle = step

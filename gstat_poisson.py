@@ -26,119 +26,16 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-from   gsup_utils            import *
+from gsup_utils   import *
 
 
 def plotPoisson():
     """Plotting a Poisson Fit to a histogram of the data"""
-
-    setBusyCursor()
-
-    vindex      = gglobs.exgg.select.currentIndex()
-    vname       = list(gglobs.varsCopy)[vindex]
-    vnameFull   = gglobs.varsCopy[vname][0]
-
-    if gglobs.logTimeDiffSlice is None:
-        gglobs.exgg.showStatusMessage("No data available")
-        setNormalCursor()
-        return
-
-    try:
-        t0 = gglobs.logTimeDiffSlice
-        x0 = gglobs.logSliceMod[vname]
-    except Exception as e:
-        gglobs.exgg.showStatusMessage("No data available")
-        setNormalCursor()
-        return
-    #print("t0, x0: len:", len(t0), len(x0))
-
-    fncname = "plotPoisson: "
-    vprint(fncname + "Plotting Histogram and Poisson Fit")
-    setIndent(1)
-
-    # elimitate all nan data in x (t will always exist)
-    counter_isnan = 0
-    t = np.ndarray(0)
-    x = np.ndarray(0)
-    for i in range(0,len(t0)):
-        #print("i, x0[i]:", i, x0[i])
-        if np.isnan(x0[i]):
-            counter_isnan += 1
-            pass
-        else:
-            t = np.append(t, t0[i])
-            x = np.append(x, x0[i])
-    #~print("len(t0), len(x0), len(t), len(x): ", len(t0), len(x0), len(t), len(x))
-    #~if counter_isnan > 0:   print("Found nan, count:", counter_isnan)
-    #~else:                   print("Found no nan")
-
-    if t.size == 0:
-        gglobs.exgg.showStatusMessage("No data available")
-        setNormalCursor()
-        setIndent(0)
-        return
-
-    DataSrc     = os.path.basename(gglobs.currentDBPath)
-    cycletime   = (t[-1] - t[0]) / (t.size - 1)  # in minutes
-    yunit       = vnameFull
-
-    ######################################
-    # to show histogram of delta between 2 consecutive counts
-    if 0:       # do not execute on 0
-        dx = x[:-1].copy()
-        for i in range(0, len(dx)):
-            dx[i] = abs(x[i+1] - x[i])
-            #if dx[i] > 10: print i, dx[i]
-        #print x, len(x)
-        #print dx, len(dx)
-        x = dx
-        yunit = "Differences between 2 consecutive CPM!"
-    #######################################
-
-
-    lenx        = len(x)
-    sumx        = np.nansum (x)         # nan...: all values excluding NANs!
-    avgx        = np.nanmean(x)         # though there shouldn't be any, as they
-    varx        = np.nanvar (x)         # are eliminated above
-    stdx        = np.nanstd (x)         # But it does not hurt
-    minx        = np.nanmin (x)
-    maxx        = np.nanmax (x)
-    if avgx >= 0:
-        std95   = np.sqrt(avgx) * 1.96  # +/- std95 is range for 95% of all values
-    else:
-        std95   = gglobs.NAN
-
-    if avgx == 0:
-        gglobs.exgg.showStatusMessage("All Variable data are zero; cannot calculate Poisson distribution!")
-        setIndent(0)
-        setNormalCursor()
-        return
-
-
-    cdprint(fncname + "count data: lenx:{}, sumx:{:5.0f}, avgx:{:5.3f}, varx:{:5.3f}, stdx:{:5.3f}, minx:{:5.3f}, maxx:{:5.3f}, std95%:{:5.3f}\n{}\n".\
-                format(lenx,   sumx,         avgx,          varx,         stdx,         minx,         maxx,         std95,           x))
-
-    # take the lower of (the lowest count rate) and (the average minus 2 StdDev), but must be at least zero
-    bin_center_min    = int(max(0,    min(minx , avgx - (std95 * 2))))
-
-    # take the higher of (the highest count rate) and (the average plus 2 StdDev) and 16
-    bin_center_max    = int(max(16, maxx , avgx + (std95 * 2)))
-
-    # limit the total no of bins to 30 by making the bins wider, but keep width at least at 1
-    step              = int(max(1, int((bin_center_max - bin_center_min) / 30)))
-    bin_total         = int((bin_center_max - bin_center_min) / step) + 1
-    #print("  step: {}, bin_center_min: {}, bin_center_max: {}, bin_total: {}".format(step, bin_center_min, bin_center_max, bin_total))
-
-    bins    = np.empty(bin_total + 1)
-    bins[0] = int(bin_center_min)
-    for i in range(1, bin_total + 1):
-        bins[i] = int(bins[i - 1] + step)
-    #print("bins: len(): ", len(bins), bins)
 
 
     # CREATE histogram
@@ -157,50 +54,24 @@ def plotPoisson():
 
     # Here using manually created histogram, as otherwise a synthetic normal distribution
     # would not properly sum up
-    hist = np.empty( len(bins) - 1 )
-    for i in range(0, len(bins) - 1):
-        stepsum = 0
-        ll0 = bins[i ]
-        hl0 = bins[i + 1]
-        dl0 = hl0 - ll0
-        for j in range(0, step):
-            ll = ll0 - (dl0 / 2 / step) + dl0 /step * j
-            hl = ll + dl0 / step
-            stepsum += len( x[((x>=ll) & (x<hl))] )
-            #print("i, j, ll0, hl0,  ll, hl, stepsum: ", i, j, ll0, hl0, ll, hl, stepsum)
-        hist[i] = stepsum
-    #print( "manual histogram: len(hist):", len(hist), "\n", hist)
+    # hist = np.empty(len(bins) - 1)
+    # for i in range(0, len(bins) - 1):
+    #     stepsum = 0
+    #     ll0 = bins[i ]
+    #     hl0 = bins[i + 1]
+    #     dl0 = hl0 - ll0
+    #     for j in range(0, step):
+    #         ll = ll0 - (dl0 / 2 / step) + dl0 /step * j
+    #         hl = ll + dl0 / step
+    #         stepsum += len( x[((x>=ll) & (x<hl))] )
+    #         #print("i, j, ll0, hl0,  ll, hl, stepsum: ", i, j, ll0, hl0, ll, hl, stepsum)
+    #     hist[i] = stepsum
+    # mdprint(defname, "manual histogram: len(hist):", len(hist), "  ", hist[0:3])
 
+    # numpy.histogram(a, bins=10, range=None, density=None, weights=None)
+    # hist2, bin_edges2 = np.histogram(x, bins=len(bins) - 1, range=(x.min(), x.max()))
+    # hist2, bin_edges2 = np.histogram(x, bins=len(bins) - 1)
 
-
-    # sum up the Poisson dist for the bins from above histogram
-    pdfs = []
-    for i in range(int(bins[0]), int(bins[-1]), int(step)):
-        stepsum = 0
-        for j in range(0, step):
-            stepsum += scipy.stats.poisson.pmf(i + j, avgx)
-        pdfs.append(stepsum * lenx)
-
-    #print("----------------avgx = ", avgx)
-    pdfnorm = []
-    for i in range(int(bins[0]), int(bins[-1]), int(step)):
-        stepsum = 0
-        for j in range(0, step):
-            if avgx >= 0:
-                stepsum += scipy.stats.norm.pdf(i + j , avgx, scale=np.sqrt(avgx))
-            else:
-                stepsum += scipy.stats.norm.pdf(i + j , avgx, scale=gglobs.NAN)
-        pdfnorm.append(stepsum * lenx)
-
-    # determine r-squared for Poisson
-    ss_res = np.sum((hist - pdfs    ) ** 2)         # residual sum of squares
-    ss_tot = np.sum((hist - np.mean(hist)) ** 2)    # total sum of squares
-    r2 = 1 - (ss_res / ss_tot)                      # r-squared for poisson
-
-    # determine r-squared for Normal
-    ss_res = np.sum((hist - pdfnorm    ) ** 2)      # residual sum of squares
-    ss_tot = np.sum((hist - np.mean(hist)) ** 2)    # total sum of squares
-    r2N = 1 - (ss_res / ss_tot)                     # r-squared for normal
 
 
 
@@ -212,7 +83,7 @@ def plotPoisson():
 # the percent differences are: 1.3829332101245581e-05
 # conclusion: some change in the scipy lib!
 #             --> remove the whole chi-square calculation
-#                 remove also Kolmogorov-Smirnoffcalculation
+#                 remove also Kolmogorov-Smirnoff calculation
 
     #~obs     = hist
     #~exp     = pdfs
@@ -241,7 +112,7 @@ def plotPoisson():
         #~pass
         #~#print("Rest:  i={}, obs={:9.0f}, exp={:9.2f}".format(i, obs[i], exp[i] ))
 
-    #~wprint(fncname + "mini:{}, maxi:{}, diff:{}".format(mini, maxi, maxi - mini))
+    #~wprint(defname + "mini:{}, maxi:{}, diff:{}".format(mini, maxi, maxi - mini))
 
 
 
@@ -261,7 +132,7 @@ def plotPoisson():
     #dofPoiss                = len(hist) - ddofPoiss
     #chi2Poiss, pchi2Poiss   = scipy.stats.chisquare(hist, f_exp=pdfs,    ddof=ddofPoiss, axis=None)
     #txtChi2Poiss            = "Chi-squared Test Poisson <5:  DoF= {:1d}, chi² = {:5.1f}, p0= {:2.1%}".format(dofPoiss, chi2Poiss, pchi2Poiss)
-    #vprint(fncname + txtChi2Poiss)
+    #mdprint(defname + txtChi2Poiss)
 
 
     # Degrees of Freedom
@@ -287,7 +158,7 @@ def plotPoisson():
     #~except Exception as e:
         #~dprint("Chi-squared Test Poisson: Exception: ", e)
         #~txtChi2Poiss            = "Chi-squared Test Poisson:  cannot be calculated!"
-    #~vprint(fncname + txtChi2Poiss)
+    #~mdprint(defname + txtChi2Poiss)
 
     #~# calc chi2 for Normal
     #~try:
@@ -300,7 +171,7 @@ def plotPoisson():
     #~except Exception as e:
         #~dprint("Chi-squared Test Normal: Exception: ", e)
         #~txtChi2Norm             = "Chi-squared Test Normal:  cannot be calculated!"
-    #~vprint(fncname + txtChi2Norm)
+    #~mdprint(defname + txtChi2Norm)
 
 # END chi squared stuff  ------------------------------------------------------
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -344,96 +215,491 @@ def plotPoisson():
 # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 
 
-    fig2 = plt.figure(facecolor = "#E7F9C9", dpi=gglobs.hidpiScaleMPL)
-    vprint("plotPoisson: open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
-
-    plt.suptitle("Histogram with Poisson Fit", fontsize=12 )
-    RsubTitle = DataSrc + "  Recs:" + str(x.size)
-    plt.title(RsubTitle, fontsize=10, fontweight='normal', loc = 'right')
-    plt.xlabel("Variable {}".format(yunit), fontsize=12)
-    plt.ylabel("Frequency of Occurence", fontsize=12)
-    plt.grid(True)
-    plt.subplots_adjust(hspace=None, wspace=.2 , left=.17, top=0.85, bottom=0.15, right=.97)
-    plt.ticklabel_format(useOffset=False)
-
-    # canvas - this is the Canvas Widget that displays the `figure`
-    # it takes the `figure` instance as a parameter to __init__
-    canvas2 = FigureCanvas(fig2)
-    canvas2.setFixedSize(520, 400)
-
-
-    # plot histogram and other curves #########################################
-
-    # histogram
-    plt.bar(bins[:-1],  hist,        color="cornflowerblue", align='center', width=step * 0.85,   label ="avg = {:0.2f}\nvar = {:0.2f}".format(avgx, varx))
-
-    # Poisson curve
-    plt.plot(bins[:-1], pdfs,        color='red',         linewidth=3,                        label ="r2  = {:0.3f}".format(r2))
-
-    # Poisson curve residuals
-    plt.plot(bins[:-1], hist - pdfs, color='orangered',   linewidth=1, marker='o', markersize=3, label="Residuals")
-
-    if gglobs.stattest:
-        # Normal curve
-        plt.plot(bins[:-1], pdfnorm,        color='black', linewidth=1,                            label ="N r2 = {:0.3f}".format(r2N))
-
-        # Normal curve residuals
-        plt.plot(bins[:-1], hist - pdfnorm, color='0.3',   linewidth=1, marker='s', markersize=3,  label="N Residuals")
-
-    # best place for Legend found with "best"!
-    plt.legend(loc="best", fontsize=12, prop={"family":"monospace"})
-
-    ###########################################################################
-
-    labout = QTextBrowser()
-    labout.setFont(gglobs.fontstd)
-    labout.setLineWrapMode(QTextEdit.NoWrap)
-    labout.setTextInteractionFlags(Qt.LinksAccessibleByMouse|Qt.TextSelectableByMouse)
-    labout.setMinimumHeight(330)
-
-    labout.append("Countrates per Histogram Bin: {}".format(step))
-    labout.append("Bin   Count Rate    Frequency    % of   Poisson-Fit    Residuals")
-    labout.append("No.                (blue col)   Total    (red line) (Freq - Fit)")
-    for i in range(0, len(hist)):
-        labout.append("{:3d}   {:10.0f}   {:10.0f}  {:5.2f}%    {:10.1f}   {:+10.1f}".format(i + 1, bins[i], hist[i], hist[i]*100 / lenx, pdfs[i], hist[i] - pdfs[i]))
-    labout.append("Total count=       {:10.0f} 100.00%    {:10.1f}   {:+10.1f}".format(sum(hist), sum(pdfs), sum(hist - pdfs)))
-    labout.append("\nGoodness of Fit Poisson :  r²  = {:5.3f}".format(r2))
-
-    # chi stuff all removed, see above
-    #labout.append(txtChi2Poiss)
-
-    if gglobs.stattest:
-        # Normal statistics r-squared
-        labout.append("Goodness of Fit Normal  :  r²  = {:5.3f}".format(r2N))
-        # chi stuff all removed, see above
-        #~labout.append(txtChi2Norm)
+#    # chi stuff all removed, see above
+#    labout.append(txtChi2Norm)
 
 #    labout.append("Kolmogorov-Smirnow Poisson Test: ")
 #    labout.append("Poisson :  statistic = {:5.3f}, pvalue= {:2.3%}".format(ks_stats_p, ks_pval_p))
 #    labout.append("Normal  :  statistic = {:5.3f}, pvalue= {:2.3%}".format(ks_stats_n, ks_pval_n))
 
 
-# Assemble Data set statistics
-    labout.append("\nData Set:")
-    labout.append("File      = {}"     .format(gglobs.currentDBPath))
-    labout.append("Records   = {:8.0f}".format(x.size))
-    labout.append("Cycletime = {:8.2f} sec (overall average)".format(cycletime * 86400))
-    labout.append("Average   = {:8.2f}".format(avgx))
-    labout.append("Variance  = {:8.2f} same as Average if true Poisson Distribution".format(varx))
-    labout.append("Std.Dev.  = {:8.2f}".format(stdx))
-    if avgx >= 0:   mysqrt = np.sqrt(avgx)
-    else:           mysqrt = gglobs.NAN
-    labout.append("Sqrt(Avg) = {:8.2f} same as Std.Dev. if true Poisson Distribution".format(mysqrt))
-    labout.append("Std.Err.  = {:8.2f}".format(stdx / np.sqrt(x.size)))
-    labout.append("Skewness  = {:8.2f} 0:Norm.Dist.; skewed to: +:right   -:left".format(scipy.stats.skew    (x) ))
-    labout.append("Kurtosis  = {:8.2f} 0:Norm.Dist.; shape is:  +:pointy: -:flat".format(scipy.stats.kurtosis(x) ))
+    defname = "plotPoisson: "
+    mdprint(defname)
+    setIndent(1)
+
+    data0       = g.logSliceMod
+
+    # if data0 is None or len(data0) == 0:
+    #     msg = defname + "No data available"
+    #     g.exgg.showStatusMessage(msg)
+    #     mdprint(defname, msg)
+    #     setIndent(0)
+    #     return
+
+
+    vindex      = g.exgg.select.currentIndex()
+    vname       = list(g.VarsCopy)[vindex]
+    vnameFull   = g.VarsCopy[vname][0]
+    yunit       = vnameFull
+    DataSrc     = os.path.basename(g.currentDBPath)
+    # cycletime   = (t[-1] - t[0]) / (t.size - 1)  # in minutes     # needs time, which is not read
+
+
+    # continue only when variable is checked for display
+    if not g.exgg.varDisplayCheckbox[vname].isChecked():
+        msg = "Variable {} is not checked for display".format(vname)
+        g.exgg.showStatusMessage(msg)
+        vprint(defname, msg)
+        setIndent(0)
+        return
+
+
+    if data0 is None or len(data0) == 0:
+        msg = "No data available"
+        g.exgg.showStatusMessage(msg)
+        mdprint(defname, msg)
+        setIndent(0)
+        return
+
+    data0 = data0[vname]
+
+    # Fehler sollten doch abgefangen werden in applyValueFormula?
+    # müßte das nicht applyGraphFormula sein???
+    # if   g.useGraphScaledData:  x0 = applyValueFormula(vname, data0, g.GraphScale[vname], info=defname)
+    if   g.useGraphScaledData:  x0 = applyGraphFormula(vname, data0, g.GraphScale[vname], info=defname)
+    else:                       x0 = data0
+
+
+    # clean the data from nan:
+    xmask = np.isfinite(x0)      # mask for nan values in x0
+    x     = x0[xmask]
+    if len(x) == 0:
+        msg = defname + "No data available"
+        g.exgg.showStatusMessage(msg)
+        mdprint(defname, msg)
+        setIndent(0)
+        return
+
+
+    setBusyCursor()
+
+    ######################################
+    # to show histogram of delta between 2 consecutive counts
+    # zeigt KEINE exp function! Deadtime effekt?
+    if 0:       # do not execute on 0
+        dx = x[:-1].copy()
+        for i in range(0, len(dx)):
+            dx[i] = abs(x[i+1] - x[i])
+            #if dx[i] > 10: print i, dx[i]
+        #print x, len(x)
+        #print dx, len(dx)
+        x = dx
+        yunit = "Differences between 2 consecutive CPM!"
+    #######################################
+
+
+    # np.nanXYZ: all values excluding NANs! though there shouldn't be any,
+    # as they were eliminated above by the masking. But it does not hurt
+    lenx  = len(x)
+    sumx  = np.nansum (x)
+    avgx  = np.nanmean(x)
+    varx  = np.nanvar (x)
+    stdx  = np.nanstd (x)
+    minx  = np.nanmin (x)
+    maxx  = np.nanmax (x)
+    std95 = stdx * 1.96           # +/- std95 is range for 95% of all values
+
+    mdprint(defname, "count data: lenx:{:0,.0f}  sumx:{:0,.0f}  avgx:{:0,.3f}  varx:{:0,.3f}  stdx:{:0,.3f}  minx:{:0,.0f}, maxx:{:0,.0f}, std95%:{:0,.3f}".\
+                format(lenx,   sumx,         avgx,          varx,         stdx,         minx,         maxx,         std95))
+
+    ###########################################################################################
+    # get R-squared
+    def getRsquared(ydata, ymodel):
+        """
+        Calculate r-squared based on ydata and ymodel
+        input:  ydata, ymodel
+        return: r2, dB (=decibels)
+        """
+
+        defname = "getRsquared: "
+
+        try:
+            ss_res = np.sum((ydata - ymodel)         ** 2)      # residual sum of squares to mmodel
+            ss_tot = np.sum((ydata - np.mean(ydata)) ** 2)      # total sum of squares to average
+            r2     = float(1 - (ss_res / ss_tot))               # r-squared
+            dB     = float(10 * np.log10(ss_tot / ss_res))      # dezibel (??) printed as SNR (Signal To Noise Ratio)
+        except Exception as e:
+            exceptPrint(e, defname)
+            ss_res = ss_tot = r2 = dB = g.NAN
+
+        # mdprint(defname, "getRsquared: ", "ss_res: ", ss_res, "  ss_tot: ", ss_tot, "  R2: ", r2, "  dB: ", dB)
+
+        return (r2, dB)
+    ###########################################################################################
+
+# make the bin limits and bin width
+    colmin = 0
+    # colmax = 30
+    colmax = 40    # does it make it look nicer???? YES!!!
+
+    # left:  take the lower of (the lowest count rate) and (the average minus 2 StdDev), but must be at least zero
+    bin_min    = int(max(colmin,  min(minx , avgx - (std95 * 2))))
+
+    # right:  take the higher of (the highest count rate) and (the average plus 2 StdDev) and (number of at least 30 columns)
+    bin_max    = int(max(colmax,            avgx + (std95 * 2)))
+
+    # limit the total no of bins to 30 by making the bins wider, but keep width at least at 1
+    bin_width  = int(max(1, int((bin_max - bin_min) / colmax)))
+    bin_total  = int((bin_max - bin_min) / bin_width) + 1
+    mdprint(defname, "Poisson fits: bin_width: {}, bin_min: {}, bin_max: {}, bin_total: {}".format(bin_width, bin_min, bin_max, bin_total))
+
+# create all the bin left edges
+    bins    = np.empty(bin_total + 1)
+    bins[0] = int(bin_min)
+    for i in range(1, bin_total + 1):
+        bins[i] = int(bins[i - 1] + bin_width)  # make the left edges
+    # rdprint(defname, "bins: len(): ", len(bins), "  ", bins)
+
+
+# get the histogram for those bins
+    hist, bin_edges2 = np.histogram(x, bins=bins )
+    # rdprint(defname, "bins == bin_edges2: ", bins == bin_edges2)
+
+    # print each bin and totals
+    # if g.devel:
+    #     print("DVL No. of bins: {:<2n}  Sum all bins: {:<10.3f}  Total recs: {:<10.3f}".format(len(bins) - 1, sum(hist), len(x)))
+    #     for i in range(0, len(bin_edges2) - 1):
+    #         print("DVL Bin #{:<2d}  hist: {:<10.3f}    bins-leftEdge: {:<10.3f}".format(i + 1, hist[i], bin_edges2[i]))
+    #     print()
+
+
+# create Default Poisson dist
+    # create the Poisson dist for the bins from above histogram
+    pdfs = []
+    for i in range(int(bins[0]), int(bins[-1]), int(bin_width)):
+        bin_widthsum = 0
+        for j in range(0, bin_width):
+            bin_widthsum += scipy.stats.poisson.pmf(i + j, avgx)
+        pdfs.append(bin_widthsum * lenx)
+    mdprint(defname, "Default Poisson - len(pdfs):", len(pdfs), "  ", pdfs[0:6], " ...")
+
+    # get r2
+    r2, PoissdB = getRsquared(hist, pdfs)
+    mdprint(defname, "R2 Poisson: {:+0.3f}  SNR: {:+0.1f}".format(r2, PoissdB))
+
+    # needed when no fit is requested
+    last_pdfs = pdfs
+    last_hist = hist
+
+
+# create Default Poiss-like Normal with StdDev = SQRT(Average)
+    if g.NormalPoissCurveFit:
+        pdfnorm = []
+        if avgx >= 0:
+            pdfnorm = []
+            for i in range(int(bins[0]), int(bins[-1]), int(bin_width)):
+                bin_widthsum = 0
+                for j in range(0, bin_width):
+                    bin_widthsum += scipy.stats.norm.pdf(i + j , avgx, scale=np.sqrt(avgx))
+                pdfnorm.append(bin_widthsum * lenx)
+            mdprint(defname, "Default Normal len(pdfnorm):", len(pdfnorm), "  ", pdfnorm[0:3], " ...")
+
+            # get r2
+            r2NP, NormdBP = getRsquared(hist, pdfnorm)
+            mdprint(defname, "R2 Normal (NP): {} SNR: {:0.0f}".format(r2NP, NormdBP))
+        else:
+            pdfnorm = [g.NAN] * (len(bins) - 1)
+            r2NP, NormdBP = g.NAN, g.NAN
+
+
+# create the cumulative Poisson hist and dist
+    if g.CumProbDist:
+        # make histogram
+        cumhist = np.empty(len(bin_edges2) - 1)
+        cumhist[0] = 0 + hist[0]
+        for i in range(1, len(bin_edges2) - 1):
+            cumhist[i] = cumhist[i - 1] + hist[i]
+            # print("i: {:2n}  cumhist: {}".format(i, cumhist[i]))
+
+        # sum up the Poisson dist for the bins from above histogram
+        if g.CumPoissCurveFit:
+            cpdfs = []
+            for i in range(int(bins[0]), int(bins[-1]), int(bin_width)):
+                bin_widthsum = scipy.stats.poisson.cdf(i + (bin_width - 1), avgx)   # take only the rightmost bin when more than 1
+                cpdfs.append(bin_widthsum * lenx)
+            mdprint(defname, "Cumulative Poisson len(cpdfs):", len(cpdfs), "  ", cpdfs[0:3], " ...")
+
+            # get r2
+            r2CP, CPoissdB = getRsquared(cumhist, cpdfs)
+            mdprint(defname, "CP Poisson: R2: {}  SNR: {:0.0f}".format(r2CP, CPoissdB))
+
+
+### inactive
+# # ----- BEGIN if g.NormalCurveFit:-------------------------------------------------------------------------------------------------------------
+#     if g.NormalCurveFit:
+#         # Normal with StdDev as calculated from data
+#         if minx == maxx:
+#             # if equal add some difference
+#             # take the lowest count rate - 10
+#             bin_min    = minx - 10
+
+#             # take the highest count rate + 10
+#             bin_max    = maxx + 10
+#         else:
+#             # take the lowest count rate
+#             bin_min    = minx
+
+#             # take the highest count rate
+#             bin_max    = maxx
+
+
+#         # limit the total no of bins to 30 by making the bins wider, but keep width at least at 1
+#         bin_width        = (bin_max - bin_min) / 30
+#         mdprint(defname, "g.NormalCurveFit: bin_width: ", bin_width, "  bin_min: ", bin_min, "bin_max: ", bin_max)
+#         bin_total        = int((bin_max - bin_min) / bin_width) + 1
+#         #print("  bin_width: {}, bin_min: {}, bin_max: {}, bin_total: {}".format(bin_width, bin_min, bin_max, bin_total))
+
+#         bins    = np.empty(bin_total + 1)
+#         bins[0] = bin_min
+#         for i in range(1, bin_total + 1):
+#             bins[i] = bins[i - 1] + bin_width
+
+#         hist, bin_edges2 = np.histogram(x, bins=bins )
+
+#         if g.devel:
+#             # print each bin and totals
+#             print("DVL No. of bins: {:<2n}  Sum all bins: {:<10.3f}  Total recs: {:<10.3f}  bins-width: {:8.3f}".format(len(bins) - 1, sum(hist), len(x), bins[1] - bins[0]))
+#             for i in range(0, len(bin_edges2) - 1):
+#                 print("DVL Bin #{:<2d}  hist: {:<10.3f}    bins-leftEdge: {:<10.3f}".format(i + 1, hist[i], bin_edges2[i]))
+#             print()
+
+
+#         pdfnormStd = []
+#         for i in range(0, len(bins) - 1):
+#             bin_mid = (bins[i] + bins[i + 1]) / 2
+#             bin_widthsum = scipy.stats.norm.pdf(bin_mid , avgx, scale=stdx)
+#             bin_widthsum = bin_widthsum * bin_width
+#             pdfnormStd.append(bin_widthsum * lenx)
+#         mdprint(defname, "Default Normal StdDev len(pdfnormStd):", len(pdfnormStd), "  ", pdfnormStd[0:3], " ...")
+
+#         # get r2
+#         r2NS, NormdBS = getRsquared(hist, pdfnormStd)
+#         mdprint(defname, "R2Normal (NS): {}  SNR: {:0.0f}".format(r2NS, NormdBS))
+
+#         pdfs    = pdfnormStd    # pdfs will be used to print the curve data in labout
+
+# # ----- END if g.NormalCurveFit:-------------------------------------------------------------------------------------------------------------
+
+
+    fig2 = plt.figure(facecolor = "#E7F9C9", dpi=g.hidpiScaleMPL)
+    g.plotPoissonFigNo = plt.gcf().number
+    # mdprint("plotPoisson: open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
+
+
+
+    plt.suptitle("Histogram", fontsize=12 )
+    RsubTitle = DataSrc + "  Recs:" + str(x.size)
+    plt.title(RsubTitle, fontsize=10, fontweight='normal', loc = 'right')
+    plt.xlabel("Variable {}".format(yunit), fontsize=12)
+    plt.ylabel("Frequency of Occurence", fontsize=12)
+    plt.grid(True)
+    plt.subplots_adjust(hspace=None, wspace=.2 , left=.14, top=0.89, bottom=0.11, right=.97)
+    plt.ticklabel_format(useOffset=False)
+
+    # canvas - this is the Canvas Widget that displays the `figure`; it takes the `figure` instance as a parameter to __init__
+    canvas2 = FigureCanvas(fig2)
+    # canvas2.setFixedSize(650, 500)
+    canvas2.setMinimumHeight(500)
+
+    #
+    # plot histogram and statistics curves #########################################
+    #
+
+    if g.ProbDist:
+        # plot Prob histogram
+        # plt.bar(bins[:-1],  hist, color="cornflowerblue", align='center', width=bin_width * 0.85, label ="avg = {:0.2f}\nvar = {:0.2f}".format(avgx, varx))
+        plt.bar(bins[:-1],  hist, color="cornflowerblue", align='center', width=bin_width * 0.75, label ="avg = {:0.2f}\nvar = {:0.2f}".format(avgx, varx))
+
+        if g.PoissCurveFit:
+            # Poisson curve
+            plt.plot(bins[:-1], pdfs,           color='red',       linewidth=3,                           label = "P r2={:0.3f}".format(r2))
+
+            # Poisson curve residuals
+            plt.plot(bins[:-1], hist - pdfs,    color='orangered', linewidth=1, marker='o', markersize=3, label = "P Residuals")
+
+            last_pdfs = pdfs
+            last_hist = hist
+
+        # Normal curve based on StdDev=sqrt(mean)
+        if g.NormalPoissCurveFit:
+            # Normal curve
+            plt.plot(bins[:-1], pdfnorm,        color='black',     linewidth=3,                           label ="NP r2={:0.3f}".format(r2NP))
+
+            # Normal curve residuals
+            plt.plot(bins[:-1], hist - pdfnorm, color='black',     linewidth=1, marker='s', markersize=3, label="NP Residuals")
+
+            last_pdfs = pdfnorm
+            last_hist = hist
+
+    else:
+        # plot CumProb histogram
+        plt.bar(bins[:-1],  cumhist, color="turquoise", align='center', width=bin_width * 0.85, label ="avg = {:0.2f}\nvar = {:0.2f}".format(avgx, varx))
+
+        # Poisson cumulative
+        if g.CumPoissCurveFit:
+
+            # Cumulative Poisson curve
+            plt.plot(bins[:-1], cpdfs,              color='blue', linewidth=3,                           label = "CP r2={:0.3f}".format(r2CP))
+
+            # Cum Poiss Residuals
+            plt.plot(bins[:-1], cumhist - cpdfs,    color='blue', linewidth=1, marker='o', markersize=3, label = "CP Residuals")
+
+            last_pdfs = cpdfs
+            last_hist = cumhist
+
+
+
+# ##################
+#     # currently not in use !!!
+#     # Normal curve based on StdDev calculated from data
+#     if g.NormalCurveFit:
+#         # Normal curve
+#         plt.plot(bins[:-1], pdfnormStd,        color='green',  linewidth=2,                           label ="NS r2={:0.3f}".format(r2NS))
+#
+#         # Normal curve residuals
+#         plt.plot(bins[:-1], hist - pdfnormStd, color='green',  linewidth=1, marker='s', markersize=3, label="NS Residuals")
+# ##################
+
+    # best place for Legend found with "best" (is default anyway)   -  gives "Warning": using "best" could take long with many data
+    # plt.legend(loc="best", fontsize=10, prop={"family":"monospace"})
+    if avgx > (bins[0] + bins[-1]) / 2: location = "upper left"
+    else:                               location = "upper right"
+    plt.legend(loc=location, fontsize=10, prop={"family":"monospace"})
+
+
+    #
+    # make text field with info on histogram, data, and statistics
+    #
+    labout = QTextBrowser()
+    labout.setFont(g.fontstd)
+    labout.setLineWrapMode(QTextEdit.NoWrap)
+    labout.setTextInteractionFlags(Qt.LinksAccessibleByMouse|Qt.TextSelectableByMouse)
+    labout.setMinimumHeight(250)
+
+    # Histogram and Fit Properties
+    labout.append("<b>Histogram Properties</b>:")
+    labout.append("Bin  Bin Values   Frequency    % of    Curve-Fit     Residuals")
+    labout.append("No. Width:{:<6.3f} (blue col)   Total   thick line     thin line".format(bin_width))
+
+    for i in range(0, len(hist)):
+        if (g.ProbDist and (g.PoissCurveFit or g.NormalPoissCurveFit) or (g.CumProbDist and g.CumPoissCurveFit)):
+            Fiti = customformat(last_pdfs[i],           11, 4, thousand=True)
+            Resi = customformat(last_hist[i] - last_pdfs[i], 11, 4, thousand=True)
+        else:
+            Fiti = Resi = "-"
+        labout.append("{:3d}  {:10,.3f}  {:10,.4g} {:6.2f}%  {:>11s}   {:>11s}".format(i + 1, bins[i], last_hist[i], last_hist[i]*100 / lenx, Fiti, Resi))
+
+    if (g.ProbDist and (g.PoissCurveFit or g.NormalPoissCurveFit)):
+        sumF = customformat(sum(last_pdfs),             11, 4, thousand=True)
+        sumR = customformat(sum(last_hist - last_pdfs), 11, 4, thousand=True)
+    elif (g.CumProbDist and g.CumPoissCurveFit):
+        sumF = customformat(last_pdfs[-1],              11, 4, thousand=True)
+        sumR = customformat(sum(last_hist - last_pdfs), 11, 4, thousand=True)
+    else:
+        sumF = sumR = "-"
+
+    labout.append("Totals =         {:10,.0f} 100.00%  {:>11s}   {:>11s}\n".format(sum(last_hist), sumF, sumR))
+
+
+    # Data Properties
+    labout.append("\n<b>Data Properties:</b>")
+    labout.append("File      = {}"                                                              .format(g.currentDBPath))
+    labout.append("Records   = {:8.0f}"                                                         .format(x.size))
+    labout.append("Average   = {:8.2f}"                                                         .format(avgx))
+    labout.append("Variance  = {:8.2f} (Note: same as Average if true Poisson Distribution)"    .format(varx))
+
+
+    labout.append("Std.Dev.  = {:8.2f}"                                                         .format(stdx))
+    labout.append("Sqrt(Avg) = {:8.2f} (Note: same as Std.Dev. if true Poisson Distribution)"   .format(np.sqrt(avgx) if avgx >= 0 else g.NAN))
+    labout.append("Std.Err.  = {:8.2f}"                                                         .format(stdx / np.sqrt(x.size)))
+    labout.append("Min : Max = {:8.2f} : {:<8.2f}"                                              .format(minx, maxx))
+    labout.append("Skewness  = {:8.2f} (Note: 0:Norm.Dist.; skewed to: +:right   -:left)"       .format(scipy.stats.skew    (x) ))
+    labout.append("Kurtosis  = {:8.2f} (Note: 0:Norm.Dist.; shape is:  +:pointy: -:flat)"       .format(scipy.stats.kurtosis(x) ))
     labout.append("")
 
+    # Goodness of Fit
+    labout.append("<b>Fit Properties:</b>")
+    sP   = "Poisson"
+    sCP  = "Cumulative Poisson"
+    sNP  = "Normal (Poisson like)"
+    sNS  = "Normal (Standard)"
+    sPX  = sP  + "&nbsp;" * (21 - len(sP))
+    sCPX = sCP + "&nbsp;" * (21 - len(sCP))
+    sNPX = sNP + "&nbsp;" * (21 - len(sNP))
+    sNSX = sNS + "&nbsp;" * (21 - len(sNS))
+
+    if   (g.ProbDist and (g.PoissCurveFit or g.NormalPoissCurveFit)):
+        if g.PoissCurveFit:       labout.append("Goodness of Fit <b>{:20s}</b> : r² = {:5.3f} SNR = {:0.0f} dB".format(sPX,  r2,   PoissdB))
+        if g.NormalPoissCurveFit: labout.append("Goodness of Fit <b>{:20s}</b> : r² = {:5.3f} SNR = {:0.0f} dB".format(sNPX, r2NP, NormdBP))
+    elif (g.CumProbDist and g.CumPoissCurveFit):
+        labout.append("Goodness of Fit <b>{:20s}</b> : r² = {:5.3f} SNR = {:0.0f} dB".format(sCPX, r2CP, CPoissdB))
+    else:
+        labout.append("No Fit selected")
+
+    labout.append("")
+
+    ###########################################################################
+
+    #
+    # make checkboxes with layout
+    #
+
+    # Label Probability Distribution
+    PDLabel = QRadioButton("Probability Distribution")
+    PDLabel.setStyleSheet("QRadioButton {font:bold;}")
+    PDLabel.setChecked(g.ProbDist)
+
+    # Label Cumulative Probability Distribution
+    CPDLabel = QRadioButton("Cumulative Probability Distribution")
+    CPDLabel.setStyleSheet("QRadioButton {font:bold;}")
+    CPDLabel.setChecked(g.CumProbDist)
+
+    # Check Plot Poisson Fit
+    checkbPPF = QCheckBox("Poisson Fit (P)")      # default is yes
+    checkbPPF.setChecked(g.PoissCurveFit)
+
+    # Check Plot Cumulative Poisson Fit
+    checkbCPPF = QCheckBox("Cumulative \nPoisson Fit (CP)")
+    checkbCPPF.setChecked(g.CumPoissCurveFit)
+
+    # Check Plot Normal Fit
+    checkbNORMAL = QCheckBox("Normal Fit (NP)\n(Poisson-like)")
+    checkbNORMAL.setChecked(g.NormalPoissCurveFit)
+
+    # Check Plot Normal Fit StdDev
+    checkbNORMALS = QCheckBox("Normal Fit (NS)\n(Standard)")
+    checkbNORMALS.setChecked(g.NormalCurveFit)
+
+    layoutLabels = QHBoxLayout()
+    layoutLabels.addWidget(PDLabel)
+    layoutLabels.addWidget(CPDLabel)
+
+    layoutSelects = QHBoxLayout()
+    layoutSelects.addWidget(checkbPPF)
+    layoutSelects.addWidget(checkbNORMAL)
+    layoutSelects.addWidget(checkbCPPF)
+    layoutSelects.addWidget(QLabel("   "))
+    # layoutSelects.addWidget(checkbNORMALS)
+
+    ###############################
+
+    # setup dialog
     d = QDialog()
-    d.setWindowIcon(gglobs.iconGeigerLog)
+    g.plotPoissonPointer = d
+    d.setWindowIcon(g.iconGeigerLog)
     d.setWindowTitle("Poisson Test")
     d.setWindowModality(Qt.WindowModal)
-    d.setMaximumWidth(520)
+    d.setMaximumWidth(1200)
 
     navtoolbar = NavigationToolbar(canvas2, d) # choice of parent does not matter?
 
@@ -441,21 +707,47 @@ def plotPoisson():
     ax1 = plt.gca()
     ax1.format_coord = lambda x,y: "x={:.1f}, y={:.1f}".format(x, y)
 
-    bbox    = QDialogButtonBox()
-    bbox.setStandardButtons(QDialogButtonBox.Ok)
-    bbox.accepted.connect(lambda: d.done(0))
+    okButton = QPushButton("OK")
+    okButton.setAutoDefault(True)
+    okButton.clicked.connect(lambda:  d.done(0))
 
-    layoutV   = QVBoxLayout(d)
+    selectButton = QPushButton("Plot")
+    selectButton.setStyleSheet("QPushButton {font:bold;}")
+    selectButton.setAutoDefault(False)
+    selectButton.clicked.connect(lambda:  d.done(100))
+
+    bbox = QDialogButtonBox()
+    bbox.addButton(selectButton,  QDialogButtonBox.ActionRole)
+    bbox.addButton(okButton,      QDialogButtonBox.ActionRole)
+
+    layoutV = QVBoxLayout(d)
     layoutV.addWidget(navtoolbar)
     layoutV.addWidget(canvas2)
-    layoutV.addWidget(labout)
+    layoutV.addLayout(layoutLabels)
+    layoutV.addLayout(layoutSelects)
     layoutV.addWidget(bbox)
+    layoutV.addWidget(labout)
 
     setNormalCursor()
 
 # show window
     fig2.canvas.draw_idle()
-    setIndent(0)
-    d.exec()
+    retval = d.exec()
+
+    if retval == 100:
+        g.ProbDist              = PDLabel.isChecked()
+        g.CumProbDist           = CPDLabel.isChecked()
+
+        g.PoissCurveFit         = checkbPPF.isChecked()
+        g.CumPoissCurveFit      = checkbCPPF.isChecked()
+        g.NormalPoissCurveFit   = checkbNORMAL.isChecked()
+        # g.NormalCurveFit      = checkbNORMALS.isChecked()
+
+        setIndent(0)
+        g.plotPoissonPointer.close()                            # closes the dialog
+        plt.close(g.plotPoissonFigNo)                           # closes the figure
+        plotPoisson()                                           # re-plots
+
     plt.close(fig2)
+    setIndent(0)
 

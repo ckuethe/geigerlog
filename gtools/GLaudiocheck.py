@@ -13,9 +13,9 @@ import queue
 import sys, time
 
 from matplotlib.animation import FuncAnimation
-import matplotlib.pyplot as plt
-import numpy as np
-import sounddevice as sd
+import matplotlib.pyplot    as plt
+import numpy                as np
+import sounddevice          as sd
 
 import os
 # Set "QT_STYLE_OVERRIDE" to avoid this message:
@@ -74,7 +74,7 @@ def update_plot(frame):
     therefore the queue tends to contain multiple blocks of audio data.
     """
     start = time.time()
-    fncname = "update_plot: "
+    defname = "update_plot: "
     global plotdata
     while True:
         try:
@@ -88,7 +88,7 @@ def update_plot(frame):
     for column, line in enumerate(lines):
         line.set_ydata(plotdata[:, column])
 
-    #print(fncname + "dur: {:0.3f} ms".format(time.time() - start))
+    #print(defname + "dur: {:0.3f} ms".format(time.time() - start))
 
     return lines
 
@@ -114,12 +114,14 @@ try:
     plotdata = np.zeros((length, len(args.channels)))
 
     fig, ax = plt.subplots(figsize=(15, 8))
-    lines = ax.plot(plotdata)
+    lines = ax.plot(plotdata, linewidth=1)
     if len(args.channels) > 1:
         ax.legend(['channel {}'.format(c) for c in args.channels],loc='lower left', ncol=len(args.channels))
     ax.axis((0, len(plotdata), -1, 1))
-    ax.set_yticks([0])
+    ax.axis((0, len(plotdata), -1, 1))
+    ax.set_yticks([-0.5, 0.5])
     ax.yaxis.grid(True)
+    ax.xaxis.grid(True)
     ax.tick_params(bottom=False, top=False, labelbottom=False, right=False, left=False, labelleft=False)
     fig.tight_layout(pad=0)
 
@@ -132,6 +134,8 @@ try:
     with stream:
         plt.show()  # blocking
 
+except KeyboardInterrupt as k:
+    print(k, "Exception keyboards plt.show()")
 
 except Exception as e:
     parser.exit(type(e).__name__ + ': ' + str(e))

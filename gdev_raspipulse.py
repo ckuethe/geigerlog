@@ -26,227 +26,212 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from   gsup_utils  import *
+from gsup_utils   import *
 
 
 def initRaspiPulse():
     """Inititalize the pulse counter"""
 
-    global RaspiRevision, RaspiGPIOVersion, GPIO
+    global GPIO, R_Mode, R_Edge, R_PUD
 
-    fncname   = "initRaspiPulse: "
+    defname = "initRaspiPulse: "
+    dprint(defname)
 
-    # is it a Raspi?
-    gglobs.isRaspi = is_raspberrypi()
-
-    # configuration device
-    # if gglobs.RaspiPulseVariables   == "auto": gglobs.RaspiPulseVariables   = "CPM, CPS, Temp, Press, Humid, Xtra"   # all available
-    if gglobs.RaspiPulseVariables   == "auto": gglobs.RaspiPulseVariables   = "CPM, CPS"
+    g.Devices["RaspiPulse"][g.DNAME] = "RaspiPulse"
 
     # configuration Raspi hardware
-    if gglobs.RaspiPulseMode        == "auto": gglobs.RaspiPulseMode        = "BCM"      # numbering mode: options are: GPIO.BCM or GPIO.BOARD
-    if gglobs.RaspiPulsePin         == "auto": gglobs.RaspiPulsePin         = 17         # hardware pin for interrupt in BCM numbering: bcmpin=17 is on boardpin=11
-    if gglobs.RaspiPulseEdge        == "auto": gglobs.RaspiPulseEdge        = "RISING"   # register transistion from 0 to 3.3V; options are "GPIO.RISING" or "GPIO.FALLING"
-    if gglobs.RaspiPulsePullUpDown  == "auto": gglobs.RaspiPulsePullUpDown  = "PUD_DOWN" # Pull-Down resistor; options are "GPIO.PUD_DOWN" or "GPIO.PUD_UP"
+    if g.RaspiPulseMode        == "auto":       g.RaspiPulseMode        = "BCM"         # numbering mode: options are: GPIO.BCM or GPIO.BOARD
+    if g.RaspiPulsePin         == "auto":       g.RaspiPulsePin         = 17            # hardware pin for interrupt in BCM numbering: bcmpin=17 is on boardpin=11
+    if g.RaspiPulseEdge        == "auto":       g.RaspiPulseEdge        = "FALLING"     # register transistion from 0 to 3.3V; options are "GPIO.RISING" or "GPIO.FALLING"
+    if g.RaspiPulseVariables   == "auto":       g.RaspiPulseVariables   = "CPM, CPS"
+    if g.RaspiPulseEdge        == "FALLING":    g.RaspiPulsePullUpDown  = "PUD_UP"      # "FALLING" is matched with "GPIO.PUD_UP"
+    else:                                       g.RaspiPulsePullUpDown  = "PUD_DOWN"
 
-    setLoggableVariables("RaspiPulse", gglobs.RaspiPulseVariables)
+    if not g.isRaspi:
+        # computer is NOT a Raspi
+        g.RaspiGPIO_Info       = "Not a Raspi"
+        g.RaspiGPIO_Version    = "Not a Raspi"
+        return "Not a Raspi. The RaspiPulse Device can be run only on a Raspberry Pi computer."
 
-    gglobs.Devices["RaspiPulse"][VNAME] = gglobs.Devices["RaspiPulse"][VNAME][0:6]       # limit to no more than 6 variables
+
+    # computer is a Raspi:
+    try:
+        import RPi.GPIO as GPIO             # is valid for both RPi.GPIO and rpi-lgpio !!!
+
+    except ImportError as ie:
+        # module 'RPi.GPIO' not found
+        msg  = "The module 'RPi.GPIO' was not found but is required!"
+        msg += "\nRedo the GeigerLog setup."
+        exceptPrint(ie, msg)
+        # setIndent(0)
+        return msg
+
+    except Exception as e:
+        # module 'RPi.GPIO' was found, but cannot be run
+        msg = "Failure on Importing 'RPi.GPIO'"
+        exceptPrint(e, msg)
+        # setIndent(0)
+        return msg
+
+    else:
+        # GPIO.RPI_INFO = {'P1_REVISION': 3, 'REVISION': 'c04170', 'TYPE': 'Pi 5 Model B',
+        #                  'MANUFACTURER': 'Sony UK', 'PROCESSOR': 'BCM2712', 'RAM': '4GB'}
+        g.RaspiGPIO_Info    = str(GPIO.RPI_INFO).replace("'", "").replace("{", "").replace("}", "").replace(": ", ":")
+        g.RaspiGPIO_Version = GPIO.VERSION
+        g.versions["GPIO"]  = g.RaspiGPIO_Version
+
+
+    R_Mode   = GPIO.BCM      if g.RaspiPulseMode       == "BCM"        else GPIO.BOARD
+    R_Edge   = GPIO.FALLING  if g.RaspiPulseEdge       == "FALLING"    else GPIO.RISING
+    R_PUD    = GPIO.PUD_UP   if g.RaspiPulsePullUpDown == "PUD_UP"     else GPIO.PUD_DOWN
+
+    setIndent(1)
+    g.RaspiPulseVariables = setLoggableVariables("RaspiPulse", g.RaspiPulseVariables)
 
     # reset RaspiPulse
     resetRaspiPulse("init")
 
-    if gglobs.isRaspi:
-        # it is a Raspi
-        simul = ""
-        try:
-            import RPi.GPIO as GPIO
+    try:
+        # GPIO.setwarnings(False)   # to eliminate warnings on "already in use channel" when - due to e.g. an exception - crash cleanup had not been done
+        GPIO.setwarnings(True)      # helpful to have warnings???
+        GPIO.setmode    (R_Mode)
+        GPIO.setup      (g.RaspiPulsePin, GPIO.IN, pull_up_down=R_PUD)
 
-        except ImportError as ie:
-            # module 'RPi.GPIO' not found
-            msg  = "The module 'RPi.GPIO' was not found but is required."
-            msg += "\nInstall with: 'python3 -m pip install -U RPi.GPIO'"
-            exceptPrint(ie, msg)
-            return msg
+    except Exception as e:
+        exceptPrint(e, "when setting GPIO")
+        setIndent(0)
+        return "Cannot set GPIO"
 
-        except Exception as e:
-            # module 'RPi.GPIO' was found, but cannot be run
-            msg = "Failure on Importing 'RPi.GPIO'"
-            exceptPrint(e, msg)
-            return msg
+    dprint("RaspiPulse Settings:")
+    ptmplt = "   {:27s} : {}"
+    dprint(ptmplt.format("Raspi Computer Model"   , g.RaspiModel))
+    dprint(ptmplt.format("Raspi Hardware Info"    , g.RaspiGPIO_Info))
+    dprint(ptmplt.format("Raspi SW GPIO Version"  , g.RaspiGPIO_Version))
+    dprint(ptmplt.format("GPIO Mode"              , g.RaspiPulseMode))
+    dprint(ptmplt.format("Pulse BCM Pin #"        , g.RaspiPulsePin))
+    dprint(ptmplt.format("Pulse Pull up / down"   , g.RaspiPulsePullUpDown))
+    dprint(ptmplt.format("Pulse Edge detection"   , g.RaspiPulseEdge))
 
-        gglobs.RaspiPulseHasGPIO = True
-        gglobs.Devices["RaspiPulse"][DNAME] = "Raspi Pulse GPIO"
+    g.Devices["RaspiPulse"][g.CONN] = True
 
-        RaspiRevision    = GPIO.RPI_INFO['P1_REVISION']
-        RaspiGPIOVersion = GPIO.VERSION
-
-        R_Pin    = gglobs.RaspiPulsePin
-        R_Mode   = GPIO.BCM      if gglobs.RaspiPulseMode       == "BCM"        else GPIO.BOARD
-        R_Edge   = GPIO.RISING   if gglobs.RaspiPulseEdge       == "RISING"     else GPIO.FALLING
-        R_PUD    = GPIO.PUD_DOWN if gglobs.RaspiPulsePullUpDown == "PUD_DOWN"   else GPIO.PUD_UP
-
-        GPIO.setmode         (R_Mode)
-        GPIO.setup           (R_Pin,    GPIO.IN,    pull_up_down=R_PUD)
-
-        # for each count 1 timestamp entry into deque (with / without bouncetime)
-        # GPIO.add_event_detect(R_Pin,    R_Edge,     callback=recordCount)               # without bouncetime
-        GPIO.add_event_detect(R_Pin,    R_Edge,     callback=recordCount, bouncetime=1)   # with 1 ms bouncetime
-
-    else:
-        # it is NOT a Raspi
-        simul = "SIM"
-        gglobs.RaspiPulseHasGPIO = False
-        gglobs.Devices["RaspiPulse"][DNAME] = "RaspiPulse SIMULATION-ONLY (Poisson distribution data)"
-
-        RaspiRevision       = "(Not a Raspi)"
-        RaspiGPIOVersion    = "(Not a Raspi)"
-
-        fprintInColor("INFO: A Raspi was NOT found. This is only a simulation!", "blue")
+    ### PWM    -  use only when pwm given on command line
+    if g.RaspiPulsePWM_Active: setupRaspiPWM()
 
 
-    gglobs.Devices["RaspiPulse"][CONN] = True
+    # setup and start thread
+    g.RaspiPulseThreadStopFlag = False
+    g.RaspiPulseThread         = threading.Thread(target = RaspiPulseThreadTarget)
+    g.RaspiPulseThread.daemon  = True
+    g.RaspiPulseThread.start()
+    dprint("   {:27s} : {}".format("RaspiPulseThread.daemon"      , g.RaspiPulseThread.daemon))
+    dprint("   {:27s} : {}".format("RaspiPulseThread.is_alive"    , g.RaspiPulseThread.is_alive()))
 
-    dprint("Pulse Settings:")
-    dprint("   {:27s} : {}".format("Raspi Hardware Revision", RaspiRevision))
-    dprint("   {:27s} : {}".format("Raspi SW GPIO Version"  , RaspiGPIOVersion))
-    dprint("   {:27s} : {}".format("Pulse Mode"             , gglobs.RaspiPulseMode))
-    dprint("   {:27s} : {}".format("Pulse BCM Pin #"        , gglobs.RaspiPulsePin))
-    dprint("   {:27s} : {}".format("Pulse Pull up / down"   , gglobs.RaspiPulsePullUpDown))
-    dprint("   {:27s} : {}".format("Pulse Edge detection"   , gglobs.RaspiPulseEdge))
 
-    return simul
+    def recordCount(bcmpin):
+        """for each interrupt add 1 to total CPS"""
+        g.RaspiPulseCPS += 1
+
+
+    ### Do NOT use bouncetime: the shortest bouncetime of 1 ms is very long compared to pulses of only 150 µs!
+    GPIO.add_event_detect(g.RaspiPulsePin, R_Edge, callback=recordCount)            # without bouncetime
+
+    setIndent(0)
+    return ""
 
 
 def terminateRaspiPulse():
     """shuts down the pulse counter; cleanup is important!"""
 
-    fncname = "terminateRaspiPulse: "
-    dprint(fncname)
+    defname = "terminateRaspiPulse: "
+    dprint(defname)
     setIndent(1)
 
-    if gglobs.RaspiPulseHasGPIO:
-        try:
-            GPIO.cleanup()
-        except Exception as e:
-            exceptPrint(e, "Failure in GPIO.cleanup")
+    g.RaspiPulseThreadStopFlag = True
 
-    gglobs.Devices["RaspiPulse"][CONN] = False
+    if GPIO is not None:
+        try:                   GPIO.cleanup()
+        except Exception as e: exceptPrint(e, "Failure in GPIO.cleanup")
 
-    dprint(fncname + "Terminated")
+    g.Devices["RaspiPulse"][g.CONN] = False
+    resetRaspiPulse(cmd = "terminate")
+
+    dprint(defname + "Terminated")
     setIndent(0)
 
 
-def recordCount(bcmpin):
-    """append a new record to the deque"""
+def RaspiPulseThreadTarget():
+    """The Target function for the RaspiPulse thread"""
+    # dur avg:12µs for inner getRaspiPulseCPS/CPM
 
-    gglobs.RaspiPulseCountDeque.append(time.time())
-    gglobs.RaspiPulseCountTotal += 1
+    defname  = "RaspiPulseThreadTarget: "
+
+    time.sleep(0.100)                                               # skip first 100 msec to let printouts finish
+    nexttime = time.time()
+    while not g.RaspiPulseThreadStopFlag:
+        if time.time() >= nexttime:
+            nexttime += 1
+            # start = time.time()
+
+            g.RaspiPulseLastCPS = getRaspiPulseCPS()
+            g.RaspiPulseLastCPM = getCPMfromCPS(g.RaspiPulseLast60CPS)
+
+            # stop  = time.time()
+            # rdprint(defname, "dur: {:0.3f} ms".format(1000 * (stop - start)))  #
+
+        dt = max(0.001, nexttime - time.time())
+        # rdprint(defname, "dt: {:0.3f}".format(dt))
+        time.sleep(dt)
+
+
+# def recordCount(bcmpin):
+#     """for each interrupt add 1 to total CPS"""
+
+#     g.RaspiPulseCPS += 1
+
+
+def getRaspiPulseCPS():
+    """get CPS counts, clear CPS, add to CPM deque, and return as value"""
+
+    defname = "getRaspiPulseCPS: "
+
+    cps             = g.RaspiPulseCPS
+    g.RaspiPulseCPS = 0
+    g.RaspiPulseLast60CPS.append(cps)
+    # rdprint(defname, "len(xxx60): ", len(g.RaspiPulseLast60CPS))
+
+    return cps
 
 
 def getValuesRaspiPulse(varlist):
     """get the data from Pulse"""
 
-    ##############################################
-    def fudgeSomeDataForRaspiSim(stime):
-        """since NOT a Raspi create a CountRecord of time in exponenetial distribution"""
-
-        tt    = stime - (gglobs.logCycle * 1.1)
-        mean  = 8                                      # CPS=8
-        rmean = 1 / mean
-        while tt <= stime:
-            tt += np.random.exponential(rmean)          # gap between two pulse starts in sec
-            gglobs.RaspiPulseCountDeque.append(tt)      # indicates 1 count at time tt
-            gglobs.RaspiPulseCountTotal += 1
-
-
-    def getRaspiPulseCPS():
-        """get CPS counts and return as value"""
-
-        last   = time.time()
-        counts = 0
-        vtimeL = last - 1      # left time
-        vtimeR = last          # right time
-        while True:            # find the left limit
-            try:                    crp = gglobs.RaspiPulseCountDeque.popleft()
-            except Exception as e:  return gglobs.NAN
-            if crp > vtimeL:
-                counts += 1
-                break
-
-        while True: # find the right limit
-            try:                    crp = gglobs.RaspiPulseCountDeque.popleft()
-            except Exception as e:  break
-
-            if crp <= vtimeR :      counts += 1
-            else:                   break
-
-        gglobs.RaspiPulseCPMDeque.append(counts)
-
-        return counts
-
-
-    def getRaspiPulseCPM():
-        """get CPM counts and return as value"""
-
-        CPM = 0
-        for i in range(60):
-            CPM += gglobs.RaspiPulseCPMDeque[i]
-
-        return CPM
-
-
-    def getValueRaspiPulse(index):
-        """get the values for the sequence of variables"""
-
-        # from the config (now changed for only CPS, CPM)
-        # The RaspiPulse Device can only count pulses, but can provide variables:
-        #     CPS           counts in 1 sec (the raw data)
-        #     CPM           sum of CPS over the last 60 sec
-        #     runtime       number of seconds since start or last reset
-        #     totalcount    number of counts since start or last reset
-
-        gib = 2**30
-        if   index == 0: val = getRaspiPulseCPS()                       # CPS               --> CPS3rd
-        elif index == 1: val = getRaspiPulseCPM()                       # CPM               --> CPM3rd
-        # # elif index == 2: val = psutil.cpu_percent()                     # % CPU Usage       --> Temp
-        # #       So, for instance, a value of 3.14 on a system with 10 logical CPUs
-        # #       means that the system load was 31.4% percent over the last N minutes.
-        # elif index == 2: val = psutil.getloadavg()[0]                   # % CPU Load Avg    --> Temp        last 1 min
-        # elif index == 3: val = psutil.virtual_memory().percent          # % Mem Usage       --> Press
-        # elif index == 4: val = gglobs.RaspiPulseCountTotal              # Total Pulses      --> Humid
-        # # elif index == 4: val = psutil.virtual_memory().total / gib      # Mem in GiB      --> Humid       Raspi 1.806 Gib, urkam: 31.29 Gib
-        # elif index == 5: val = deltatcycle                              # len log cycle (s) --> Xtra        better 1 +/- 10%
-        else:            val = gglobs.NAN
-
-        return val
-    ##############################################
-
     start   = time.time()
-    fncname = "getValuesRaspiPulse: "
-    alldata = {}  # dict for return data
+    defname = "getValuesRaspiPulse: "
+    alldata = {}                                        # empty dict for return data
 
-    if gglobs.RaspiPulseLastCycleStart is None: gglobs.RaspiPulseLastCycleStart = gglobs.LogThreadStartTime
+    if g.LogReadings > 1:                               # ignore first reading
 
-    deltatcycle = start - gglobs.RaspiPulseLastCycleStart
-    gglobs.RaspiPulseLastCycleStart = start
+        # first, set all CPS
+        cps = g.RaspiPulseLastCPS
+        for vname in varlist:
+            if vname.startswith("CPS"):
+                cps = applyValueFormula(vname, cps, g.ValueScale[vname])
+                alldata.update({vname: cps})
+                # rdprint(defname, "vname: ", vname, " : ", cps)
 
-    if (gglobs.logCycle * 0.9) < deltatcycle < (gglobs.logCycle * 1.1):
-        # cycle length is with 10% of logCycle
-        if not gglobs.isRaspi: fudgeSomeDataForRaspiSim(start)  # NOT a Raspi, go fudge some data
-        newvarlist = [varlist[1]] + [varlist[0]] + varlist[2:]  # flip order of vars CPM & CPS so that CPS is calculated first
-        for i, vname in enumerate(newvarlist):
-            getval = getValueRaspiPulse(i)
-            alldata.update({vname: getval})
-            # gdprint(fncname + "i={}, vname={}, getValueRaspiPulse={}".format(i, vname, getval))
-    else:
-        rdprint("Data rejected - a cycle of {:0.3f} sec is outside tolerated range of +/- 10% to logcycle {} sec".format(deltatcycle, gglobs.logCycle))
+        # second, set all CPM
+        cpm = g.RaspiPulseLastCPM
+        for vname in varlist:
+            if vname.startswith("CPM"):
+                cpm = applyValueFormula(vname, cpm, g.ValueScale[vname])
+                alldata.update({vname: cpm})
+                # rdprint(defname, "vname: ", vname, " : ", cpm)
 
-    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+    vprintLoggedValues(defname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
 
@@ -254,44 +239,133 @@ def getValuesRaspiPulse(varlist):
 def getInfoRaspiPulse(extended=False):
     """Info on the RaspiPulse Device"""
 
-    Info          = "Configured Connection:        GeigerLog RaspiPulse Device\n"
+    Info          = "Configured Connection:        GeigerLog PlugIn\n"
 
-    if not gglobs.Devices["RaspiPulse"][CONN]:
+    if not g.Devices["RaspiPulse"][g.CONN]:
         Info     += "<red>Device is not connected</red>"
     else:
-        Info     += "Connected Device:             {}\n".format(gglobs.Devices["RaspiPulse"][DNAME])
-        Info     += "Configured Variables:         {}\n".format(gglobs.RaspiPulseVariables)
-        Info     += getTubeSensitivities(gglobs.RaspiPulseVariables)
-
+        Info     += "Connected Device:             {}\n".format(g.Devices["RaspiPulse"][g.DNAME])
+        Info     += "Configured Variables:         {}\n".format(g.RaspiPulseVariables)
+        Info     += getTubeSensitivities(g.RaspiPulseVariables)
+        Info     += "\n"
         if extended:
-            Info += "\n"
-            Info += "Raspi\n"
-            Info += "   Hardware Revision          {}\n".format(RaspiRevision)
-            Info += "   Software GPIO Version      {}\n".format(RaspiGPIOVersion)
-            Info += "Configured Raspi GPIO settings:\n"
-            Info += "   Pulse Mode:                {}\n".format(gglobs.RaspiPulseMode)
-            Info += "   Pulse BCM Pin No:          {}\n".format(gglobs.RaspiPulsePin)
-            Info += "   Pulse Pull up / down:      {}\n".format(gglobs.RaspiPulsePullUpDown)
-            Info += "   Pulse Edge detection:      {}\n".format(gglobs.RaspiPulseEdge)
+            # Info +=     "\n"
+            Info +=     "Host Computer:\n"
+            Info +=     "   Computer Model             {}\n".format(g.RaspiModel)
+            Info +=     "   Hardware Info              {}\n".format(g.RaspiGPIO_Info)
+            Info +=     "   Software GPIO Version      {}\n".format(g.RaspiGPIO_Version)
+
+            Info +=     "Configured Pulse Detection settings: (valid only on Raspi)\n"
+            Info +=     "   GPIO Mode:                 {}\n".format(g.RaspiPulseMode)               # options are: GPIO.BCM or GPIO.BOARD
+            Info +=     "   Pulse BCM Pin No:          {}\n".format(g.RaspiPulsePin)
+            Info +=     "   Pulse Pull up / down:      {}\n".format(g.RaspiPulsePullUpDown)
+            Info +=     "   Pulse Edge detection:      {}\n".format(g.RaspiPulseEdge)
+
+            if g.RaspiPulsePWM_Active:
+                Info += "Configured PWM: (valid only on Raspi)\n"
+                Info += "   PWM BCM Pin No:            {}\n"   .format(g.RaspiPulsePWM_Pin)
+                Info += "   PWM Freq:                  {:0.3f} Hz\n".format(g.RaspiPulsePWM_Freq)
+                Info += "   PWM Period:                {:0.3f} ms\n".format(g.RaspiPulsePWM_Period * 1e3)
+                Info += "   PWM Pulselength:           {:0.3f} µs\n".format(g.RaspiPulsePWM_PulseLength * 1e6)
+                Info += "   PWM Dutycycle:             {:0.3f} %\n" .format(g.RaspiPulsePWM_DutyCycle)
 
     return Info
 
 
-def resetRaspiPulse(cmd = ""):
+def resetRaspiPulse(cmd=""):
     """resets device RaspiPulse"""
 
-    fncname  = "resetRaspiPulse: "
+    defname  = "resetRaspiPulse: "
+    dprint(defname)
 
-    setBusyCursor()
+    g.RaspiPulseCPS       = 0
+    g.RaspiPulseLast60CPS = deque([], 60)
 
-    gglobs.RaspiPulseCountTotal     = 0
-    gglobs.RaspiPulseCPMDeque       = deque([gglobs.NAN] * 60, 60)  # 60 NANs, len=60, space for 60 sec CPS data, CPM only after 60 sec
-    gglobs.RaspiPulseCountDeque     = deque([])                     # empty; unlimited size
-    gglobs.RaspiPulseLastCycleStart = None                          # does it need resetting?
-
-    if cmd != "init":
+    if cmd == "Reset":
         fprint(header("Resetting RaspiPulse"))
         fprint ("Successful")
 
-    setNormalCursor()
 
+def setupRaspiPWM():
+    """start PWM on Raspi"""
+
+    # Using Raspi PWM output as a fake source for Pulse counting
+    # Connect BOARD pin 33 (PWM output, BCM Pin 13) with BOARD pin 11 (Pulse counting input, BCM pin 17); nothing else connected!
+    # Observation: much jitter in PWM, both in freq and pulse length
+    # PWM frequency in [Hz] equiv to CPS (value must be > 0.0!)
+    # max frequency is exactly 10000 Hz.    Set by the lib???
+    # min frequency is exactly   0.1 Hz.    Set by the lib???
+    # NOTE: to change values:
+    #   g.RaspiPulsePWM_Handle.ChangeDutyCycle(10)            # (0.0 ... 100.0)
+    #   g.RaspiPulsePWM_Handle.ChangeFrequency(freq)          # frequency (min: > 0.0; max: is ???)
+    ###
+
+    defname = "setupRaspiPWM: "
+
+    # RaspiPulsePWM_Freq may have been (wrongly) set via command line
+    # rdprint(defname, "g.RaspiPulsePWM_Freq: ", g.RaspiPulsePWM_Freq)
+    if g.RaspiPulsePWM_Freq  < 0.1 or g.RaspiPulsePWM_Freq > 10000:
+        msg = "Illegal PWM Frequency set: MUST be between 0.1 and 10000 Hz, incl! <br>Please restart within these limits."
+        rdprint(defname, msg)
+        efprint(msg)
+        return "Wrong PWM Frequency Setting"
+
+    g.RaspiPulsePWM_Pin         = 13                        # the GPIO pin in BCM mode used for generating PWM signal
+    g.RaspiPulsePWM_PulseLength = 150 * 1E-6                # sec, = 150µs (length of M4011 tube pulse)
+    g.RaspiPulsePWM_Period      = 1 / g.RaspiPulsePWM_Freq  # sec
+
+    # on the USB-to-serial device: a "low" triggers the RX line and any RX-LED will become lit
+    # --> good for visually tracking the pulse rate
+    # "negative" pulses --> normally high, during pulse goes to low;  LED is ON  during pulse
+    # the Raspi interrupt is preconfigured for FALLING edge (can be changed in config)
+    if g.RaspiPulseEdge == "FALLING":
+        g.RaspiPulsePWM_DutyCycle  = 100 * (1 - g.RaspiPulsePWM_PulseLength / g.RaspiPulsePWM_Period)
+    else:
+        # "positive" pulses --> normally low, during pulse goes to high; LED is OFF during pulse
+        g.RaspiPulsePWM_DutyCycle  = 100 * (    g.RaspiPulsePWM_PulseLength / g.RaspiPulsePWM_Period)
+
+    if g.RaspiPulsePWM_DutyCycle  < 0 or g.RaspiPulsePWM_DutyCycle > 100:
+        msg = "For a pulse length of {:0.3g} µs the PWM frequency must be lower than {:0.6g} Hz."
+        msg += "<br>Please restart within this limit."
+        msg = msg.format(1E6 * g.RaspiPulsePWM_PulseLength, round(0.95 * (1 / g.RaspiPulsePWM_PulseLength), -2))
+        rdprint(defname, msg)
+        efprint(msg)
+        return "Wrong PWM Frequency Setting"
+
+    if g.isRaspi:
+        GPIO.setup(g.RaspiPulsePWM_Pin, GPIO.OUT)                                           # define  PWM Pin as output
+        if g.RaspiPulsePWM_Handle is None:
+            g.RaspiPulsePWM_Handle = GPIO.PWM(g.RaspiPulsePWM_Pin, g.RaspiPulsePWM_Freq)    # set PWM at Pin with freq
+            g.RaspiPulsePWM_Handle.start(g.RaspiPulsePWM_DutyCycle)                         # start PWM, includes setting duty cycle
+
+    ptmplt = "   {:27s} : {}"
+    dprint(ptmplt.format("PWM", "Freq: {:0.3f} Hz, Period: {:0.3f} ms, Pulse length: {:0.3f} µs, Duty Cycle: {:0.3f}%".
+                                    format(g.RaspiPulsePWM_Freq,
+                                        g.RaspiPulsePWM_Period * 1e3,
+                                        g.RaspiPulsePWM_PulseLength * 1e6,
+                                        g.RaspiPulsePWM_DutyCycle)
+                                        ))
+
+
+################################################################################################################################
+
+    # Testing Performance Pulse-by-interrupt (RaspiPulse) and pulse via Serial (SerialPulse)
+    # Pulses as PWM pulses from Raspi 5, NEGATIVE pulses, length 150 µs,  3.3V pulseamplitude
+    #                                             RaspiPulse                              SerialPulse
+    # Freq[Hz]  Duty[%]  Width[ms]    Volt[V]     CPS        CPM             CPS-Dev[%]   CPS        CPM             CPS-Dev[%]
+    #      0.3  99.996   3333.333     3.3            0.297        17.948     -1.0             0.296       18.000     -1.4       old
+    #      0.3  99.996   3333.333     3.3            0.298        17.981     -0.7             0.299       18.004     -0.3       new
+    #      1.0  99.985   1000.000     3.3            1.000        60.000      0.0             1.000       18.000      0.0
+    #      3.0  99.955    333.333     3.3            3.000       180.000      0.0             3.000      180.000      0.0
+    #     10.0  99.850    100.000     3.3            9.955       597.574     -0.5            10.000      600.000      0.0
+    #     30.0  99.550     33.333     3.3           29.729      1783.169     -0.9            30.043     1805.547     +0.1
+    #     30.0  99.550     33.333     3.3           30.006      1800.387     +0.02           30.013     1800.964     +0.04
+    #    100.0  98.500     10.000     3.3           99.909      5990.983     -0.09          100.000     6000.000      0.0
+    #    300.0  95.500      3.333     3.3          299.488     17968.418     -0.2           300.024    18000.215     +0.01
+    #   1000.0  85.000      1.000     3.3          997.986     59889.985     -0.2          1000.171    60016.554     +0.02
+    #   3000.0  55.000      0.333     3.3         2997.861    179884.224     -0.07         3001.972   180092.439     +0.07
+    #   5000.0  25.000      0.200     3.3         4990.892    299492.617     -0.2          4996.662   299849.317     -0.07
+    #   6000.0  10.000      0.167     3.3         5974.761    358475.845     -0.4          5983.426   358940.845     -0.3
+    #   6500.0   2.500      0.154     3.3         6474.333    388583.388     -0.4          6225.250   370934.403     -4.4
+    #   6200.0   7.000      0.161     3.3         6196.519    371593.528     -0.06         6201.312   372050.111     +0.02
+    # max is reached with 6500 Hz! CPS=0 when going higher

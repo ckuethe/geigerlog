@@ -24,11 +24,11 @@ gdev_i2c.py - I2C support; limited to dongle ELV with Sensors BME280, TSL2591, a
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 import gdev_i2c_Dngl_ELV            as ELV      # I2C dongle ELV
 import gdev_i2c_Dngl_ISS            as ISS      # I2C dongle ISS
@@ -58,7 +58,7 @@ Sensors = {
            "GDK101"     : [ None,       False,       False,         None,       3,          ["CPM3rd",  "CPS3rd",  "Temp"  ],  1 ],
           }
 
-gglobs.Sensors = Sensors
+g.Sensors = Sensors
 
 # Index into Sensors dict
 I2CADDR    = 0
@@ -73,40 +73,40 @@ I2CRUNS    = 6
 def initI2C():
     """Init the dongle with the sensors"""
 
-    fncname = "initI2C: "
-    dprint(fncname)
+    defname = "initI2C: "
+    dprint(defname, "Initializing I2C Device")
     setIndent(1)
 
-    gglobs.Devices["I2C"][CONN]  = False
-    gglobs.Devices["I2C"][DNAME] = "I2C Sensors"
+    g.Devices["I2C"][g.CONN]  = False
+    g.Devices["I2C"][g.DNAME] = "I2C Sensors"
 
     # init the dongle
-    if   gglobs.I2CDongleCode == "ISS":  gglobs.I2CDongle = ISS.ISSdongle()
-    elif gglobs.I2CDongleCode == "ELV":  gglobs.I2CDongle = ELV.ELVdongle()
-    elif gglobs.I2CDongleCode == "IOW":  gglobs.I2CDongle = IOW.IOWdongle()
-    # elif gglobs.I2CDongleCode == "FTD":  gglobs.I2CDongle = FTD.FTDdongle() # not worth using
+    if   g.I2CDongleCode == "ISS":  g.I2CDongle = ISS.ISSdongle()
+    elif g.I2CDongleCode == "ELV":  g.I2CDongle = ELV.ELVdongle()
+    elif g.I2CDongleCode == "IOW":  g.I2CDongle = IOW.IOWdongle()
+    # elif g.I2CDongleCode == "FTD":  g.I2CDongle = FTD.FTDdongle() # not worth using
 
-    success, msg  = gglobs.I2CDongle.DongleInit()
+    success, msg  = g.I2CDongle.DongleInit()
     if success:
         fprint(msg)
         dprint(msg)
     else:
         setIndent(0)
-        return "Failure initializing dongle '{}': {}".format(gglobs.I2CDongle.name, msg)
+        return "Failure initializing dongle '{}': {}".format(g.I2CDongle.name, msg)
 
     # init the sensors
     SensorCount = 0
     for sensor in Sensors:
 
-        if not gglobs.I2CSensor[sensor][0]:
+        if not g.I2CSensor[sensor][0]:
             cdprint("sensor: {:8s} - not activated".format(sensor) )
             continue
         else:
             cdprint("aaaasensor: ", sensor)
 
-        Sensors[sensor][I2CACTIV]   = gglobs.I2CSensor[sensor] [0]  # gglobs: I2CSensor["LM75"] = [False, 0x48, None]
-        Sensors[sensor][I2CADDR]    = gglobs.I2CSensor[sensor] [1]
-        Sensors[sensor][I2CVARS]    = gglobs.I2CSensor[sensor] [2]
+        Sensors[sensor][I2CACTIV]   = g.I2CSensor[sensor] [0]  # gglobs: I2CSensor["LM75"] = [False, 0x48, None]
+        Sensors[sensor][I2CADDR]    = g.I2CSensor[sensor] [1]
+        Sensors[sensor][I2CVARS]    = g.I2CSensor[sensor] [2]
 
         address = Sensors[sensor][I2CADDR]
         if   sensor == "LM75"    : Sensors[sensor][I2CHNDL] = LM75    .SensorLM75     (address)
@@ -119,7 +119,7 @@ def initI2C():
 
         response = Sensors[sensor][I2CHNDL].SensorInit()
         if response is None:
-            edprint(fncname + "response: ", response)
+            edprint(defname, "response: ", response)
             continue
 
         if response[0]:
@@ -130,7 +130,7 @@ def initI2C():
             dprint(msg)
 
         else:
-            msg = "Failure initializing sensor {} on dongle {} with message:\n{}".format(sensor, gglobs.I2CDongle.name, response[1])
+            msg = "Failure initializing sensor {} on dongle {} with message:\n{}".format(sensor, g.I2CDongle.name, response[1])
             Sensors[sensor][I2CCONN] = False
             efprint(msg, debug=True)
 
@@ -141,7 +141,7 @@ def initI2C():
 
     else:
         fprint("I2C device has got {} sensor(s)".format(SensorCount))
-        gglobs.Devices["I2C"][CONN]  = True
+        g.Devices["I2C"][g.CONN]  = True
 
         SensorsBurnIn()
 
@@ -159,10 +159,10 @@ def initI2C():
             allvars += Sensors[sensor][I2CVARS]
 
         allvars = [s for s in allvars if s != 'Unused'] # remove all "Unused"
-        gglobs.I2CVariables = ", ".join(allvars)
+        g.I2CVariables = ", ".join(allvars)
 
-        setLoggableVariables("I2C", gglobs.I2CVariables)
-        dprint(fncname + "Loggable Variables: ", gglobs.I2CVariables)
+        g.I2CVariables = setLoggableVariables("I2C", g.I2CVariables)
+        # dprint(defname + "Loggable Variables: ", g.I2CVariables)
 
         # get all info + extended info
         getInfoI2C(extended=True, FirstCall=True)
@@ -176,16 +176,16 @@ def initI2C():
 def SensorsBurnIn():
     """First Values may be invalid"""
 
-    fncname = "SensorsBurnIn: "
-    dprint(fncname)
+    defname = "SensorsBurnIn: "
+    dprint(defname)
     setIndent(1)
 
     for sensor in Sensors:
-        # rdprint(fncname + "sensor: ", sensor)
+        # rdprint(defname + "sensor: ", sensor)
         if Sensors[sensor][I2CCONN]:       # use connected sensors only
             # make measurements to discard
             for i in range(0, Sensors[sensor][I2CRUNS]):
-                # print(fncname, sensor, i)
+                # print(defname, sensor, i)
                 Sensors[sensor][I2CHNDL].SensorgetValues() # discard values
                 time.sleep(0.05)
     setIndent(0)
@@ -194,26 +194,26 @@ def SensorsBurnIn():
 def terminateI2C():
     """shutting down thread, closing ELV, resetting connection flag"""
 
-    fncname = "terminateI2C: "
+    defname = "terminateI2C: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
-    dprint(fncname + gglobs.I2CDongle.DongleTerminate())    # does nothing but closing the port
+    dprint(defname + g.I2CDongle.DongleTerminate())    # does nothing but closing the port
 
-    gglobs.Devices["I2C"][CONN]  = False
+    g.Devices["I2C"][g.CONN]  = False
 
-    dprint(fncname + "Terminated")
+    dprint(defname + "Terminated")
     setIndent(0)
 
 
 def resetI2C():
     """Reset the ELV dongle and sensors"""
 
-    fncname = "resetI2C: "
+    defname = "resetI2C: "
     setBusyCursor()
 
-    dprint(fncname + "---------------------------------------------------")
+    dprint(defname + "---------------------------------------------------")
     setIndent(1)
 
     fprint(header("Resetting I2C System"))
@@ -222,25 +222,25 @@ def resetI2C():
 
     # reset the dongle
     try:
-        msg = gglobs.I2CDongle.DongleReset()                               # takes >=3 sec on ELV
-        dprint(fncname + "Dongle: {} - {}".format(gglobs.I2CDongle.name, msg))
+        msg = g.I2CDongle.DongleReset()                               # takes >=3 sec on ELV
+        dprint(defname + "Dongle: {} - {}".format(g.I2CDongle.name, msg))
     except Exception as e:
-        exceptPrint(e, fncname + "DongleReset failed")
+        exceptPrint(e, defname + "DongleReset failed")
 
     # reset all sensors
     for sensor in Sensors:
-        # cdprint(fncname + "sensor: ", sensor)
+        # cdprint(defname + "sensor: ", sensor)
         if Sensors[sensor][I2CCONN]:
             try:
                 msg = Sensors[sensor][I2CHNDL].SensorReset()
-                dprint(fncname + "Sensor: {} - {}".format(sensor, msg))
+                dprint(defname + "Sensor: {} - {}".format(sensor, msg))
             except Exception as e:
-                exceptPrint(e, fncname + "Resetting sensor {} failed".format(sensor))
+                exceptPrint(e, defname + "Resetting sensor {} failed".format(sensor))
 
     SensorsBurnIn()
 
     fprint("I2C System Reset done")
-    dprint(fncname + "Done")
+    dprint(defname + "Done")
 
     setNormalCursor()
     setIndent(0)
@@ -250,25 +250,25 @@ def getInfoI2C(extended=False, FirstCall=False):
     """Calls the devices via serial on FirstCall=True only; otherwise conflicting double
     access to serial port"""
 
-    fncname = "getInfoI2C: "
+    defname = "getInfoI2C: "
 
-    if   gglobs.I2CDongleCode == "ISS":
-        info = "Configured Connection:        Port: {} \n".format(gglobs.I2Cusbport)
+    if   g.I2CDongleCode == "ISS":
+        info = "Configured Connection:        Port: {} \n".format(g.I2Cusbport)
 
-    elif gglobs.I2CDongleCode == "ELV":
+    elif g.I2CDongleCode == "ELV":
 
         info = "Configured Connection:        Port: {} Baud: {} Timeouts[s]: R:{} W:{}\n".format\
                                     (
-                                        gglobs.I2Cusbport,
-                                        gglobs.I2Cbaudrate,
-                                        gglobs.I2CtimeoutR,
-                                        gglobs.I2CtimeoutW
+                                        g.I2Cusbport,
+                                        g.I2Cbaudrate,
+                                        g.I2CtimeoutR,
+                                        g.I2CtimeoutW
                                     )
 
-    elif gglobs.I2CDongleCode == "IOW" or gglobs.I2CDongleCode == "FTD":    # FTD is NOT in use
+    elif g.I2CDongleCode == "IOW" or g.I2CDongleCode == "FTD":    # FTD is NOT in use
         info = "Configured Connection:        Native USB connection\n"
 
-    if not gglobs.Devices["I2C"][CONN]: return info + "<red>Device is not connected</red>"
+    if not g.Devices["I2C"][g.CONN]: return info + "<red>Device is not connected</red>"
 
     infoExt = info
 
@@ -277,42 +277,42 @@ def getInfoI2C(extended=False, FirstCall=False):
 
         # Dongle
         # DongleInfo: on ELV like: ['Last Adress:0xED', 'Baudrate:115200 bit/s', 'I2C-Clock:99632 Hz', 'Y00', 'Y10', 'Y20', 'Y30', 'Y40', 'Y50', 'Y60', 'Y70']
-        cdprint(fncname + "dongle: ----------------------------------------------", gglobs.I2CDongle.name)
-        DongleInfo     = gglobs.I2CDongle.DongleGetInfo()
-        gglobs.Devices["I2C"][DNAME] = gglobs.I2CDongle.name     # like: ['ELV USB-I2C-Interface v1.8 (Cal:5E)'
+        cdprint(defname + "dongle: ----------------------------------------------", g.I2CDongle.name)
+        DongleInfo     = g.I2CDongle.DongleGetInfo()
+        g.Devices["I2C"][g.DNAME] = g.I2CDongle.name     # like: ['ELV USB-I2C-Interface v1.8 (Cal:5E)'
 
-        info += "{:30s}{}\n" .format("Connected Device:", "Dongle: {}".format(gglobs.I2CDongle.name))
-        info += "{:30s}{}\n" .format("Configured Variables:", gglobs.I2CVariables)
+        info += "{:30s}{}\n" .format("Connected Device:", "Dongle: {}".format(g.I2CDongle.name))
+        info += "{:30s}{}\n" .format("Configured Variables:", g.I2CVariables)
         info += "\n"
 
         infoExt  = info
-        infoExt += "Dongle: {}\n".format(gglobs.I2CDongle.name)
+        infoExt += "Dongle: {}\n".format(g.I2CDongle.name)
         infoExt += "\n".join(DongleInfo)
         infoExt += "\n"
 
         # Sensors
         for sensor in Sensors:
             if Sensors[sensor][I2CCONN]:
-                cdprint(fncname + "sensor: ", sensor)
+                cdprint(defname + "sensor: ", sensor)
                 SensorInfo = Sensors[sensor][I2CHNDL].SensorGetInfo()
-                # msg      =  "{:30s}{}\n".format("Sensor: " + sensor, SensorInfo[0])
+              # msg      = "{:30s}{}\n".format("Sensor: " + sensor, SensorInfo[0])
                 msg      = "{:30s}{}".format("Sensor: " + sensor, SensorInfo[0])
-                vmsg     = " - Variables: " + ", ".join("{}".format(x) for x in gglobs.Sensors[sensor][5]) + "\n"
+                vmsg     = " - Variables: " + ", ".join("{}".format(x) for x in g.Sensors[sensor][5]) + "\n"
 
                 info    += msg + vmsg
                 infoExt += msg + "\n"
                 for a in SensorInfo[1:]: infoExt += " "*11 + a + "\n"
         info += "\n"
-        gglobs.I2CInfo      = info
-        gglobs.I2CInfoExt   = infoExt
+        g.I2CInfo      = info
+        g.I2CInfoExt   = infoExt
 
     else:
         # on 2nd and later
-        if extended:    info = gglobs.I2CInfoExt
-        else:           info = gglobs.I2CInfo
+        if extended:    info = g.I2CInfoExt
+        else:           info = g.I2CInfo
 
     # Tube sensitivities
-    info += getTubeSensitivities(gglobs.I2CVariables)
+    info += getTubeSensitivities(g.I2CVariables)
 
     # cdprint("\n" + info)
 
@@ -332,13 +332,13 @@ def scanI2CBus():
     # duration: Dongle: ELV: 1.04 ... 5.13 ms   (avg=1.22 ms)       3.9x
     # duration: Dongle: IOW: 5.2 ...  8.3  ms   (avg=7.7 ms)       24.8x
 
-    fncname = "scanI2CBus: "
+    defname = "scanI2CBus: "
 
-    gglobs.I2CDongle.DongleScanPrep("Start")    # needed for ELV dongle
+    g.I2CDongle.DongleScanPrep("Start")    # needed for ELV dongle
 
     devicecount = 0
     start       = time.time()
-    dscan       = fncname + "\n" # cumulative scan string
+    dscan       = defname + "\n" # cumulative scan string
     scanfmt     = "0x{:02X}  "
     scan        = "       0  1  2  3  4  5  6  7  8  9  A  B  C  D  E  F"
     fprint(header("Scanning I2C Bus"))
@@ -359,20 +359,20 @@ def scanI2CBus():
             scan   = scanfmt.format(addr)
 
         try:
-            if gglobs.I2CDongle.DongleAddrIsUsed(addr):
+            if g.I2CDongle.DongleAddrIsUsed(addr):
                 scan   += "{:02X} ".format(addr)
                 devicecount += 1
             else:
                 scan   += "-- "
         except Exception as e:
-            exceptPrint(e, fncname + "Failure with DongleAddrIsUsed")
+            exceptPrint(e, defname + "Failure with DongleAddrIsUsed")
 
     duration = time.time() - start
     scan += "\n\nFound a total of {} I2C device(s) in {:0.2f} sec\n".format(devicecount, duration)
     fprint(scan)
     dprint(dscan + scan)
 
-    gglobs.I2CDongle.DongleScanPrep("End")    # needed for ELV dongle
+    g.I2CDongle.DongleScanPrep("End")    # needed for ELV dongle
 
 
 def getValuesI2C(varlist):
@@ -380,38 +380,40 @@ def getValuesI2C(varlist):
 
     gVstart = time.time()
 
-    fncname = "getValuesI2C: "
+    defname = "getValuesI2C: "
 
-    cdprint(fncname, varlist)
+    cdprint(defname, varlist)
     setIndent(1)
 
     # set sensor values for all vars to NAN
     SensorValues = {}
-    for vname in gglobs.varsCopy:    SensorValues [vname] = gglobs.NAN
+    for vname in g.VarsCopy:    SensorValues [vname] = g.NAN
 
     # get the data from the sensors
     for sensor in Sensors:
-        if Sensors[sensor][I2CACTIV]:
+        # if Sensors[sensor][I2CACTIV]:
+        if Sensors[sensor][I2CCONN]:
             sval = Sensors[sensor][I2CHNDL].SensorgetValues() # sval is tuple with 1 ... 3 values
-            # edprint(fncname + "sensor: ", sensor, ", value: ", sval)
+            # edprint(defname + "sensor: ", sensor, ", value: ", sval)
             for i in range(Sensors[sensor][I2CVCNT]):
                 try:                    svname = Sensors[sensor][I2CVARS][i]
                 except Exception as e:  svname = None
+                # rdprint(defname, "i: {}  sval: {}  svname: {}".format(i, sval, svname))
                 if svname is not None: SensorValues[svname] = sval[i]
-    # rdprint(fncname + "SensorValues: ", SensorValues)
+    # rdprint(defname + "SensorValues: ", SensorValues)
 
     # scale values and set to alldata
     alldata = {}
     for vname in varlist:
         if vname == "Unused" or vname == "None": continue
         sval         = SensorValues[vname]
-        scaled_sval  = round(scaleVarValues(vname, sval, gglobs.ValueScale[vname]), 3)
+        scaled_sval  = round(applyValueFormula(vname, sval, g.ValueScale[vname]), 3)
         alldata.update({vname: scaled_sval})
 
     gVdur = 1000 * (time.time() - gVstart)
 
     setIndent(0)
-    vprintLoggedValues(fncname, varlist, alldata, gVdur)
+    vprintLoggedValues(defname, varlist, alldata, gVdur)
 
     return alldata
 
@@ -419,19 +421,19 @@ def getValuesI2C(varlist):
 def forceCalibration():
     """force CO2 calibration on the SCD30 and SCD41 sensor"""
 
-    fncname = "forceCalibration: "
+    defname = "forceCalibration: "
 
     # request the CO2 ref value
     frc = getCO2RefValue()
     if np.isnan(frc): return
 
-    mdprint(fncname + "refVal: ", frc)
+    mdprint(defname + "refVal: ", frc)
 
     if Sensors["SCD30"][I2CHNDL] is not None:
         Sensors["SCD30"][I2CHNDL].SCD30setFRC(frc)
         fprint("Sensor SCD30 is calibrated")
     else:
-        # gglobs.exgg.showStatusMessage("Sensor is not available")
+        # g.exgg.showStatusMessage("Sensor is not available")
         efprint("Sensor SCD30 is not available")
 
     QtUpdate()
@@ -440,7 +442,7 @@ def forceCalibration():
         Sensors["SCD41"][I2CHNDL].SCD41setFRC(frc)
         fprint("Sensor SCD41 is calibrated")
     else:
-        gglobs.exgg.showStatusMessage("Sensor is not available")
+        g.exgg.showStatusMessage("Sensor is not available")
         efprint("Sensor SCD41 is not available")
 
     QtUpdate()
@@ -452,14 +454,14 @@ def forceCalibration():
 def getCO2RefValue():
     """Enter a value manually"""
 
-    fncname = "getCO2RefValue: "
+    defname = "getCO2RefValue: "
 
     # getCO2RefValue should not be callable when logging
-    if gglobs.logging:
-        gglobs.exgg.showStatusMessage("Cannot change sensor calibration when logging! Stop logging first")
+    if g.logging:
+        g.exgg.showStatusMessage("Cannot change sensor calibration when logging! Stop logging first")
         return
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
     # Calib Value
@@ -477,7 +479,7 @@ def getCO2RefValue():
 
     # Dialog box
     d = QDialog()
-    d.setWindowIcon(gglobs.iconGeigerLog)
+    d.setWindowIcon(g.iconGeigerLog)
     d.setWindowTitle("Set CO2 Reference Value")
     d.setWindowModality(Qt.WindowModal)
     d.setMinimumWidth(400)
@@ -488,8 +490,8 @@ def getCO2RefValue():
     bbox.accepted.connect(lambda: d.done(1))
     bbox.rejected.connect(lambda: d.done(-1))
 
-    gglobs.btn = bbox.button(QDialogButtonBox.Ok)
-    gglobs.btn.setEnabled(True)
+    g.btn = bbox.button(QDialogButtonBox.Ok)
+    g.btn.setEnabled(True)
 
     layoutV = QVBoxLayout(d)
     layoutV.addLayout(graphOptions)
@@ -498,11 +500,11 @@ def getCO2RefValue():
     retval = d.exec()
     # print("reval:", retval)
 
-    co2ref = gglobs.NAN
+    co2ref = g.NAN
 
     if retval != 1:
         # ESCAPE pressed or Cancel Button
-        dprint(fncname + "Canceling; no changes made")
+        dprint(defname + "Canceling; no changes made")
 
     else:
         # OK pressed
@@ -521,11 +523,11 @@ def getCO2RefValue():
                 msg = "CO2 Reference must be given as a number of at least '400' (ppm); you entered: '{}'".format(v1val)
                 exceptPrint(e, msg)
                 efprint(msg)
-                co2ref = gglobs.NAN
+                co2ref = g.NAN
 
             if co2ref < 400:
                 efprint("CO2 Reference value must be at least '400' ppm; you entered: {} ppm".format(v1val))
-                co2ref = gglobs.NAN
+                co2ref = g.NAN
 
     setIndent(0)
 

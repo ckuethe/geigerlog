@@ -3,6 +3,7 @@
 
 """
 gmerger.py - merging multiple CSV data files
+             for usage see helpOptions
 """
 
 ###############################################################################
@@ -23,7 +24,7 @@ gmerger.py - merging multiple CSV data files
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 __version__         = "1.0"
@@ -177,7 +178,7 @@ def saveListProper(filelist, sourcefile):
     # destination file path
     destfilepath = sourcefile + ".FULL.csv"
 
-    with open(destfilepath, 'w', encoding="UTF-8", errors='replace', buffering = 1) as dfp:
+    with open(destfilepath, "w", encoding="UTF-8", errors='replace', buffering = 1) as dfp:
         for i, a in enumerate(filelist):
             newline = ""
             if a[0][0] == "#":
@@ -211,7 +212,7 @@ def makeComboCSV(SourcePath1, SourcePath2, MergePath):
     # saveListProper(fileCombolist, SourcePath1 + ".COMBO")
 
     # merge and save
-    with open(MergePath, 'w', encoding="UTF-8", errors='replace', buffering = 1) as dfp:
+    with open(MergePath, "w", encoding="UTF-8", errors='replace', buffering = 1) as dfp:
         dfp.write("# Combo CSV file using files: '{}' and '{}'\n".format(SourcePath1, SourcePath2))
         dfp.write("# using gmerger.py version: {}\n#\n".format(__version__))
         dfp.write(FullLegendStr + "\n")
@@ -283,13 +284,13 @@ def main():
         # print info like "option -a not recognized", then exit
         msg = "For Help use: './gmerger.py -h'"
         exceptPrint(e, msg)
-        print (helpOptions)
+        print(helpOptions)
         return 1
 
     # processing the options
     for opt, optval in opts:
         if   opt in ("-h", "--help"):
-            print (helpOptions)
+            print(helpOptions)
             return 0
 
         elif opt in ("-V", "--Version"):
@@ -303,7 +304,7 @@ def main():
     if lenargs == 0:
         # no filenames given; show help info
         print("No filenames were given, see Help")
-        print (helpOptions)
+        print(helpOptions)
 
     elif lenargs == 1:
         # just convert the one given file to FULL csv
@@ -329,7 +330,13 @@ def main():
         makeComboCSV(SourcePath1, SourcePath2, MergePath)
 
 
+
 if __name__ == '__main__':
-    main()
-    print()
+    try:
+        main()
+        print()
+    except KeyboardInterrupt:
+        print()
+        print("Exit by CTRL-C")
+        print()
 

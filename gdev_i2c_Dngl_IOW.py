@@ -24,7 +24,7 @@ IO-Warrior24 Dongle (IOW24-DG)
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -42,7 +42,7 @@ __license__         = "GPL3"
 
 
 import ctypes
-from   gsup_utils       import *
+from gsup_utils   import *
 
 #
 # begin iow declarations -------------------------------------
@@ -113,8 +113,8 @@ class IOWdongle:
             return info
 
 
-        fncname = "DongleInit: {} ".format(self.name)
-        dprint(fncname)
+        defname = "DongleInit: {} ".format(self.name)
+        dprint(defname)
         # setIndent(1) # tto many returns following
 
         if 'linux' not in sys.platform:             # Py3:'linux', Py2:'linux2'
@@ -123,7 +123,7 @@ class IOWdongle:
         # find driver: 'libiowkit.so.1'
         import ctypes.util
         iowlib = ctypes.util.find_library("iowkit") # must NOT use prefix (lib), suffix (.so, .so.1, ...)
-        cdprint("   " + fncname + "{:30s}: {}".format("Found Library: ", iowlib))
+        cdprint("   " + defname + "{:30s}: {}".format("Found Library: ", iowlib))
         if iowlib is None:
             msg  = "Cannot find the driver for this dongle.\n"
             msg += "Is the 'iowarrior' driver installed?"
@@ -237,21 +237,21 @@ class IOWdongle:
 
         # set Read Timeout
         ito = iowkit.IowKitSetTimeout(self.iow, self.readtimeout)
-        cdprint(fncname + getIowSetting("IowKitSetTimeout", ito, self.readtimeout, "ms" ))
+        cdprint(defname + getIowSetting("IowKitSetTimeout", ito, self.readtimeout, "ms" ))
 
         # set Write Timeout
         iwto = iowkit.IowKitSetWriteTimeout(self.iow, self.writetimeout)
-        cdprint(fncname + getIowSetting("IowKitSetWriteTimeout", iwto, self.writetimeout, "ms - not implemented on Linux" ))
+        cdprint(defname + getIowSetting("IowKitSetWriteTimeout", iwto, self.writetimeout, "ms - not implemented on Linux" ))
 
         self.emptyReport = IOWKIT_SPECIAL_REPORT(0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00)
         self.reportSize  = ctypes.sizeof(self.emptyReport)
-        cdprint(fncname + getIowSetting("Size of Report", "----", self.reportSize, "0x{:02X}".format(self.reportSize)))
+        cdprint(defname + getIowSetting("Size of Report", "----", self.reportSize, "0x{:02X}".format(self.reportSize)))
 
         self.numPipe     = IOW_PIPE_SPECIAL_MODE
-        cdprint(fncname + getIowSetting("Pipe Number", "----", self.numPipe.value, "0x{:02X}".format(self.numPipe.value)))
+        cdprint(defname + getIowSetting("Pipe Number", "----", self.numPipe.value, "0x{:02X}".format(self.numPipe.value)))
 
         # Set IOWarrior to I2C mode
-        cdprint(fncname + self.IOWsetModeI2C())
+        cdprint(defname + self.IOWsetModeI2C())
 
         setIndent(0)
         portmsg = "USB"
@@ -261,9 +261,9 @@ class IOWdongle:
     def DongleTerminate(self):
         """ Close the I2C IOW dongle - has no meaning on IOW"""
 
-        fncname = "DongleTerminate: "
+        defname = "DongleTerminate: "
         msg = "Terminating dongle {}".format(self.name)
-        return fncname + msg
+        return defname + msg
 
 
     def DongleReset(self):
@@ -339,7 +339,7 @@ class IOWdongle:
         # duration IOW: 6.6 ... 8.0 ms per address (with or without IOW printing)
 
         start   = time.time()
-        fncname = "DongleAddrIsUsed: addr: 0x{:02X}: ".format(addr)
+        defname = "DongleAddrIsUsed: addr: 0x{:02X}: ".format(addr)
 
         rbytes   = 1
         register = 0x00
@@ -348,7 +348,7 @@ class IOWdongle:
             self.IOWwriteData(addr, register, data)
             ret, rep = self.IOWreadData(rbytes)
         except Exception as e:
-            exceptPrint(e, fncname)
+            exceptPrint(e, defname)
 
         if rep[0] == 2:                             # is Acknowledge Report
             if rep[1] & 0x80:   check = "NoACK"     # error bit is set; Addr is NOT used
@@ -357,7 +357,7 @@ class IOWdongle:
             check = "wrong report ID"               # has happened, do what?
 
         duration = 1000 * (time.time() - start)
-        # edprint(fncname + "result: {}  dur: {:0.2f}".format(check, duration))
+        # edprint(defname + "result: {}  dur: {:0.2f}".format(check, duration))
 
         if check == "ACK": return True
         else:              return False
@@ -368,7 +368,7 @@ class IOWdongle:
         def DongleWriteReg(self, addr, register, readbytes, data, addrScheme=1, msg=""):
         def DongleGetData (self, addr, register, readbytes, data, addrScheme=1, msg=""):
         into one, with error checking after write
-        wait it wait phase between write and read call
+        wait is wait phase between write and read call
         """
 
         # write the data to the register
@@ -401,8 +401,8 @@ class IOWdongle:
         # data     : any data bytes to write as list of byte values like: [0, 0, 7]
         # command  : LM75 on dongle ELV:   b'S 91 02 P'       # prepare to read 2 bytes from previously set Temp register (=0x00)
 
-        fncname = "   {:15s}: {:15s} ".format("DongleWriteReg", msg)
-        cdprint(fncname, " addr:{:02X} reg:{:04X}  data:{}".format(addr, register, data))
+        defname = "   {:15s}: {:15s} ".format("DongleWriteReg", msg)
+        cdprint(defname, " addr:{:02X} reg:{:04X}  data:{}".format(addr, register, data))
 
         setIndent(1)
         wrt = self.IOWwriteData(addr, register, data, addrScheme=addrScheme, msg=msg)
@@ -421,19 +421,19 @@ class IOWdongle:
         received, but give up and return with [] after 3 retries
         return: list of values like: [1, 144, 76]"""
 
-        fncname = "   {:15s}: {:15s} ".format("DongleGetData", msg)
+        defname = "   {:15s}: {:15s} ".format("DongleGetData", msg)
 
         # no read required; return empty list
         if readbytes == 0:
-            playWav("err")
-            rdprint(fncname + "readbytes == 0")
+            burp()
+            rdprint(defname + "readbytes == 0")
             return []
 
-        cdprint(fncname, " addr:{:02X} readbytes:{}".format(addr, readbytes))
+        cdprint(defname, " addr:{:02X} readbytes:{}".format(addr, readbytes))
         setIndent(1)
 
         # init the read
-        gglobs.I2CDongle.IOWInitRead(addr, readbytes, msg=msg)
+        g.I2CDongle.IOWInitRead(addr, readbytes, msg=msg)
 
         # a single report has space for only 6 bytes.
         # when more are needed, repeat reading reports until you have all bytes
@@ -451,14 +451,14 @@ class IOWdongle:
             ret, rep = self.IOWreadData(readbytes, msg=msg)
             if rep[0] == 3:
                 if rep[1] & 0x80:       # error bit is set
-                    edprint(fncname + "Error Bit set - Repeating Read in loop: #", loop)
+                    edprint(defname + "Error Bit set - Repeating Read in loop: #", loop)
                     repcounts += 1
                 else:
                     sumrep += rep[2:]
                     bytes_received += 6
             else:
                 # sometimes repID==2 is found; loop until correct (helpful?)
-                edprint(fncname + "--------------- Wrong reportID - got:#{:02X}, expected #03 - Repeating Read in loop: #{}".format(rep[0], loop))
+                edprint(defname + "--------------- Wrong reportID - got:#{:02X}, expected #03 - Repeating Read in loop: #{}".format(rep[0], loop))
                 repcounts += 1
 
             # if repcounts > 3: return []  # if more than 3 errors return []
@@ -467,7 +467,7 @@ class IOWdongle:
                 break
 
         answ  = sumrep[:readbytes]      # reports give multiple of 6 bytes; take only as many a called for
-        cdprint(fncname + "Answer:  ", convertB2Hex(answ))
+        cdprint(defname + "Answer:  ", convertB2Hex(answ))
 
         setIndent(0)
 
@@ -478,7 +478,7 @@ class IOWdongle:
         """ Writing to the sensor """
 
         start = time.time()
-        fncname = "   {:12s}: {:15s} ".format("IOWwriteData", msg)
+        defname = "   {:12s}: {:15s} ".format("IOWwriteData", msg)
 
         if    addrScheme == 1:  reglen  = 1
         elif  addrScheme == 2:  reglen  = 2
@@ -494,7 +494,7 @@ class IOWdongle:
         if wdlen <= 5:
             # all data fit into one single report
             ikw, report = self.IOWwriteReport([addr8] + wdata, start=True, stop=True)
-            cdprint("{:15s} ikw:{} report#2: {}".format(fncname, ikw, self.IOWgetReportAsText(report)))
+            cdprint("{:15s} ikw:{} report#2: {}".format(defname, ikw, self.IOWgetReportAsText(report)))
 
 
         else:
@@ -525,7 +525,7 @@ class IOWdongle:
             ikw, report = self.IOWwriteReport(data, start=False, stop=True)
 
         duration = 1000 * (time.time() - start)
-        # edprint(fncname + "dur: {:0.1f}".format(duration))
+        # edprint(defname + "dur: {:0.1f}".format(duration))
 
         return ikw
 
@@ -534,11 +534,11 @@ class IOWdongle:
         """report ID = 2   write a single report """
 
         start = time.time()
-        fncname = "   {:12s}: {:15s} ".format("IOWwriteReport", msg)
+        defname = "   {:12s}: {:15s} ".format("IOWwriteReport", msg)
 
         lenwdata = len(wdata)
         if lenwdata  > 6:
-            cdprint(fncname + "Programming ERROR in IOWwriteReport: Can't write more than 6 bytes in single report!")
+            cdprint(defname + "Programming ERROR in IOWwriteReport: Can't write more than 6 bytes in single report!")
             sys.exit()
 
         flags             = 0x00
@@ -548,7 +548,7 @@ class IOWdongle:
         # print("start, stop, flags: ", start, stop, hex(flags), bin(flags))
 
         data     = wdata + [0x00, 0x00, 0x00, 0x00, 0x00, 0x00] # use only the first 6 items to construct report
-        # print(fncname + "data:", data)
+        # print(defname + "data:", data)
 
         report = IOWKIT_SPECIAL_REPORT(
                                         0x02,       # report ID = 2
@@ -576,7 +576,7 @@ class IOWdongle:
         ikw = iowkit.IowKitWrite(self.iow, self.numPipe, ctypes.byref(report), self.reportSize)
 
         duration = 1000 * (time.time() - start)
-        # edprint(fncname + "dur: {:0.1f}".format(duration))
+        # edprint(defname + "dur: {:0.1f}".format(duration))
 
         return ikw, report
 
@@ -585,14 +585,14 @@ class IOWdongle:
         """ Read max of 6 bytes from sensor """
 
         start = time.time()
-        fncname = "   {:12s}: {:15s} ".format("IOWreadData", msg)
+        defname = "   {:12s}: {:15s} ".format("IOWreadData", msg)
 
         # get an empty report; it'll be filled by the IowKitRead read
         report = copy.copy(self.emptyReport)
         ikr    = iowkit.IowKitRead(self.iow, self.numPipe, ctypes.byref(report), self.reportSize)
 
         duration = 1000 * (time.time() - start)
-        cdprint("{:15s} ikr:{} report#?: {}  dur:{:0.3f}".format(fncname, ikr, self.IOWgetReportAsText(report), duration))
+        cdprint("{:15s} ikr:{} report#?: {}  dur:{:0.3f}".format(defname, ikr, self.IOWgetReportAsText(report), duration))
 
         return ikr, report
 
@@ -603,7 +603,7 @@ class IOWdongle:
         global IOWKIT_SPECIAL_REPORT, iowkit
 
         start   = time.time()
-        fncname = "   {:12s}: {:15s} ".format("IOWInitRead", msg)
+        defname = "   {:12s}: {:15s} ".format("IOWInitRead", msg)
 
         addr8  = (addr << 1) + 1               # LM75: 7bit:0x48 -> 8bit:0x91
         report = IOWKIT_SPECIAL_REPORT(
@@ -620,7 +620,7 @@ class IOWdongle:
         ikw = iowkit.IowKitWrite(self.iow, self.numPipe, ctypes.byref(report), self.reportSize)
 
         duration = 1000 * (time.time() - start)
-        cdprint("{:15s} ikw:{} report#2: {}".format(fncname, ikw, self.IOWgetReportAsText(report)))
+        cdprint("{:15s} ikw:{} report#2: {}".format(defname, ikw, self.IOWgetReportAsText(report)))
 
 
     def IOWsetModeI2C(self):
@@ -628,7 +628,7 @@ class IOWdongle:
 
         global IOWKIT_SPECIAL_REPORT, iowkit
 
-        fncname = "IOWsetModeI2C"
+        defname = "IOWsetModeI2C"
 
         report = IOWKIT_SPECIAL_REPORT(
                                         0x01, # report ID = 1
@@ -645,7 +645,7 @@ class IOWdongle:
 
         ikw = iowkit.IowKitWrite(self.iow, self.numPipe, ctypes.byref(report), self.reportSize)
 
-        return "{:30s}: ikw:{} report: {}".format(fncname, ikw, self.IOWgetReportAsText(report))
+        return "{:30s}: ikw:{} report: {}".format(defname, ikw, self.IOWgetReportAsText(report))
 
 
     def IOWgetReportAsText (self, report):

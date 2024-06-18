@@ -1,5 +1,6 @@
 
 // gwebj_w_gauge_amb.js
+// NOTE:     PowerGauge: see: https://github.com/e-tinkers/d3-dashboard-gauge
 
 var myMinValue      = 0.8;
 var myMaxValue      = 80000;

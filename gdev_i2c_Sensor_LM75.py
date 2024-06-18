@@ -24,11 +24,11 @@ I2C sensor module LM75(B) - Digital temperature sensor and thermal watchdog
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 # LM75B Digital temperature sensor and thermal watchdog
 # LM75:   9 bit resolution
@@ -66,34 +66,39 @@ class SensorLM75:
     addr    = 0x48              # addr options: 0x48 | 0x49 | 0x4A | 0x4B | 0x4C | 0x4D | 0x4E | 0x4F
     name    = "LM75"
     subtype = "LM75B"
+    handle  = g.I2CDongle       # default for use by 'I2C' device; RaspiI2C defines its own
 
 
-    def __init__(self, addr):
+    def __init__(self, addr, I2Chandle=None):
         """Init SensorLM75 class"""
 
         self.addr    = addr
+        if I2Chandle is not None: self.handle = I2Chandle
 
 
     def SensorInit(self):
         """Check for presence of sensor"""
 
-        fncname = "SensorInit: " + self.name + ": "
-        dmsg    = "Sensor {:8s} at address 0x{:02X} set for subtype {}".format(self.name, self.addr, self.subtype)
-
-        dprint(fncname)
+        defname = "SensorInit: " + self.name + ": "
+        # dprint(defname)
         setIndent(1)
 
         # check for presence of an I2C device at I2C address
-        if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
+        if self.handle.DongleIsSensorPresent(self.addr):
+            # sensor device found
+            gdprint(defname, "Found an I2C device at address 0x{:02X}".format(self.addr))
+        else:
             # no device found
             setIndent(0)
             return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
-        else:
-            # device found
-            gdprint("Found an I2C device at address 0x{:02X}".format(self.addr))
+
+        # Sensor Reset (is dummy)
+        gdprint(defname, self.SensorReset())
 
         setIndent(0)
-        return (True,  "Initialized " + dmsg)
+
+        dmsg    = "sensor {:8s} at address 0x{:02X} set for subtype {}".format(self.name, self.addr, self.subtype)
+        return (True, dmsg)
 
 
     def SensorgetValues(self):
@@ -107,9 +112,9 @@ class SensorLM75:
         # remaining in the period
 
         # sensor via ELV braucht diese sequence:
-        # wrt       = gglobs.I2CDongle.ELVwriteBytes(b"S 90 00 P")  # adressierung reg
-        # wrt       = gglobs.I2CDongle.ELVwriteBytes(b"S 91 02 P")  # init reading
-        # answ      = gglobs.I2CDongle.ELVreadBytes(readbytes)      # reading
+        # wrt       = self.handle.ELVwriteBytes(b"S 90 00 P")  # adressierung reg
+        # wrt       = self.handle.ELVwriteBytes(b"S 91 02 P")  # init reading
+        # answ      = self.handle.ELVreadBytes(readbytes)      # reading
 
         # measurement duration:
         #   mit dongle ISS:   SensorgetValues: Temp:25.125,  duration:  1.1 ...  2.1 ms   (avg: 1.4)  1.0x
@@ -118,28 +123,28 @@ class SensorLM75:
         #   mit dongle FTD:   SensorgetValues: Temp:23.750,  duration: 31.7 ... 49.4 ms   (avg:33.1) 23.6x
 
         start = time.time()
-        fncname = "SensorgetValues: " + self.name + ": "
-        cdprint(fncname)
+        defname  = "SensorgetValues: {:10s}: ".format(self.name)
+        # dprint(defname)
         setIndent(1)
 
         tmsg      = "getData"
         register  = 0x00
         readbytes = 2
         data      = []
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
         if len(answ) == readbytes:
             Temp = self.LM75calcTemperature(*answ)
             msg = ""
         elif len(answ) == 0:
-            Temp = gglobs.NAN
+            Temp = g.NAN
             msg = BOLDRED + "No data returned: answ= '{}'".format(answ)
         else:
-            Temp = gglobs.NAN
+            Temp = g.NAN
             msg = BOLDRED + "Improper data returned: answ= '{}'".format(answ)
 
         duration = (time.time() - start) * 1000
-        cdprint(fncname + "Temp:{:<6.3f},  duration:{:<0.2f} ms  ".format(Temp, duration), msg)
+        # gdprint(defname, "T:{:<6.3f}   dur:{:<0.1f} ms  ".format(Temp, duration), msg)
         setIndent(0)
         return (Temp,)
 
@@ -149,7 +154,7 @@ class SensorLM75:
         info  = "{}\n"                             .format("Temperature")
         info += "- Address:         0x{:02X}\n"    .format(self.addr)
         info += "- Subtype:         {}\n"          .format(self.subtype)
-        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in gglobs.Sensors["LM75"][5]))
+        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in g.Sensors["LM75"][5]))
 
         return info.split("\n")
 
@@ -157,7 +162,9 @@ class SensorLM75:
     def SensorReset(self):
         """Reset LM75 Temp sensor - option does not exist"""
 
-        return "has no resetting option"
+        defname = "SensorReset: "
+
+        return defname + "(dummy reset)"
 
 
     def LM75runAllFunctions(self):

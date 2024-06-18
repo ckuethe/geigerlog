@@ -24,28 +24,28 @@ I2C module BME280 - for Temperature, Pressure, Humidity
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-"""
-Barometric pressure: (use for altitude correction)
-Sea level standard pressure:  1013.25 hPa
-Barometric formula: p = p0 * exp(- H / H0), with H0 =7990m
-p @ Altitude 85m:  p= 1013.25 * exp(-85/7990) = 1013.25 * 0,98942  = 1002,53
 
-Info on Sensor Module Bluedot:
-https://www.bluedot.space/bme280-tsl2591/
-Vendor Reference: BME280 + TSL2591, ASIN: B0795WWXX8
-"Please note that the BME280 is hardwired to use the I2C Address 0x77. The
-alternative Address (0x76) is not available! "
+# Barometric pressure: (use for altitude correction)
+# Sea level standard pressure:  1013.25 hPa
+# Barometric formula: p = p0 * exp(- H / H0), with H0 =7990m
+# Example:            p @ Altitude 85m:  p= 1013.25 * exp(-85/7990) = 1013.25 * 0,98942  = 1002,53
+
+# NOTE: on Sensor Module Bluedot:
+# https://www.bluedot.space/bme280-tsl2591/
+# Vendor Reference: BME280 + TSL2591, ASIN: B0795WWXX8
+# TSL2591 @ address 0x29
+# "Please note that the BME280 is hardwired to use the I2C Address 0x77. The
+# alternative Address (0x76) is not available! "
 
 
 # =============================================================================
 # comparison of results obtained with the different dongles
 # all calibration points agree
-
 
 # Calibration Data for the BlueDot module BME280 + TSL2591
 # validation: data identical between the 2 dongles
@@ -137,53 +137,54 @@ alternative Address (0x76) is not available! "
 #ISS BME280  TX 10:47:54   [  4] [  4]  ctrl_meas            == b'U\xee\xf4\xd6'     == 55 EE F4 D6     # send 3 bytes, addr ee + F4 D6
 #ISS         ii 10:47:54   [  1] [  5]                       == b'V\xef\xf4\xd6\x01' == 56 EF F4 D6 01  # using CMD=56 (not 55): prep for reading 1 byte from addr EF, resending F4 D6
 #ISS         RX 10:47:54   [  1] [  1]                       == b'\xd6'              == D6              # success
-"""
 
 
-from   gsup_utils       import *
+
+from gsup_utils   import *
 
 
 class SensorBME280:
     """Code for the BME280 sensors"""
 
-    addr    = 0x76             # addr options: 0x76, 0x77
+    addr    = 0x76              # addr options: 0x76, 0x77
     id      = 0x60
     name    = "BME280"
+    handle  = g.I2CDongle       # default for use by 'I2C' device; RaspiI2C defines its own
 
 
-    def __init__(self, addr):
+    def __init__(self, addr, I2Chandle=None):
         """Init SensorBME280 class"""
 
         self.addr    = addr
+        if I2Chandle is not None: self.handle = I2Chandle
 
 
     def SensorInit(self):
         """Reset, check ID, set reg hum, get calibration, trigger measurement"""
 
-        fncname = "SensorInit: " + self.name + ": "
-        dmsg    = "Sensor {:8s} at address 0x{:02X} with ID 0x{:02x}".format(self.name, self.addr, self.id)
-
-        dprint(fncname)
+        defname = "SensorInit: " + self.name + ": "
+        # dprint(defname)
         setIndent(1)
 
-        # check for presence of an I2C device at I2C address
-        if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
+        ### check for presence of an I2C device at address
+        if self.handle.DongleIsSensorPresent(self.addr):
+            # device found
+            gdprint(defname, "Found an I2C device at address 0x{:02X}".format(self.addr))
+        else:
             # no device found
             setIndent(0)
             return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
-        else:
-            # device found
-            gdprint("Found an I2C device at address 0x{:02X}".format(self.addr))
 
         # check ID
         tmsg      = "checkID"
         register  = 0xD0
         readbytes = 1
         data      = []
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
         if len(answ) == readbytes and answ[0] == self.id:
-            response = (True,  "Initialized " + dmsg)
-            gdprint("Sensor {} at address 0x{:02X} has proper ID: 0x{:02X}".format(self.name, self.addr, self.id))
+            dmsg     = "sensor {:8s} at address 0x{:02X} with ID 0x{:02x}".format(self.name, self.addr, self.id)
+            # response = (True,  dmsg)
+            gdprint(defname, "Sensor has expected ID: 0x{:02X}".format(self.id))
         else:
             setIndent(0)
             return (False, "Failure - Did find sensor, but ID: '{}' is not as expected: 0x{:02X}".format(answ, self.id))
@@ -194,39 +195,60 @@ class SensorBME280:
         register  = 0xE0
         readbytes = 0
         data      = [0xB6]
-        wrt       = gglobs.I2CDongle.DongleWriteReg (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+
 
         # set ctrl-hum
-        # b101 = 0x05 = oversampling * 16
         tmsg      = "Ctrl_hum"
         register  = 0xf2
         readbytes = 1
-        data      = [0x05]
-        answ      = gglobs.I2CDongle.DongleWriteRead(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        # data    = [0x05]       # oversampling ×16
+        # data    = [0x01]       # oversampling ×1
+        # data    = [0b00000010] # oversampling ×2
+        data      = [0b00000011] # oversampling ×4
+        answ      = self.handle.DongleWriteRead(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
-        # Calibration Data calib00...calib25 (0x88 ... 0x9F) 24 values
+
+        # get Calibration Data calib00...calib25 (0x88 ... 0x9F) 24 values
         tmsg      = "calib1 24"
         register  = 0x88
         readbytes = 24
         data      = []
-        self.cal1 = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        self.cal1 = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
-        # Calibration Data calib26...calib41 (0xA1 ) 1 value
+
+        # get Calibration Data calib26...calib41 (0xA1 ) 1 value
         tmsg      = "calib2 1"
         register  = 0xA1
         readbytes = 1
         data      = []
-        self.cal2 = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        self.cal2 = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
-        # Calibration Data calib26...calib41 (0xe1 ... 0xe7) 7 values
+
+        # get Calibration Data calib26...calib41 (0xe1 ... 0xe7) 7 values
         tmsg      = "calib3 7"
         register  = 0xe1
         readbytes = 7
         data      = []
-        self.cal3 = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        self.cal3 = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+
+        # Full reset
+        gdprint(defname, self.SensorReset())
 
         setIndent(0)
-        return response
+        return (True,  dmsg)
+
+
+    def getStatus(self):
+        """get Status of BME280"""
+
+        tmsg      = "getStatus"
+        register  = 0xF3
+        readbytes = 1
+        data      = []
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+
+        return answ
 
 
     def SensorgetValues(self):
@@ -250,27 +272,39 @@ class SensorBME280:
         # on dongle ISS:  100 kHz BME280:(BME280 as only activated module)  duration:  2.9 ...  7.1 ms (avg: 3.8)
 
         start    = time.time()
-        fncname  = "SensorgetValues: " + self.name + ": "
-        fail     = False
-        response = (gglobs.NAN,) * 3
-        cdprint(fncname)
+        defname  = "SensorgetValues: {:10s}: ".format(self.name)
+        # cdprint(defname)
         setIndent(1)
+
+        fail     = False
+        nanresp  = (g.NAN,) * 3
 
         # trigger measurement
         try:
             tmsg      = "ctrl_meas"
             register  = 0xf4
             readbytes = 1
-            data      = [0xd6]
-            answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
-        except Exception as e:
-            exceptPrint(e, "ctrl_meas")
-            fail = True
+            # data    = [0xd6] #  = b110 101 10 Oversampling: T=b110 -->16x, P=b101 -->16x, mode=b10 -->Forced (hum also was 16x)
+            # data    = [0x26] #  = b001 001 10 Oversampling: T=b001 --> 1x, P=b001 --> 1x, mode=b10 -->Forced Ready: +hum=1x:-->1x:24 ms
+            # data    = [0x4A] #  = b010 010 10 Oversampling: T=b010 --> 2x, P=b010 --> 2x, mode=b10 -->Forced Ready: +hum=b10-->2x:24 ms
+            data      = [0x6E] #  = b011 011 10 Oversampling: T=b011 --> 4x, P=b011 --> 4x, mode=b10 -->Forced Ready: +hum=b11-->4x:32 ms
+            answ      = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=1, msg="")
+            loop = 0
+            while loop < 100:
+                status = self.getStatus()[0]
+                # rdprint(defname, "loop: {}  status: {:08b}  Bit3:{} Bit0:{}".format(loop, status, status & 0b1000, status & 0b0001 ))
+                if status & 0b1000 == 0: break      # data are ready
+                time.sleep(0.005)
+                loop += 1
 
-        if fail or len(answ) != readbytes:
-            rdprint(fncname + tmsg + " failed, giving up")
-            setIndent(0)
-            return response
+        except Exception as e:
+            exceptPrint(e, tmsg)
+            return nanresp
+
+        # if fail or len(answ) != readbytes:
+        #     rdprint(defname + tmsg + " failed, giving up")
+        #     setIndent(0)
+        #     return nanresp
 
         # get raw data
         try:
@@ -278,29 +312,31 @@ class SensorBME280:
             register  = 0xf7
             readbytes = 8
             data      = []
-            answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+            answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+
         except Exception as e:
             exceptPrint(e, "get data F7..FE")
             fail = True
 
+        # check for valid data
         # answ == [128, 0, 0, 128, 0, 0, 128, 0]: does happen in first 1 or even first 2 calls
         if fail or len(answ) != readbytes or answ == [128, 0, 0, 128, 0, 0, 128, 0]:
-            rdprint(fncname + tmsg + " failed, giving up")
+            rdprint(defname + tmsg + " failed, giving up")
             setIndent(0)
-            return response
+            return nanresp
 
-        # convert raw data
+        # get raw data and convert
         try:
             t_raw, p_raw, h_raw = self.BME280getRawData(answ)
-            response            = readBME280All(self.cal1, self.cal2, self.cal3, p_raw, t_raw, h_raw) # response = t, p, h
+            t, p, h             = readBME280All(self.cal1, self.cal2, self.cal3, p_raw, t_raw, h_raw)
         except Exception as e:
-            exceptPrint(e, "convert raw data")
+            exceptPrint(e, "converting raw data")
 
         duration = (time.time() - start) * 1000
-        gdprint(fncname + "Values:  T:{:<6.3f}, P:{:<6.3f}, H:{:<6.3f} duration:{:<0.1f} ms".format(*response, duration))
+        # gdprint(defname, "T:{:<6.3f}, P:{:<6.3f}, H:{:<6.3f}   dur:{:<0.1f} ms".format(t, p, h, duration))
         setIndent(0)
 
-        return response
+        return (t, p, h)
 
 
     def BME280getRawData(self, rec):
@@ -324,33 +360,35 @@ class SensorBME280:
 
         start = time.time()
 
-        fncname = "SensorReset: "
-        # dprint(fncname)
+        defname = "SensorReset: "
+        # dprint(defname)
 
         # 5.4.2 Register 0xE0 “reset”
         # If the value 0xB6 is written to the register, the device is reset using the complete
         # power-on-reset procedure. Writing other values than 0xB6 has no effect. The readout
         # value is always 0x00.
-        tmsg      = "Reset"
+        tmsg      = "reset"
         register  = 0xe0
         readbytes = 1
         data      = [0xb6]
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)   # answ is []
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)   # answ is []
 
         # 5.4.3 Register 0xF2 “ctrl_hum”
         # The “ctrl_hum” register sets the humidity data acquisition options of the device. Changes to this
         # register only become effective after a write operation to “ctrl_meas”.
         # Bit 2, 1, 0  Controls oversampling of humidity data.
+        # 001 (=0x01) : Humidity oversampling ×1
+        # 011 (=0x03) : Humidity oversampling ×4
         # 101 (=0x05) : Humidity oversampling ×16
-        tmsg      = "ctr_hum"
+        tmsg      = "ctrl_hum"
         register  = 0xf2
         readbytes = 1
-        data      = [0x05]
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)  # answ is [5]
+        data      = [0x03]
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)  # answ is [5]
 
         duration  = 1000 * (time.time() - start)
 
-        return "Done in {:0.1f} ms (Reset + Ctrl-hum = 5)".format(duration)
+        return defname + "reset & ctrl_hum =>{}; dur:{:0.1f} ms ".format(data[0], duration)
 
 
     def SensorGetInfo(self):
@@ -358,7 +396,7 @@ class SensorBME280:
         info  = "{}\n"                             .format("Temperature, Pressure, Humidity")
         info += "- Address:         0x{:02X}\n"    .format(self.addr)
         info += "- ID:              0x{:02X}\n"    .format(self.id)
-        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in gglobs.Sensors["BME280"][5]))
+        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in g.Sensors["BME280"][5]))
 
         return info.split("\n")
 

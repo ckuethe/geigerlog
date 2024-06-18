@@ -23,7 +23,7 @@ Devantech USB-ISS Dongle
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -44,7 +44,7 @@ __license__         = "GPL3"
 # more: https://community.keyboard.io/t/device-or-resource-busy/451/5
 
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 
 class ISSdongle:
@@ -68,14 +68,14 @@ class ISSdongle:
     def DongleInit(self):
         """opening the serial port and testing for correct dongle"""
 
-        fncname = "DongleInit: {} ".format(self.name)
-        dprint(fncname)
+        defname = "DongleInit: {} ".format(self.name)
+        dprint(defname)
         setIndent(1)
 
-        if gglobs.I2Cusbport   == "auto" : gglobs.I2Cusbport  = None
-        if gglobs.I2Cbaudrate  == "auto" : gglobs.I2Cbaudrate = 115200
-        if gglobs.I2CtimeoutR  == "auto" : gglobs.I2CtimeoutR = 3
-        if gglobs.I2CtimeoutW  == "auto" : gglobs.I2CtimeoutW = 1
+        if g.I2Cusbport   == "auto" : g.I2Cusbport  = None
+        if g.I2Cbaudrate  == "auto" : g.I2Cbaudrate = 115200
+        if g.I2CtimeoutR  == "auto" : g.I2CtimeoutR = 3
+        if g.I2CtimeoutW  == "auto" : g.I2CtimeoutW = 1
 
         # open serial port
         success, portmsg  = self.ISSOpenPort()
@@ -111,17 +111,17 @@ class ISSdongle:
     def DongleTerminate(self):
         """Close the I2C serial port and set serial handle to None"""
 
-        fncname = "DongleTerminate: "
+        defname = "DongleTerminate: "
         msg     = "Closing Serial Port of Dongle {}".format(self.name)
         try:
-            gglobs.I2CDongle.DongleSer.close()
+            g.I2CDongle.DongleSer.close()
         except Exception as e:
             msg = "Exception " + msg
             exceptPrint(e, msg)
 
-        gglobs.I2CDongle.DongleSer = None # will be renewed on init
+        g.I2CDongle.DongleSer = None # will be renewed on init
 
-        return fncname + msg
+        return defname + msg
 
 
     def DongleReset(self):
@@ -157,17 +157,17 @@ class ISSdongle:
 
         # duration: 0.27 ... 0.39 ms per address
 
-        fncname = "DongleAddrIsUsed: "
+        defname = "DongleAddrIsUsed: "
 
         command = b'\x58' + bytes([addr << 1])
         wrt     = self.ISSwriteBytes(command)
         bread   = self.ISSreadBytes(1)
 
         if    int(bread[0]) == 0:
-            # edprint(fncname + "No device detected")
+            # edprint(defname + "No device detected")
             return False
         else:
-            # edprint(fncname + "Found a device")
+            # edprint(defname + "Found a device")
             return True
 
 
@@ -189,7 +189,7 @@ class ISSdongle:
         def DongleWriteReg(self, addr, register, readbytes, data, addrScheme=1, msg=""):
         def DongleGetData (self, addr, register, readbytes, data, addrScheme=1, msg=""):
         into one, with error checking after write
-        wait it wait phase between write and read call
+        wait is wait phase between write and read call
         """
 
         wrt  = self.DongleWriteReg(addr, register, readbytes, data, addrScheme=addrScheme, msg=msg)
@@ -215,8 +215,8 @@ class ISSdongle:
         # readbytes: number of bytes to read (not relevant here)
         # data     : any data bytes to write as list
 
-        fncname = "   {:15s}: {:15s} ".format("DongleWriteReg", msg)
-        # dprint(fncname)
+        defname = "   {:15s}: {:15s} ".format("DongleWriteReg", msg)
+        # dprint(defname)
 
         if    addrScheme == 1:  reglen  = 1
         elif  addrScheme == 2:  reglen  = 2
@@ -243,8 +243,8 @@ class ISSdongle:
 
         brec = self.ISSreadBytes(1, msg=msg)        # read byte to clean up
         lrec = list(brec)                           # make list of bytes from byte sequence
-        if len(brec) == 0:      edprint(fncname + "no return byte")
-        cdprint(fncname + "bwrt:{:3n}  {:50s}  bexp:{:2n} brcvd:{:2n} {}".format(wrt, convertB2Hex(bcmd), 1, len(lrec), lrec))
+        if len(brec) == 0:      edprint(defname + "no return byte")
+        cdprint(defname + "bwrt:{:3n}  {:50s}  bexp:{:2n} brcvd:{:2n} {}".format(wrt, convertB2Hex(bcmd), 1, len(lrec), lrec))
 
         return wrt
 
@@ -257,8 +257,8 @@ class ISSdongle:
         # readbytes: number of bytes to read
         # data     : any data bytes to write (not relevant here)
 
-        fncname = "   {:15s}: {:15s} ".format("DongleGetData", msg)
-        # dprint(fncname)
+        defname = "   {:15s}: {:15s} ".format("DongleGetData", msg)
+        # dprint(defname)
 
         if    addrScheme == 1:  reglen  = 1
         elif  addrScheme == 2:  reglen  = 2
@@ -275,7 +275,7 @@ class ISSdongle:
         brec = self.ISSreadBytes(readbytes, msg=msg)                # read byte sequence:
         lrec = list(brec)                                           # make list of bytes from byte sequence
 
-        cdprint(fncname + "bwrt:{:3n}  {:50s}  bexp:{:2n} brcvd:{:2n} {}".format(wrt, convertB2Hex(bcmd), readbytes, len(lrec), lrec))
+        cdprint(defname + "bwrt:{:3n}  {:50s}  bexp:{:2n} brcvd:{:2n} {}".format(wrt, convertB2Hex(bcmd), readbytes, len(lrec), lrec))
 
         return lrec
 
@@ -296,7 +296,7 @@ class ISSdongle:
         #   Send    0x5A, 0x01.
         #   Receive 0x07, 0x02, 0x40.
 
-        fncname = "ISSgetVersion: "
+        defname = "ISSgetVersion: "
         rdef    = "Dongle {} responded with ".format(self.name)
 
         # Ergebins: 15.6 second bei 9600 baud setting
@@ -304,8 +304,8 @@ class ISSdongle:
         # Ergebins: 15.7 second bei 921600 baud setting
         # dprint("starting")
         # for i in range(100000):
-        #     wrt  = gglobs.I2CDongle.DongleSer.write(b'\x5A\x01')     # wrt  = no of bytes written
-        #     rec = gglobs.I2CDongle.DongleSer.read(3)
+        #     wrt  = g.I2CDongle.DongleSer.write(b'\x5A\x01')     # wrt  = no of bytes written
+        #     rec = g.I2CDongle.DongleSer.read(3)
         # dprint("stopped")
 
         wrt  = self.ISSwriteBytes(b'\x5A\x01')  # ISSgetVersion
@@ -426,17 +426,17 @@ class ISSdongle:
         """write to the ISS dongle"""
 
         start   = time.time()
-        fncname = "{:15s}: {:15s} ".format("ISSwriteBytes", msg)
+        defname = "{:15s}: {:15s} ".format("ISSwriteBytes", msg)
         setIndent(1)
 
         try:
-            wrt  = gglobs.I2CDongle.DongleSer.write(writebytes)     # wrt  = no of bytes written
+            wrt  = g.I2CDongle.DongleSer.write(writebytes)     # wrt  = no of bytes written
         except Exception as e:
-            exceptPrint(fncname + str(e), "")
+            exceptPrint(defname + str(e), "")
             wrt  = -99
 
         duration = (time.time() - start ) * 1000
-        # cdprint(fncname + "bwrt:{:3d}  {:50s}  dur:{:0.3f} ms".format(wrt, convertB2Hex(writebytes), duration))
+        # cdprint(defname + "bwrt:{:3d}  {:50s}  dur:{:0.3f} ms".format(wrt, convertB2Hex(writebytes), duration))
 
         setIndent(0)
         return wrt
@@ -446,25 +446,25 @@ class ISSdongle:
         """read from the dongle"""
 
         start = time.time()
-        fncname = "{:15s}: {:15s} ".format("ISSreadBytes", msg)
+        defname = "{:15s}: {:15s} ".format("ISSreadBytes", msg)
         setIndent(1)
 
         try:
-            rec = gglobs.I2CDongle.DongleSer.read(bytecount)
+            rec = g.I2CDongle.DongleSer.read(bytecount)
             while True:
-                wcount = gglobs.I2CDongle.DongleSer.in_waiting
+                wcount = g.I2CDongle.DongleSer.in_waiting
                 if wcount == 0: break
-                # print(fncname + "wcount: ", wcount, ", bytecount: ", bytecount)
-                rec += gglobs.I2CDongle.DongleSer.read(wcount)
+                # print(defname + "wcount: ", wcount, ", bytecount: ", bytecount)
+                rec += g.I2CDongle.DongleSer.read(wcount)
                 time.sleep(0.005)
 
         except Exception as e:
-            msg = fncname + "Exception Failure reading ISS bytes"
+            msg = defname + "Exception Failure reading ISS bytes"
             exceptPrint(e, msg)
             rec = []
 
         duration = (time.time() - start ) * 1000
-        # cdprint(fncname + "bexp:{:3d}  {:50s}  dur:{:0.3f} ms".format(bytecount, convertB2Hex(rec), duration))
+        # cdprint(defname + "bexp:{:3d}  {:50s}  dur:{:0.3f} ms".format(bytecount, convertB2Hex(rec), duration))
 
         setIndent(0)
         return rec  # return rec as bytes sequence
@@ -508,9 +508,9 @@ class ISSdongle:
             #   iProduct                2
             #   iSerial                 3
 
-            fncname   = "ISSOpenPort - lcl_ISS_getSerialPortBaud: "
+            defname   = "ISSOpenPort - lcl_ISS_getSerialPortBaud: "
 
-            dprint(fncname + "for device '{}'".format(device))
+            dprint(defname + "for device '{}'".format(device))
             setIndent(1)
 
             portfound   = None
@@ -522,15 +522,15 @@ class ISSdongle:
 
             for port in ports:
                 if  port.vid == 0x04D8 and port.pid == 0xFFEE:
-                    gdprint(fncname, tmplt_match.format(device, port.device, port.vid, port.pid))
+                    gdprint(defname, tmplt_match.format(device, port.device, port.vid, port.pid))
                     baudrate = lcl_ISSautoBaudrate(port.device)
                     if baudrate is not None and baudrate > 0:
                         portfound = port.device
                         baudfound = baudrate
                         break
 
-            if portfound is not None: gdprint(fncname + tmplt_found.format(portfound, baudfound, port.description, port.vid, port.pid), " - Returning:", (portfound, baudfound))
-            else:                     rdprint(fncname + tmplt_found.format(portfound, baudfound, "", 0, 0), " - Returning:", (portfound, baudfound))
+            if portfound is not None: gdprint(defname + tmplt_found.format(portfound, baudfound, port.description, port.vid, port.pid), " - Returning:", (portfound, baudfound))
+            else:                     rdprint(defname + tmplt_found.format(portfound, baudfound, "", 0, 0), " - Returning:", (portfound, baudfound))
 
             setIndent(0)
             return (portfound, baudfound)
@@ -548,20 +548,20 @@ class ISSdongle:
             when all communication fails. On a serial error, baudrate=None will be returned.
             """
 
-            fncname = "lcl_ISSautoBaudrate: "
+            defname = "lcl_ISSautoBaudrate: "
 
-            dprint(fncname + "on port: '{}'".format(usbport))
+            dprint(defname + "on port: '{}'".format(usbport))
             setIndent(1)
 
-            baudrates = gglobs.I2Cbaudrates
+            baudrates = g.I2Cbaudrates
             baudrates.sort(reverse=True)                # to start with highest baudrate
             for baudrate in baudrates:
-                dprint(fncname + "Trying baudrate: ", baudrate)
+                dprint(defname + "Trying baudrate: ", baudrate)
                 try:
                     with serial.Serial(usbport, baudrate, timeout=0.5, write_timeout=0.5) as ABRser:
                         bwrt = ABRser.write(b'\x5A\x01')
                         brec = ABRser.read(3)
-                        # cdprint("---------------------" + fncname + "brec: ", brec)
+                        # cdprint("---------------------" + defname + "brec: ", brec)
                         while True:
                             time.sleep(0.05)
                             cnt = ABRser.in_waiting
@@ -570,11 +570,11 @@ class ISSdongle:
 
                     if len(brec) == 3 and brec[0] == self.module_id_def:
                         baudmsg = "SUCCESS with baudrate: {}".format(baudrate)
-                        gdprint("Dongle {} responded with proper ID: {}".format(gglobs.I2CDongleCode, self.module_id_def))
-                        gglobs.I2CDeviceDetected = "USB-ISS"
+                        gdprint("Dongle {} responded with proper ID: {}".format(g.I2CDongleCode, self.module_id_def))
+                        g.I2CDeviceDetected = "USB-ISS"
                         break
                     else:
-                        msg = "Dongle {} responded with improper ID".format(gglobs.I2CDongleCode)
+                        msg = "Dongle {} responded with improper ID".format(g.I2CDongleCode)
 
                 except Exception as e:
                     exceptPrint(e, "")
@@ -585,7 +585,7 @@ class ISSdongle:
                 baudmsg  = "FAILURE - No success at any baudrate"
                 baudrate = 0    # all communication failed
 
-            dprint(fncname + baudmsg)
+            dprint(defname + baudmsg)
             setIndent(0)
 
             return baudrate
@@ -593,36 +593,36 @@ class ISSdongle:
         ## end local ##################################################################################
 
 
-        fncname = "ISSOpenPort: "
+        defname = "ISSOpenPort: "
 
-        if gglobs.I2Cusbport == None:
+        if g.I2Cusbport is None:
             # auto-find port and baud
             port, baud = lcl_ISS_getSerialPortBaud("ISS")   # try to get both port and baud
             if port is None or baud is None:
                 return (False,  "A {} dongle was not detected".format(self.name))
             else:
-                gglobs.I2Cusbport  = port
-                gglobs.I2Cbaudrate = baud
+                g.I2Cusbport  = port
+                g.I2Cbaudrate = baud
                 msg = "A dongle {} was detected at port: {} and baudrate: {}".\
-                        format(self.name, gglobs.I2Cusbport, gglobs.I2Cbaudrate)
+                        format(self.name, g.I2Cusbport, g.I2Cbaudrate)
             fprint(msg)
             dprint(msg)
 
         else:
             # in non-None mode take the configured value
-            msg = "A dongle {} was <b>user configured</b> for port: {}".format(self.name, gglobs.I2Cusbport)
+            msg = "A dongle {} was <b>user configured</b> for port: {}".format(self.name, g.I2Cusbport)
 
             fprint(msg)
             dprint(msg)
 
             # it could be the wrong port! check for proper communication
-            newbaudrate = lcl_ISSautoBaudrate(gglobs.I2Cusbport)
+            newbaudrate = lcl_ISSautoBaudrate(g.I2Cusbport)
             if newbaudrate == 0 or newbaudrate is None:
                 setIndent(0)
                 return False, "Could not find a device"
 
 
-        portmsg = "Port:{}".format(gglobs.I2Cusbport)
+        portmsg = "Port:{}".format(g.I2Cusbport)
         msg     = "not set"
         repeats = 0
         lstart  = time.time()
@@ -632,25 +632,25 @@ class ISSdongle:
                 break
 
             try:
-                gglobs.I2CDongle.DongleSer = serial.Serial(gglobs.I2Cusbport)
-                gglobs.I2CDongle.DongleSer.flushInput() # helful?
+                g.I2CDongle.DongleSer = serial.Serial(g.I2Cusbport)
+                g.I2CDongle.DongleSer.flushInput() # helful?
                 msg = "Serial Device opened at {}".format(portmsg)
-                gdprint(fncname + msg)
+                gdprint(defname + msg)
                 tmsg = (True, msg)
                 break
 
             except OSError as e:
-                edprint(fncname + "OSError: ERRNO:{} ERRtext:'{}'".format(e.errno, e.strerror))
+                edprint(defname + "OSError: ERRNO:{} ERRtext:'{}'".format(e.errno, e.strerror))
                 repeats += 1
                 if e.errno == 2:
                     # port is missing
-                    msg = "Serial Port {} not available".format(gglobs.I2Cusbport)
+                    msg = "Serial Port {} not available".format(g.I2Cusbport)
                     tmsg = (False,  msg)
                     break
 
                 elif e.errno == 16:
                     # port is busy; may last > 16sec
-                    msg  = "Serial Port {} is busy. Please, wait up to 20 sec.".format(gglobs.I2Cusbport) + " time: {:0.0f} sec".format(time.time() - lstart)
+                    msg  = "Serial Port {} is busy. Please, wait up to 20 sec.".format(g.I2Cusbport) + " time: {:0.0f} sec".format(time.time() - lstart)
                     if repeats == 0: efprint(msg)
                     else:            qefprint(msg)
                     QtUpdate()
@@ -659,7 +659,7 @@ class ISSdongle:
 
                 else:
                     # what else there may be
-                    msg  = "Serial Port {} could not be opened.".format(gglobs.I2Cusbport) + " time: {:0.0f} sec".format(time.time() - lstart)
+                    msg  = "Serial Port {} could not be opened.".format(g.I2Cusbport) + " time: {:0.0f} sec".format(time.time() - lstart)
                     if repeats == 0: efprint(msg)
                     else:            qefprint(msg)
                     QtUpdate()
@@ -668,12 +668,12 @@ class ISSdongle:
 
             except Exception as e:
                 msg = "Serial Port for dongle {} at {} could not be opened".format(self.name, portmsg)
-                exceptPrint(e, fncname + "ERROR " + msg)
+                exceptPrint(e, defname + "ERROR " + msg)
                 tmsg = (False,  msg)
                 break
 
         fprint(msg)
         dprint(tmsg)
-        cdprint(fncname + "Exiting with msg: ", tmsg)
+        cdprint(defname + "Exiting with msg: ", tmsg)
         return tmsg
 

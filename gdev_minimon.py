@@ -23,7 +23,7 @@ gdev_minimon.py - GeigerLog commands to handle the MiniMon device
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -66,8 +66,7 @@ __license__         = "GPL3"
 #     LABEL="minimon_end"
 
 
-# import fcntl
-from   gsup_utils       import *
+from gsup_utils   import *
 
 
 def initMiniMon():
@@ -75,26 +74,26 @@ def initMiniMon():
 
     global fileHandleMiniMon, key, values, MiniMonThread, MiniMonThreadStop, old_alldata, old_time
 
-    fncname ="initMiniMon: "
+    defname ="initMiniMon: "
 
     if 'linux' not in sys.platform:             # Py3:'linux', Py2:'linux2'
-        return "MiniMon runs aon Linux only!"
+        return "MiniMon runs on Linux only!"
 
-    dprint(fncname + "Initializing MiniMon")
+    dprint(defname + "Initializing MiniMon Device")
     setIndent(1)
 
-    gglobs.Devices["MiniMon"][DNAME] = "MiniMon"
+    g.Devices["MiniMon"][g.DNAME] = "MiniMon"
 
-    if gglobs.MiniMonVariables == "auto": gglobs.MiniMonVariables = "Temp, None, Xtra"  # Temp=Temperatur, Humidity=ignored, Xtra=CO2
-    if gglobs.MiniMonOS_Device == "auto": gglobs.MiniMonOS_Device = "/dev/minimon"      # requires udev rule
-    if gglobs.MiniMonInterval  == "auto": gglobs.MiniMonInterval  = 60                  # force saving after 60 seconds
+    if g.MiniMonVariables == "auto": g.MiniMonVariables = "Temp, None, Xtra"    # Temp=Temperatur, Humidity=ignored, Xtra=CO2
+    if g.MiniMonOS_Device == "auto": g.MiniMonOS_Device = "Port: /dev/minimon"  # requires udev rule
+    if g.MiniMonInterval  == "auto": g.MiniMonInterval  = 60                    # force saving after 60 seconds
 
-    gglobs.MiniMonVariables = correctVariableCaps(gglobs.MiniMonVariables)              # not needed, but for consistency
-    setLoggableVariables("MiniMon", gglobs.MiniMonVariables)                            # cleanup var names
-    gglobs.Devices["MiniMon"][VNAME] = gglobs.Devices["MiniMon"][VNAME][0:3]            # list of no more than 3 variables
+    g.MiniMonVariables = correctVariableCaps(g.MiniMonVariables)                # not needed, but for consistency
+    g.MiniMonVariables = setLoggableVariables("MiniMon", g.MiniMonVariables)    # cleanup var names
+    g.Devices["MiniMon"][g.VNAMES] = g.Devices["MiniMon"][g.VNAMES][0:3]        # list of no more than 3 variables
 
     # does the dev exist and is writable?
-    if not os.access(gglobs.MiniMonOS_Device , os.W_OK):
+    if not os.access(g.MiniMonOS_Device , os.W_OK):
         errmsg = "Could not find MiniMon device - is it connected and powered?"
         edprint(errmsg)
         setIndent(0)
@@ -102,7 +101,7 @@ def initMiniMon():
 
     # try opening the connection to the MiniMon device ('dev/minimon' if using udev entry)
     try:
-        fileHandleMiniMon = open(gglobs.MiniMonOS_Device, "a+b",  0)
+        fileHandleMiniMon = open(g.MiniMonOS_Device, "a+b",  0)
     except Exception as e:
         errmsg = "Could not open MiniMon device - is it connected and powered?"
         exceptPrint(e, errmsg)
@@ -137,9 +136,9 @@ def initMiniMon():
 
     # set the 'old_alldata' to all NAN
     old_alldata = {}
-    for vname in gglobs.Devices["MiniMon"][VNAME]:
-        if vname != "None":  old_alldata.update({vname: gglobs.NAN})
-    # edprint(fncname + "old_alldata: ", old_alldata)
+    for vname in g.Devices["MiniMon"][g.VNAMES]:
+        if vname != "None":  old_alldata.update({vname: g.NAN})
+    # edprint(defname + "old_alldata: ", old_alldata)
 
     # start threading
     MiniMonThreadStop    = False        # flag must be set before starting thread
@@ -148,7 +147,7 @@ def initMiniMon():
     MiniMonThread.start()
     # edprint("MiniMonThread.daemon: ", MiniMonThread.daemon)
 
-    gglobs.Devices["MiniMon"][CONN] = True
+    g.Devices["MiniMon"][g.CONN] = True
 
     setIndent(0)
 
@@ -160,12 +159,12 @@ def terminateMiniMon():
 
     global fileHandleMiniMon, MiniMonThread, MiniMonThreadStop
 
-    fncname ="terminateMiniMon: "
+    defname ="terminateMiniMon: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
-    dprint(fncname + "stopping thread")
+    dprint(defname + "stopping thread")
     MiniMonThreadStop = True
     MiniMonThread.join() # "This blocks the calling thread until the thread
                          #  whose join() method is called is terminated."
@@ -178,20 +177,20 @@ def terminateMiniMon():
         dur = 1000 * (time.time() - start)
         if dur > 3000: break
 
-    dprint(fncname + "thread-status: is_alive: {}, waiting took: {:0.1f} ms".format(MiniMonThread.is_alive(), dur))
+    dprint(defname + "thread-status: is_alive: {}, waiting took: {:0.1f} ms".format(MiniMonThread.is_alive(), dur))
 
     # closing the MiniMon device
-    # origin: initMiniMon: fileHandleMiniMon = open(gglobs.MiniMonOS_Device, "a+b",  0)
+    # origin: initMiniMon: fileHandleMiniMon = open(g.MiniMonOS_Device, "a+b",  0)
     try:
         fileHandleMiniMon.close()
-        dprint(fncname + "Device '{}' closed".format(gglobs.MiniMonOS_Device))
+        dprint(defname + "Device '{}' closed".format(g.MiniMonOS_Device))
     except Exception as e:
-        errmsg = fncname + "Could not close device {} - terminating anyway".format(gglobs.MiniMonOS_Device)
+        errmsg = defname + "Could not close device {} - terminating anyway".format(g.MiniMonOS_Device)
         exceptPrint(e, errmsg)
 
-    gglobs.Devices["MiniMon"][CONN] = False
+    g.Devices["MiniMon"][g.CONN] = False
 
-    dprint(fncname + "Terminated")
+    dprint(defname + "Terminated")
     setIndent(0)
 
 
@@ -211,17 +210,17 @@ def MiniMonThreadTarget():
         msg = "Lost connection to MiniMon device; stopping MiniMon.\nReconnect all devices in order to continue!"
         values = {}
         values["error"] = msg
-        Queueprint(msg)
+        QueuePrint(msg)
         dprint(msg.replace("\n", " "), debug=True)
     ### END local function ########################################
 
-    fncname = "MiniMonThreadTarget: "
+    defname = "MiniMonThreadTarget: "
 
     while not MiniMonThreadStop:
         start = time.time()
 
-        if os.access(gglobs.MiniMonOS_Device , os.R_OK):
-            #dprint(fncname + "os:  {} is readable".format(gglobs.MiniMonOS_Device))
+        if os.access(g.MiniMonOS_Device , os.R_OK):
+            #dprint(defname + "os:  {} is readable".format(g.MiniMonOS_Device))
             try:
                 brecMM = fileHandleMiniMon.read(8)       # len: 8, like: b'\xcd\xe4\x1f \xf0F\xbf*'
                 extractMiniMonData(brecMM)
@@ -233,12 +232,12 @@ def MiniMonThreadTarget():
                     printlostmsg()
 
         else:
-            edprint(fncname + "os:  {} is NOT readable".format(gglobs.MiniMonOS_Device))
+            edprint(defname + "os:  {} is NOT readable".format(g.MiniMonOS_Device))
             printlostmsg()
 
         minsleep = 0.05
         maxsleep = 3
-        tsleep   = gglobs.logCycle * 0.5 # sleep for half a logCycle
+        tsleep   = g.LogCycle * 0.5 # sleep for half a Log cycle
         tsleep   = max(tsleep, minsleep) # but at least 50 ms = 0.1 sec * 0.5
         tsleep   = min(tsleep, maxsleep) # sleep no longer than 3 sec
         time.sleep(tsleep)
@@ -252,10 +251,10 @@ def extractMiniMonData(brecMM):
 
     global values, MiniMonThreadStop
 
-    fncname = "extractMiniMonData: "
+    defname = "extractMiniMonData: "
 
     data  = list(brecMM)
-    #print(fncname + "original  data: {}  hexlist: {}".format(decList(data), hexList(data)))
+    #print(defname + "original  data: {}  hexlist: {}".format(decList(data), hexList(data)))
 
     if data[4] != 0x0d:
         # see: https://github.com/heinemml/CO2Meter/issues/4
@@ -265,15 +264,15 @@ def extractMiniMonData(brecMM):
 
     # must be decrypted first
     checksum = sum(data[:3]) & 0xff
-    #print(fncname + "decrypted data: {}  hexlist: {}  checksum: {}  {}".format(decList(data), hexList(data), hex(checksum), checksum == data[3]))
+    #print(defname + "decrypted data: {}  hexlist: {}  checksum: {}  {}".format(decList(data), hexList(data), hex(checksum), checksum == data[3]))
 
     # at this stage data[4]==13 or there is an error
     if data[4] != 0x0d:
-        edprint(fncname + "Byte[4] error: {}".format(hexList(data)))
+        edprint(defname + "Byte[4] error: {}".format(hexList(data)))
 
     # verify checksum
     elif checksum != data[3]:
-        edprint(fncname + "Checksum error: {}   checksum: {}".format(hexList(data), hex(checksum)))
+        edprint(defname + "Checksum error: {}   checksum: {}".format(hexList(data), hex(checksum)))
 
     # ok, good data
     else:
@@ -281,19 +280,19 @@ def extractMiniMonData(brecMM):
         if op in [0x50, 0x42, 0x41]:                    # co2: 0x50==80, temp: 0x42==66, humid: 0x41==65
             val         = data[1] << 8 | data[2]
             values[op]  = val
-            # mdprint(fncname + "op: {:3d}, val: {:5d}   values: {}".format(op, val, sortDict(values)))
+            # mdprint(defname + "op: {:3d}, val: {:5d}   values: {}".format(op, val, sortDict(values)))
 
 
 def getInfoMiniMon(extended = False):
     """Info on the MiniMon"""
 
-    MiniMonInfo  = "Configured Connection:        {}\n".format(gglobs.MiniMonOS_Device)
+    MiniMonInfo  = "Configured Connection:        {}\n".format(g.MiniMonOS_Device)
 
-    if not gglobs.Devices["MiniMon"][CONN]: return MiniMonInfo + "<red>Device is not connected</red>"
+    if not g.Devices["MiniMon"][g.CONN]: return MiniMonInfo + "<red>Device is not connected</red>"
 
     MiniMonInfo += "Connected Device:             {}\n"    \
                    "Configured Variables:         {}\n".   \
-                   format(gglobs.Devices["MiniMon"][DNAME], gglobs.MiniMonVariables)
+                   format(g.Devices["MiniMon"][g.DNAME], g.MiniMonVariables)
 
     if extended:
         MiniMonInfo += ""
@@ -308,23 +307,23 @@ def getValuesMiniMon(varlist):
 
     start = time.time()
 
-    fncname = "getValuesMiniMon: "
+    defname = "getValuesMiniMon: "
 
     alldata = {}
-    for vmm in gglobs.Devices["MiniMon"][VNAME]:       # list of varnames
-        # edprint(fncname + "vmm: ", vmm)
-        if vmm != "None": alldata.update({vmm: gglobs.NAN})
+    for vmm in g.Devices["MiniMon"][g.VNAMES]:       # list of varnames
+        # rdprint(defname + "vmm: ", vmm)
+        if vmm != "None": alldata.update({vmm: g.NAN})
 
     new_time = time.time()
 
     if "error" in values:
-        playWav("err")
+        burp()
         efprint(values["error"])
         values = {}
 
     else:
         for i, vname in enumerate(varlist):
-            # edprint(fncname + "i: ", i, "  vname: ", vname)
+            # edprint(defname + "i: ", i, "  vname: ", vname)
 
             if vname == "None": continue
 
@@ -332,24 +331,24 @@ def getValuesMiniMon(varlist):
             # Temperature
                 if 0x42 in values:
                     temp  = round(values[0x42] / 16.0 - 273.15, 2)   # 0x42 = 66
-                    temp  = scaleVarValues(vname, temp, gglobs.ValueScale[vname])
+                    temp  = applyValueFormula(vname, temp, g.ValueScale[vname])
                     alldata.update(  {vname: temp})
 
             elif i == 1:
             # Humidity
                 if 0x41 in values:
                     humid = round(values[0x41] / 100.0        , 2)   # 0x41 = 65 # !not 0x44! as in original code
-                    humid = scaleVarValues(vname, humid, gglobs.ValueScale[vname])
+                    humid = applyValueFormula(vname, humid, g.ValueScale[vname])
                     alldata.update(  {vname: humid})
 
             else: # i == 2
             # CO2
                 if 0x50 in values:
                     co2   = values[0x50]                             # 0x50 = 80
-                    co2   = scaleVarValues(vname, co2, gglobs.ValueScale[vname])
+                    co2   = applyValueFormula(vname, co2, g.ValueScale[vname])
                     alldata.update(  {vname: co2})
 
-    if (new_time - old_time) >= gglobs.MiniMonInterval:
+    if (new_time - old_time) >= g.MiniMonInterval:
         # saving now even if no values have changed
         old_time = new_time
 
@@ -361,7 +360,7 @@ def getValuesMiniMon(varlist):
                 old_alldata = alldata
                 old_time    = new_time
 
-    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+    vprintLoggedValues(defname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
 
@@ -488,7 +487,7 @@ def decList(d):
 # def appendToFile(path, writestring):
 #     """Write-Append data; add linefeed"""
 #
-#     with open(path, 'at', encoding="UTF-8", errors='replace', buffering = 1) as f:
+#     with open(path, "at", encoding="UTF-8", errors='replace', buffering = 1) as f:
 #         f.write((writestring + "\n"))
 
 
@@ -539,7 +538,7 @@ def decList(d):
 #             decrypted = data
 
 #         if decrypted[4] != 0x0d or (sum(decrypted[:3]) & 0xff) != decrypted[3]:
-#             print (hexList(data), " => ", hexList(decrypted),  "Checksum error")
+#             print(hexList(data), " => ", hexList(decrypted),  "Checksum error")
 
 #         else:
 #             op  = decrypted[0]

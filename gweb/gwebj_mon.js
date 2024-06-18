@@ -133,7 +133,6 @@ async function MonMain(){
     else{
         createPowerGauge();
         powerGauge.render("#gauge");
-        // updateGraph(VarIndex);
     }
 
     // console.log("MonMain: powerGauge: min, max:", powerGauge.config.minValue, powerGauge.config.maxValue, "transitionMs:", powerGauge.config.transitionMs);

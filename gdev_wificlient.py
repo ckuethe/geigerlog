@@ -3,6 +3,9 @@
 
 """
 WiFiClient Devices - External devices which call GeigerLog's built-in web server
+
+NOTE: the external device acts as a http-client: it contacts a http-server inside GeigerLog
+      Example: GMC counter with WiFi
 """
 
 ###############################################################################
@@ -22,88 +25,92 @@ WiFiClient Devices - External devices which call GeigerLog's built-in web server
 #    along with GeigerLog.  If not, see <http://www.gnu.org/licenses/>.
 ###############################################################################
 
-# Port Scanning:
+# Port Scanning Example:
 # ~$ nmap  10.0.0.20 -p1-65535
-#   PORT      STATE SERVICE
-#   80/tcp    open  http        # apache
-#   8000/tcp  open  http-alt    # GeigerLog
-
-# Python http.server:  /usr/lib/python3.9/http/server.py
-# to accommodate "Unsafe" requests with CR only instead of CRLF
-# modify line 283ff:
+#     Starting Nmap 7.80 ( https://nmap.org ) at 2023-04-14 11:23 CEST
+#     Nmap scan report ...
+#     Host is up (0.000053s latency).
+#     Not shown: 65527 closed ports
+#     PORT      STATE SERVICE
+#     22/tcp    open  ssh
+#     80/tcp    open  http                  # Apache or GLrelay.py
+#     111/tcp   open  rpcbind
+#     1716/tcp  open  xmsg
+#     4000/tcp  open  http-alt              # GeigerLog WiFiClient
+#     8080/tcp  open  http-proxy            # GeigerLog Monitor Server
+#     46099/tcp open  unknown               # GMC counter (may change)
+#     48863/tcp open  unknown               # GMC counter (may change)
 #
-#     requestline = str(self.raw_requestline, 'iso-8859-1')
-#     # mod by ullix
-#     msg = "http.server: requestline ending with "
-#     if requestline.endswith('\r\n'):
-#         print(msg + "CRLF")
-#         requestline = requestline.rstrip('\r\n')
-#
-#     elif requestline.endswith('\r'):
-#         print(msg + "CR")
-#         requestline = requestline.rstrip('\r')
-#
-#     elif requestline.endswith('\n'):
-#         print(msg + "LF")
-#         requestline = requestline.rstrip('\n')
-#
-#     else:
-#         print(msg + "neither CR nor LF !!!!!!!!!!")
-#     # end mod
+#     Nmap done: 1 IP address (1 host up) scanned in 0.80 seconds
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-from   gsup_utils           import *
-
-dogetmsg = "no data"                    # dummy to have var defined
-color    = None
+from gsup_utils   import *
 
 
 def initWiFiClient():
     """Initialize WiFiClient"""
 
-    fncname                 = "initWiFiClient: "
-    gglobs.WiFiClientValues = {}
-    msg                     = ""
+    defname            = "initWiFiClient: "
+    g.WiFiClientValues = {}
+    msg                = ""
 
-    dprint(fncname + "Initializing WiFiClient")
+    dprint(defname)
     setIndent(1)
 
-    if gglobs.WiFiClientPort        == "auto": gglobs.WiFiClientPort        = 8000              # something other than 80 (below port 1024 only as sudo!)
-    if gglobs.WiFiClientType == "GMC":
-    # GMC
-        if gglobs.WiFiClientVariables == "auto": gglobs.WiFiClientVariables   = "CPM"
+    if g.WiFiClientPort == "auto":                  g.WiFiClientPort = 4000      # port 1024 and up
+
+    # set the variables
+    # g.WiFiClientType can be only GMC or GENERIC, enforced in gsup_config. GMC is default
+    # for GMC
+    if g.WiFiClientType == "GMC":
+        # rdprint(defname, "g.WiFiClientVariables: ", g.WiFiClientVariables)
+        # rdprint(defname, "g.WiFiClientMapping: ",   g.WiFiClientMapping)
+
+        if g.WiFiClientMapping == "auto":           g.WiFiClientMapping = "CPM:CPM"
+
+        try:
+            for a in g.WiFiClientMapping.split(","):
+                asp = a.replace(" ", "").split(":")
+                g.WiFiClientVariablesMap.update({asp[0] : asp[1]})
+        except Exception as e:
+            exceptPrint(e, defname + "set Type 'GMC' variables")
+            g.WiFiClientMapping      = "CPM:CPM"
+            g.WiFiClientVariablesMap = {"CPM":"CPM"}
+
+        g.WiFiClientVariables = ", ".join(g.WiFiClientVariablesMap) # join the keys only
+
+    # for GENERIC
     else:
-    # GENERIC
-        if gglobs.WiFiClientVariables == "auto": gglobs.WiFiClientVariables = "CPM, CPS, Temp, Press, Humid"
+        if g.WiFiClientVariables == "auto":     g.WiFiClientVariables = "CPM, CPS, Temp, Press, Humid"
+        g.WiFiClientMapping = "GeigerLog Default"
 
-    gglobs.Devices["WiFiClient"][DNAME] = "WiFiClient " + gglobs.WiFiClientType
-    gglobs.Devices["WiFiClient"][CONN]  = True
-    dprint(fncname + "connected to: IP:Port '{}:{}', detected device: '{}'".format(
-                                                gglobs.GeigerLogIP,
-                                                gglobs.WiFiClientPort,
-                                                gglobs.Devices["WiFiClient"][DNAME]))
+    g.WiFiClientVariables = setLoggableVariables("WiFiClient", g.WiFiClientVariables)
 
-    setLoggableVariables("WiFiClient", gglobs.WiFiClientVariables)
+
+    # housekeeping
+    g.Devices["WiFiClient"][g.DNAME] = "WiFiClient " + g.WiFiClientType
+    g.Devices["WiFiClient"][g.CONN]  = True
+    dprint(defname + "connected to: IP:Port '{}:{}', detected device: '{}'".format(
+                                                g.GeigerLogIP,
+                                                g.WiFiClientPort,
+                                                g.Devices["WiFiClient"][g.DNAME]))
 
     # create the web server
     try:
-        # 'ThreadingHTTPServer': New in version Py 3.7. Not compatible with 3.6
-        # non-threading may have been cause for crashing on double requests!
-        # WiFiClientServer = http.server.HTTPServer((gglobs.GeigerLogIP, gglobs.WiFiClientPort), MyServer)
-        gglobs.WiFiClientServer = http.server.ThreadingHTTPServer((gglobs.GeigerLogIP, gglobs.WiFiClientPort), MyServer)
-        gglobs.WiFiClientServer.timeout = 3
-        dprint(fncname + "GeigerLog HTTPServer listening at: http://%s:%s" % (gglobs.GeigerLogIP, gglobs.WiFiClientPort))
+        g.WiFiClientServer = http.server.ThreadingHTTPServer    ((g.GeigerLogIP, g.WiFiClientPort), WiFiClientServer)
+        g.WiFiClientServer.timeout = 3
+        dprint(defname + "WiFiClient HTTPServer listening at: http://%s:%s" % (g.GeigerLogIP, g.WiFiClientPort))
 
     except OSError as e:
         exceptPrint(e, "")
         msg0 = "WiFiClientServer could not be started, because "
-        if e.errno == 98:   msg = (False, msg0 + "Port number {} is already in use".format(gglobs.WiFiClientPort))
+        if e.errno == 98:   msg = (False, msg0 + "Port number {} is already in use".format(g.WiFiClientPort))
         else:               msg = (False, msg0 + "of OS.Error: {}".format(e.errno))
 
     except Exception as e:
@@ -112,39 +119,40 @@ def initWiFiClient():
         efprint(e)
         qefprint(msg)
 
-    gglobs.WiFiClientThread = threading.Thread(target=WiFiClientThreadTarget)
-    gglobs.WiFiClientThread.daemon = True        # daemons will be stopped on exit!
-    gglobs.WiFiClientThread.start()
+    else:
+        g.WiFiClientThread = threading.Thread(target=WiFiClientThreadTarget)
+        g.WiFiClientThread.daemon = True        # daemons will be stopped on exit!
+        g.WiFiClientThread.start()
 
     setIndent(0)
     return msg
 
 
 def WiFiClientThreadTarget():
-    """Thread that constantly triggers readings from the usb device."""
+    """Thread that constantly triggers readings from the HTTP Server"""
 
-    fncname = "WiFiClientThreadTarget: "
+    defname = "WiFiClientThreadTarget: "
 
     try:
-        gglobs.WiFiClientServer.serve_forever()
+        g.WiFiClientServer.serve_forever()
     except Exception as e:
-        exceptPrint(e, fncname + "serve_forever")
+        exceptPrint(e, defname + "serve_forever")
 
 
 def terminateWiFiClient():
     """terminate all WiFiClient function"""
 
-    fncname = "terminateWiFiClient: "
+    defname = "terminateWiFiClient: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
-    if gglobs.WiFiClientServer is not None:
-        gglobs.WiFiClientServer.server_close()
+    if g.WiFiClientServer is not None:
+        g.WiFiClientServer.server_close()
 
-    gglobs.Devices["WiFiClient"][CONN] = False
+    g.Devices["WiFiClient"][g.CONN] = False
 
-    dprint(fncname + "Terminated")
+    dprint(defname + "Terminated")
     setIndent(0)
 
 
@@ -152,17 +160,18 @@ def getInfoWiFiClient(extended=False):
     """Info on the WiFiClient Device"""
 
     WiFiInfo  = ""
-    WiFiInfo += "Configured Connection:        Server IP:Port: '{}:{}'\n"      .format(gglobs.GeigerLogIP, gglobs.WiFiClientPort)
+    WiFiInfo += "Configured Connection:        Server IP:Port: '{}:{}'\n"      .format(g.GeigerLogIP, g.WiFiClientPort)
 
-    if not gglobs.Devices["WiFiClient"][CONN]: return WiFiInfo + "<red>Device is not connected</red>"
+    if not g.Devices["WiFiClient"][g.CONN]: return WiFiInfo + "<red>Device is not connected</red>"
 
-    WiFiInfo += "Connected Device:             {}\n"         .format(gglobs.Devices["WiFiClient"][DNAME])
-    WiFiInfo += "Configured Device Type:       {}\n"         .format(gglobs.WiFiClientType)
-    WiFiInfo += "Configured Variables:         {}\n"         .format(gglobs.WiFiClientVariables)
-    WiFiInfo += getTubeSensitivities(gglobs.WiFiClientVariables)
+    WiFiInfo += "Connected Device:             {}\n"         .format(g.Devices["WiFiClient"][g.DNAME])
+    WiFiInfo += "Configured Device Type:       {}\n"         .format(g.WiFiClientType)
+    WiFiInfo += "Configured Variables:         {}\n"         .format(g.WiFiClientVariables)
+    WiFiInfo += "Configured Mapping:           {}\n"         .format(g.WiFiClientMapping)
+    WiFiInfo += getTubeSensitivities(g.WiFiClientVariables)
 
     if extended == True:
-        WiFiInfo += "No extended info"
+        WiFiInfo += ""
 
     return WiFiInfo
 
@@ -173,65 +182,71 @@ def getValuesWiFiClient(varlist):
     #############################################################################
     # inner function
     def getValueWiFiClient(valname):
-        """check for missing value in WiFiClient data and return floats"""
+        """check for missing value in WiFiClient data and return floats; missing data as NAN"""
 
-        rawval = gglobs.WiFiClientValues[valname]
-        # edprint(fncname + "rawval: ", rawval) # 2 decimals for ACPM and uSv
-        if  rawval == "":   # missing value
-            val = gglobs.NAN
-        else:
-            try:
-                val = float(rawval)
-            except Exception as e:
-                msg = "valname: {}".format(valname)
-                exceptPrint(e, msg)
-                val = gglobs.NAN
+        val    = g.NAN
+        try:
+            rawval = g.WiFiClientValues[valname]
+        except Exception as e:
+            # exceptPrint(e, defname)
+            return val
+
+        if  rawval > "":                                    # not a missing value
+            try:                    val = float(rawval)
+            except Exception as e:  exceptPrint(e, "valname: {}".format(valname))
+
+        val = applyValueFormula(vname, val, g.ValueScale[vname])
+
         return val
     # end inner function
     #############################################################################
 
 
     start   = time.time()
-    fncname = "getValuesWiFiClient: "
+    defname = "getValuesWiFiClient: "
     alldata = {}                        # data to be returned
 
-    for vname in varlist:
-        # print("vname: ", vname)
-        if gglobs.WiFiClientType == "GMC":
-            # GMC
-            if   vname == "CPM"  and "CPM"  in gglobs.WiFiClientValues: alldata.update({vname: getValueWiFiClient("CPM" )})
-            elif vname == "CPS"  and "ACPM" in gglobs.WiFiClientValues: alldata.update({vname: getValueWiFiClient("ACPM")})
-            elif vname == "Xtra" and "uSV"  in gglobs.WiFiClientValues: alldata.update({vname: getValueWiFiClient("uSV" )})
+    # GMC
+    if g.WiFiClientType == "GMC":
+        for vname in varlist:
+            # print("vname: ", vname, "  varlist: ", varlist)
+            if vname in g.WiFiClientVariablesMap:
+                key = g.WiFiClientVariablesMap[vname]
+                alldata.update({vname: getValueWiFiClient(key)})
 
-        else:
-            # GENERIC
-            if   vname in gglobs.WiFiClientValues:    alldata.update({vname:  getValueWiFiClient(vname)})
+    # GENERIC
+    else:
+        for vname in varlist:
+            # print("vname: ", vname, "  varlist: ", varlist)
+            if   vname in g.WiFiClientValues:
+                alldata.update({vname:  getValueWiFiClient(vname)})
 
-    gglobs.WiFiClientValues = {}  # reset
+    g.WiFiClientValues = {}  # reset
 
-    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+    vprintLoggedValues(defname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
 
 
-class MyHandler(http.server.BaseHTTPRequestHandler):
+class WiFiClientHandler(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, format, *args):
         """replacing the log_message function"""
+        # not used
 
-        # output:  ... WiFiClient LogMsg: GET /?ID=GeigerLog&M=10&S=11&M1=12&S1=13&M2=14&S2=15&M3=16&S3=17&T=18&P=19&H=20&X=21 HTTP/1.1, 302, - | WiFiClient do_GET: ERROR: GMC Device: query lacks ID
-        strarg = ", ".join(args)    # count(args) = 3 (except on errors)
+        # strarg: like:  GET /GMC?AID=01234&GID=12345678901&CPM=44&ACPM=46&uSV=0.30 HTTP/1.1, 200, -
+        # strarg = ", ".join(args)    # count(args) = 3 (except on errors)
+        # rdprint(strarg)
+        pass
 
-        if color == TYELLOW:    dprint("WiFiClient LogMsg: ", strarg, dogetmsg)
 
-
-class MyServer(MyHandler):
+class WiFiClientServer(WiFiClientHandler):
 
     def do_GET(self):
         """'do_GET' overwrites class function"""
 
         ######## this is the only place with these details #################################################################
-        # when calling with: http://10.0.0.20:8000/log2.asp?CPM=44&AID=karl&GID=12345&ACPM=46&uSV=0.30
+        # when calling with: http://10.0.0.20:4000/log2.asp?CPM=44&AID=karl&GID=12345&ACPM=46&uSV=0.30
         #
         # vprint("self.path: ",               self.path)              # /log2.asp?CPM=44&AID=karl&GID=12345&ACPM=46&uSV=0.30
         # vprint("self.command: ",            self.command)           # GET
@@ -240,9 +255,9 @@ class MyServer(MyHandler):
         # vprint("self.close_connection: ",   self.close_connection)  # True
         # vprint("self.requestline: ",        self.requestline)       # GET /log2.asp?CPM=44&AID=karl&GID=12345&ACPM=46&uSV=0.30 HTTP/1.1
         # vprint("self.responses: ",          self.responses)         # {<HTTPStatus.CONTINUE: 100>: ('Continue', 'Request received, please continue'), <and much more>
-        # vprint("self. handle(): ",          self.handle())          # None
-        # vprint("self. version_string(): ",  self.version_string())  # BaseHTTP/0.6 Python/3.9.4
-        # vprint("self.headers: ",            self.headers)           # Host: 10.0.0.20:8000
+        # vprint("self.handle(): ",           self.handle())          # None
+        # vprint("self.version_string(): ",   self.version_string())  # BaseHTTP/0.6 Python/3.9.4
+        # vprint("self.headers: ",            self.headers)           # Host: 10.0.0.20:4000
         #                                                             # Connection: keep-alive
         #                                                             # Cache-Control: max-age=0
         #                                                             # DNT: 1
@@ -254,25 +269,18 @@ class MyServer(MyHandler):
         ###################################################################################################################
 
 
-        global dogetmsg, color
+        defname = "WiFiClientServer GET call: "
 
-        fncname = "WiFiClient do_GET: "
+        if not g.logging: return
 
-        wprint("")
-        wprint(fncname + "self.path: " + self.path)
-
-        myresponse = 200
-        myheader2  = None
-
+        # mdprint("")
+        mdprint(defname + "path:   " + self.path)
 
         # send favicon.ico
         if self.path == '/favicon.ico':
-            # for a dummy favicon.ico:
-            #   myheader  = 'Content-Type', 'image/x-icon'
-            #   myheader2 = 'Content-Length', 0
-            #   mybytes   = b""
-            myheader = 'Content-Type', 'image/png'
-            mybytes  = gglobs.iconGeigerLogWeb
+            myheader    = 'Content-Type', 'image/png'
+            mybytes     = g.iconGeigerLogWeb
+            myresponse  = 200
 
 
         # send Root page
@@ -287,94 +295,85 @@ class MyServer(MyHandler):
             <h3>I am<br>GeigerLog's Web Server,<br>waiting for <h2>WiFiClient Devices</h2> to call me at:</h3>\n
             <p>%s</p>
             <p>GeigerLog Version: %s
-            """ % (self.headers.get("Host"), gglobs.__version__)
+            """ % (self.headers.get("Host"), g.__version__)
 
-            myheader = 'Content-Type', "text/html"
-            mybytes  = bytes(answer.strip().replace("  ", ""), "UTF-8")
-
-
-        # ID
-        elif self.path == "/id":
-            answer   = "GeigerLog {}".format(gglobs.__version__)
-
-            myheader = 'Content-Type', "text/plain"
-            mybytes  = bytes(answer, "UTF-8")
+            myheader    = 'Content-Type', "text/html"
+            mybytes     = bytes(answer.strip().replace("  ", ""), "UTF-8")
+            myresponse  = 200
 
 
         # either GENERIC or GMC, nothing else possible as WiFiClientType is limited to those
-        elif self.path.startswith("/" + gglobs.WiFiClientType):
+        elif self.path.startswith("/" + g.WiFiClientType):  # thus the not-configured Type will be irgnored!
             query_components = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query, max_num_fields=20)
-            # edprint(fncname + "query_components: ", query_components)
+            # like: for GMC:  query_components: {'AID': ['01234'], 'GID': ['12345678901'], 'CPM': ['44'], 'ACPM': ['46'], 'uSV': ['0.30']}
 
             if self.path.startswith("/GENERIC"):
                 # Generic Device was configured
-                # url : http://10.0.0.20:8000/GENERIC?M=10&S=11&M1=12&S1=13&M2=14&S2=15&M3=16&S3=17&T=18&P=19&H=20&X=21
+                # url : http://10.0.0.20:4000/GENERIC?M=10&S=11&M1=12&S1=13&M2=14&S2=15&M3=16&S3=17&T=18&P=19&H=20&X=21
 
-                for i, vname in enumerate(gglobs.varsCopy):
-                    vsvname = gglobs.varsCopy[vname][1]
-                    if vsvname in query_components: gglobs.WiFiClientValues[vname] = query_components[vsvname][0]
+                for vname in g.VarsCopy:
+                    vsvname = g.VarsCopy[vname][1]
+                    if vsvname in query_components: g.WiFiClientValues[vname] = query_components[vsvname][0]
 
-                answer = "OK for Generic WiFiClient Device"
+                answer = "OK from GeigerLog to WiFiClient Generic"
 
             elif self.path.startswith("/GMC"):
                 # GMC device was configured
-                # gmcmap info:      http://www.gmcmap.com/AutomaticallySubmitData.asp
-                # URL format:       http://www.GMCmap.com/log2.asp?AID=UserAccountID&GID=GeigerCounterID&CPM=nCPM&ACPM=nACPM&uSV=nuSV
-                # like:             http://www.GMCmap.com/log2.asp?AID=123&GID=456&CPM=15&ACPM=19.7&uSV=0.12
-                # NOTE:             uSV is calculated from CPM, NOT from ACPM!
-                # NOTE:             there are only 2 decimals for ACPM and uSV; all decimals are kept in GeigerLog
+                # url : http://10.0.0.20:4000/GMC?AID=01234&GID=12345678901&CPM=44&ACPM=46&uSV=0.30
                 #
-                # server response:  b'\r\n<!--               sendmail.asp-->\r\n\r\nOK.ERR0'
-                #              or:  b"User is not found.ERR1."
-                #              or:  b"Counter is not found.ERR2."
-                # NOTE:
+                # gmcmap info:      http://www.gmcmap.com/AutomaticallySubmitData.asp
+                # URL format:       http://www.GMCmap.com/log2.asp?AID=UserAccountID&GID=GeigerCounterID&CPM=CPM&ACPM=ACPM&uSV=uSV
+                # like:             http://www.GMCmap.com/log2.asp?AID=123&GID=456&CPM=15&ACPM=19.7&uSV=0.12
+                #                   - uSV is calculated from CPM, NOT from ACPM!
+                #                   - there are only 2 decimals for ACPM and uSV; all decimals are kept in GeigerLog
+                # test user:        GMC map Account ID: 04365, GMC map Geiger Counter ID: 18368167648
+                # gmcmap response when ok:   b'\r\n<!--               sendmail.asp-->\r\n\r\nOK.ERR0'
+                #                 when Err:  b"User is not found.ERR1."
+                #                 when Err:  b"Counter is not found.ERR2."
+                #
                 # the counter receives an 'OK 200' via the header. But this is not enough; the counter
                 # also wants an 'Err0' within the answer or it will say "Link Server failed"
                 #       answer = 'OK'           : Counter: Link Server Failed
-                #       answer = 'blahERR0blah' : Counter: Successful!
                 #       answer = 'ERR0'         : Counter: Successful!
+                #       answer = 'blahERR0blah' : Counter: Successful!
 
                 # AID and GID are ignored
-                if 'CPM'  in query_components: gglobs.WiFiClientValues["CPM"]  = query_components["CPM"] [0]
-                if 'ACPM' in query_components: gglobs.WiFiClientValues["ACPM"] = query_components["ACPM"][0]
-                if 'uSV'  in query_components: gglobs.WiFiClientValues["uSV"]  = query_components["uSV"] [0]
+                if 'CPM'  in query_components: g.WiFiClientValues["CPM"]  = query_components["CPM"] [0]
+                if 'ACPM' in query_components: g.WiFiClientValues["ACPM"] = query_components["ACPM"][0]
+                if 'uSV'  in query_components: g.WiFiClientValues["uSV"]  = query_components["uSV"] [0]
 
-                answer = 'ERR0 - OK for GMC Device'   # 'ERR0' is needed by counter
+                answer = 'OK from GeigerLog to WiFiClient GMC'
 
-            color    = TGREEN
-            dogetmsg = "{} | {}{} {}".format(color, fncname, answer, TDEFAULT)
-
-            myheader = 'Content-Type', "text/plain"
-            mybytes  = bytes(answer, "UTF-8")
-
-            wprint(fncname + "values: " + str(gglobs.WiFiClientValues).replace(" ", "").replace("'", "").replace(",", "  "))
-
+            myheader    = 'Content-Type', "text/plain"
+            mybytes     = bytes(answer, "UTF-8")
+            myresponse  = 200
 
         # page not found 404 error
         else:
-            color    = TYELLOW
-            # gdprint("headers['User-Agent']: ", self.headers["User-Agent"])
-            # ["User-Agent"] from Python:      BaseHTTP/0.6 Python/3.9.4
-            # ["User-Agent"] from GMC counter: None
-            # ['User-Agent'] from Firefox:     Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0
+            # "headers['User-Agent']: self.headers["User-Agent"]
+            #       from Python:      BaseHTTP/0.6 Python/3.9.4
+            #       from GMC counter: None
+            #       from Firefox:     Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:88.0) Gecko/20100101 Firefox/88.0
+            #       from Chromium:    Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/111.0.0.0 Safari/537.36
             if self.headers["User-Agent"] is None or "Python" in self.headers["User-Agent"]:
                 answer   = "404 Page not found"
                 myheader = 'Content-Type', "text/plain"
-                dogetmsg = "{} | {}{} {}".format(color, fncname, answer, TDEFAULT)
-
             else:
                 answer   = "<!DOCTYPE html><style>html{text-align:center;</style><h1>404 Page not found</h1>"
                 myheader = 'Content-Type', "text/html"
-                dogetmsg = "{} | {}{} {}".format(color, fncname, answer, TDEFAULT)
 
+            rdprint(defname, answer)
+
+            mybytes    = bytes(answer, "UTF-8")
             myresponse = 404
 
         try:
             self.send_response(myresponse)
             self.send_header(*myheader)
-            if myheader2 is not None: self.send_header(*myheader2)
             self.end_headers()
             self.wfile.write(mybytes)
         except Exception as e:
-            exceptPrint(e, fncname + "send & write 200")
+            exceptPrint(e, defname + "send & write 200")
+
+        # mdprint(defname + "values: " + str(g.WiFiClientValues).replace(" ", "").replace("'", "").replace(",", "  "))
 

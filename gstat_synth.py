@@ -26,29 +26,35 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 
 
 def createSyntheticData():
     """Create synthetic data and save in log format. All times in SECONDS"""
 
+    ### local def ###############################
     def shd(d):
         return " ".join("%0.2f" % e for e in d)
+    ### end local def ###########################
 
-    fncname = "createSyntheticData: "
+    defname = "createSyntheticData: "
 
     default_meanlist    = (0.3, 1, 3, 10, 30, 100, 300, 1000, 3000, 10000)
-    records             = 100000
-    mean                = 30
-    cycletime           = 1.0       # in seconds
+    records             = 200000
+    mean                = 20
+    # cycletime           = 1.0       # in seconds
+    cycletime           = 60.0       # in seconds
 
     # Dialog to input single mean value, or input 0 to use default list
-    mean, okPressed = QInputDialog.getDouble(None, "Create Synthetic Log","CPS Mean: Enter desired mean value, or 0 to use this default list for CPS mean:\n{}".format(default_meanlist), 20, min=0, max=1000000, decimals=2)
+    mean, okPressed = QInputDialog.getDouble(None, "Create Synthetic Log","CPS Mean: Enter desired mean value, \
+                                             \nor 0 to use this default list for CPS mean:\
+                                             \n{}\
+                                             \n\nFor EXPonential decay enter Tau in days".format(default_meanlist), 20, min=0, max=1000000, decimals=5)
     # gdprint("mean", mean)
     if okPressed:
         if mean > 0:    meanlist = (mean,)
@@ -58,48 +64,48 @@ def createSyntheticData():
 
     setBusyCursor()
 
-    # fprint(header("Create Synthetic Log CSV file"), debug=True)
-    # fprint("Create logs for mean(s):", "{}\n".format(shd(meanlist)), debug=True)
     msg1 = header("Create Synthetic Log CSV file")
     msg2 = "Create logs for mean(s):", "{}\n".format(shd(meanlist))
     fprint(msg1)
-    fprint(msg2)
+    fprint(*msg2)
     dprint(msg1)
-    dprint(msg2)
+    dprint(*msg2)
 
     QtUpdate() # needed to show fprints
 
     for mean in meanlist:
-    # get time
-        t = np.float64(np.array(list(range(0, records)))) * cycletime
-        dprint(fncname + "get time: size: {}, Delta_t: {} sec".format(t.size, (t[1] - t[0])))
-        dprint(fncname + "time data: ", np.int_(t))
+    # get array with times
+        t = np.float64(np.array(list(range(0, records + 60)))) * cycletime
+        dprint(defname + "get time: size: {}, Delta_t: {} sec, Delta_total: {:0.3f} days".format(t.size, (t[1] - t[0]), (t[-1] - t[0]) / 86400))
+        dprint(defname + "time data: ", np.int_(t))
 
-        # convert time in sec to datetime strings
-        strt0 = "2021-01-01 00:00:00"          # nominal default start datetime
+    # convert time in sec to datetime strings
+        strt0 = "2026-11-13 00:00:00"          # nominal default start datetime - "doomsday equation" https://en.wikipedia.org/wiki/Heinz_von_Foerster
         t0    = mpld.datestr2num(strt0)        # time zero
         td    = np.empty(records, dtype='U19') # holds strings of max length 19
         #print("td, len:", td.size, td)
         for i in range(records):
             td[i] = mpld.num2date(t0 + t[i] / 86400.) # clipped after 19 chars by U19 def
 
-        dprint(fncname + "First 3 DateTimes:", td[:3])
-        dprint(fncname + "Last  3 DateTimes:", td[-3:])
+        dprint(defname + "First 3 DateTimes:", td[:3])
+        dprint(defname + "Last  3 DateTimes:", td[-3:])
 
 
     # get data - select the distribution you want
-        stddev      = np.sqrt(mean)
+        stddev = np.sqrt(mean)
 
-        # sigt, DataSrc     = getDeltaTimePoisson(records, mean)
-        sigt, DataSrc     = getWhiteNoisePoisson(records, mean)                             # White Noise from Poisson Distribution
-        #sigt, DataSrc    = getWhiteNoiseNormal(records, mean, stddev)                      # White Noise from Normal Distribution
-        #sigt, DataSrc    = getSinus(records, t)                                            # Sine (one or more)
-        #sigt, DataSrc    = getWhiteNoiseSine(records, t)                                   # White Noise with Sine
-        #sigt, DataSrc    = getConstantData(records, t)                                     # constant + breaks
-        #sigt, DataSrc    = getAutocorr(records)                                            # Autocorr as time function
-        #sigt, DataSrc    = getRectangle(records)                                           # Rectangle of 20 samples @ 3sec = 1min
-        #sigt, DataSrc    = getWhiteNoisePoissonAutocorr(records, mean, cycletime)          # Autocorrelated Poisson Noise !! perhaps problem
-        #sigt, DataSrc    = getRandomData(records, mean, stddev)                            # Radom Data
+        sigt, DataSrc     = getExpPoissonDecay(records + 60, t, mean)                        # exponential decay with tau= mean in days
+        # sigt, DataSrc     = getExpDecay(records + 60, t, mean)                             # exponential decay with tau= mean in days
+        # sigtM, sigtS, DataSrc     = getDeltaTimePoisson(records + 60, mean)                # delta time between 2 counts (exponential dist)
+        # sigt, DataSrc     = getWhiteNoisePoisson(records + 60, mean)                       # White Noise from Poisson Distribution
+        # sigt, DataSrc    = getWhiteNoiseNormal(records, mean, stddev)                      # White Noise from Normal Distribution
+        # sigt, DataSrc    = getSinus(records, t)                                            # Sine (one or more)
+        # sigt, DataSrc    = getWhiteNoiseSine(records, t)                                   # White Noise with Sine
+        # sigt, DataSrc    = getConstantData(records, t)                                     # constant + breaks
+        # sigt, DataSrc    = getAutocorr(records)                                            # Autocorr as time function
+        # sigt, DataSrc    = getRectangle(records)                                           # Rectangle of 20 samples @ 3sec = 1min
+        # sigt, DataSrc    = getWhiteNoisePoissonAutocorr(records, mean, cycletime)          # Autocorrelated Poisson Noise !! perhaps problem
+        # sigt, DataSrc    = getRandomData(records, mean, stddev)                            # Radom Data
 
         # Mean=17, followed by mean=29
         #~sigt1, DataSrc     = getWhiteNoisePoisson(int(records / 2), mean=17)                    # White Noise from Poisson Distribution
@@ -116,45 +122,104 @@ def createSyntheticData():
         #~DataSrc = "WhiteNoisePoisson,mean=17+29CPM"
 
 
-    # write to log file
-        path = os.path.join(gglobs.dataPath, DataSrc + ".csv")
-        writeFileW(path, "", linefeed = True)
-        writeFileA(path, "#HEADER ," + strt0 + ", SYNTHETIC data: " + DataSrc)
-        writeFileA(path, "#LOGGING," + strt0 + ", Start @Cycle {} sec, device 'SYNTHETIC'".format(cycletime))
-        nsigt = np.array(sigt)
-        maxprints = 10
-        for i in range(records):
-            dt          = td[i]     # DateTime
-            cps         = nsigt[i]
-            cpm         = int(np.nansum(nsigt[max(0, i - 60): i]))
-            writestring = " {:7d},{:19s}, {:}, {:}".format(i, dt, cpm, cps)
-            writeFileA(path, writestring)
-            if i < maxprints or i >= (records - maxprints): print(writestring)
+    # write to csv file
+        path = os.path.join(g.dataDir, DataSrc + ".csv")
 
-        # fprint("Saved to file: {}\n".format(path), debug=True)
-        msg = "Saved to file: {}\n".format(path)
-        fprint(msg)
-        dprint(msg)
+        with open(path, "wt") as fcsv:
+            fcsv.write("#HEADER , {}, SYNTHETIC data: {}\n".format(strt0, DataSrc))
+            fcsv.write("#LOGGING, {}, Start @LogCycle: {} sec device 'SYNTHETIC'\n".format(strt0, cycletime))
+
+            maxprints = 10
+            for i in range(60, records + 60):                                            # skip the first 60 records to have CPM start with proper values
+                dt          = td[i - 60]                                                 # DateTime
+                cps         = sigt[i]                                                    # CPS
+                # cpm         = int(np.nansum(sigt[max(0, i - 60): i]))                    # CPM as sum of last 60 CPS
+                cpm         = np.nansum(sigt[max(0, i - 60): i])                    # CPM as sum of last 60 CPS
+                writestring = " {:7d}, {:19s}, {:}, {:}".format(i - 60 + 1, dt, cpm, cps)
+                fcsv.write(writestring + "\n")
+                if i < 60 + maxprints or i >= (records + 60 - maxprints): print(writestring)
+
+            msg = "Saved to file: {}\n".format(path)
+            fprint(msg)
+            dprint(msg)
+
+
+        # for : getDeltaTimePoisson
+        # with open(path, "wt") as fcsv:
+        #     fcsv.write("#HEADER , {}, SYNTHETIC data: {}\n".format(strt0, DataSrc))
+        #     fcsv.write("#LOGGING, {}, Start @LogCycle: {} sec device 'SYNTHETIC'\n".format(strt0, cycletime))
+
+        #     npsigtM     = np.array(sigtM)
+        #     npsigtS     = np.array(sigtS)
+
+        #     maxprints = 10
+        #     for i in range(60, records + 60):                                            # skip the first 60 records to have CPM start with proper values
+        #         dt          = td[i - 60]                                                 # DateTime
+        #         cps         = npsigtS[i]                                                 # CPS
+        #         # cpm         = int(np.nansum(npsigt[max(0, i - 60): i]))                # CPM as sum of last 60 CPS
+        #         cpm         = npsigtM[i]                                                 # CPM
+        #         writestring = " {:7d}, {:19s}, {:}, {:}".format(i - 60 + 1, dt, cpm, cps)
+        #         fcsv.write(writestring + "\n")
+        #         if i < 60 + maxprints or i >= (records + 60 - maxprints): print(writestring)
+
+        #     msg = "Saved to file: {}\n".format(path)
+        #     fprint(msg)
+        #     dprint(msg)
 
     setNormalCursor()
 
 
 def getDeltaTimePoisson(records, mean):
     """The length of the intervall of two successive Poisson events
-    mean:   in CPS
-    return: distribution with times in µs
+    records: number of records to return
+    mean:    in CPS
+    return:  distribution with times in µs
     """
 
-    fncname = "getDeltaTimePoisson_"
+    defname = "getDeltaTimePoisson_"
     DataSrc = "DeltaTimePoisson_CPSmean={}".format(mean)
 
-    x       = np.random.exponential(1 / mean, size=records) * 1E6    # duration before next pulse in µs
+    cpm     = np.random.poisson(mean * 60, size=records)             # true CPM
+    cps     = np.random.exponential(1 / mean, size=records) * 1E6    # CPS as duration before next pulse in µs
 
-    xtext   = fncname + "size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
-    # fprint("Resulting Data:", xtext, debug=True)
-    msg = "Resulting Data:", xtext
-    fprint(msg)
-    dprint(msg)
+    msgM     = "Resulting Data:", defname + "CPM:  size:{}, mean={:0.4f}, var={:0.4f}".format(cpm.size, np.mean(cpm), np.var(cpm))
+    msgS     = "Resulting Data:", defname + "CPS:  size:{}, mean={:0.4f}, var={:0.4f}".format(cps.size, np.mean(cps), np.var(cps))
+    fprint(*msgM)
+    fprint(*msgS)
+    dprint(*msgM)
+    dprint(*msgS)
+
+    return cpm, cps, DataSrc
+
+
+def getExpPoissonDecay(records, time, taudays):
+    """Exponential decay data half-life taudays in days"""
+
+    defname = "getExpPoissonDecay: "
+    DataSrc = defname + "tau={} days".format(taudays)
+    tau     = taudays * 24 * 60 * 60                                # tau: days ---> sec
+    xmean   = 1000 * np.exp(-np.log(2) / tau * (time - 60)) + 5     # get the exp function; add a background of 5 for CPS
+    x       = np.random.poisson(xmean)                              # overlay poisson random
+
+    msg     = "Resulting Data:",   defname + "size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
+    fprint(*msg)
+    dprint(*msg)
+
+    return x, DataSrc
+
+
+def getExpDecay(records, time, taud):
+    """Exponential decay data tau in days"""
+
+    defname = "getExpDecay"
+    DataSrc = defname + "tau={} days".format(taud)
+    tau     = taud * 24 * 60 * 60           # days ---> sec
+    x       = 1000 * np.exp(-np.log(2) / tau * (time - 60))
+
+    xtext   = defname + "size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
+    msg     = "Resulting Data:", xtext
+    fprint(*msg)
+    dprint(*msg)
 
     return x, DataSrc
 
@@ -162,17 +227,15 @@ def getDeltaTimePoisson(records, mean):
 def getWhiteNoisePoisson(records, mean):
     """White noise data drawn from Poisson distribution"""
 
-    fncname = "getWhiteNoisePoisson_"
-    DataSrc = fncname + "CPSmean={}".format(mean)
+    defname = "getWhiteNoisePoisson_"
+    DataSrc = defname + "CPSmean={}".format(mean)
 
     x       = np.random.poisson(mean, size=records)
 
-    xtext   = fncname + "size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
-    # fprint("Resulting Data:", xtext, debug=True)
-    msg = "Resulting Data:", xtext
-    fprint(msg)
-    dprint(msg)
-
+    xtext   = defname + "size:{}, mean={:0.4f}, var={:0.4f}".format(x.size, np.mean(x), np.var(x))
+    msg     = "Resulting Data:", xtext
+    fprint(*msg)
+    dprint(*msg)
 
     return x, DataSrc
 
@@ -180,17 +243,15 @@ def getWhiteNoisePoisson(records, mean):
 def getWhiteNoiseNormal(records, mean, stddev):
     """White noise data drawn from Normal distribution"""
 
-    fncname = "getWhiteNoiseNormal_"
-    DataSrc = fncname + "CPSmean={}_std={:3.2f}".format(mean, stddev)
+    defname = "getWhiteNoiseNormal_"
+    DataSrc = defname + "CPSmean={}_std={:3.2f}".format(mean, stddev)
 
     x       = np.random.normal(mean, stddev, size=records)
 
-    xtext   = fncname + "size:{}, mean={:0.3f}, var={:0.3f}, std={:0.3f}".format(x.size, np.mean(x), np.var(x), np.std(x))
-    # fprint("Resulting Data:", xtext, debug=True)
+    xtext   = defname + "size:{}, mean={:0.3f}, var={:0.3f}, std={:0.3f}".format(x.size, np.mean(x), np.var(x), np.std(x))
     msg = "Resulting Data:", xtext
-    fprint(msg)
-    dprint(msg)
-
+    fprint(*msg)
+    dprint(*msg)
 
     return x, DataSrc
 

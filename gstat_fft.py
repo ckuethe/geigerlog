@@ -26,12 +26,12 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-from   gsup_utils            import *
+from gsup_utils   import *
 
 
 def plotFFT():
@@ -42,65 +42,93 @@ def plotFFT():
     # sigt    = Signal in time domain, (like CPM/CPS)
     # freq    = Signal in frequency domain
 
-    if gglobs.logTimeSlice is None:
-        gglobs.exgg.showStatusMessage("No data available")
+    defname = "plotFFT: "
+    vprint(defname)
+    setIndent(1)
+
+    if g.logTimeSlice is None:
+        msg = "No data available"
+        g.exgg.showStatusMessage(msg)
+        vprint(defname, msg)
+        setIndent(0)
         return
 
-    vindex      = gglobs.exgg.select.currentIndex()
-    vname       = list(gglobs.varsCopy)[vindex]
-    vnameFull   = gglobs.varsCopy[vname][0]
+    vindex      = g.exgg.select.currentIndex()
+    vname       = list(g.VarsCopy)[vindex]
+    vnameFull   = g.VarsCopy[vname][0]
     yunit       = vnameFull
     #print("plotFFT: vname, vnameFull: ", vname, vnameFull)
 
+    # continue only when variable is checked for display
+    if not g.exgg.varDisplayCheckbox[vname].isChecked():
+        msg = "Variable {} is not checked for display".format(vname)
+        g.exgg.showStatusMessage(msg)
+        vprint(defname, msg)
+        setIndent(0)
+        return
+
     try:
-        rawt0    = gglobs.logTimeDiffSlice
+        rawt0    = g.logTimeDiffSlice
     except Exception as e:
         srcinfo = "plotFFT: could not load time data"
         exceptPrint(e, srcinfo)
+        vprint(defname, srcinfo)
+        setIndent(0)
         return
 
     try:
-        rawsigt0 = gglobs.logSliceMod[vname]
+        mdprint(defname, "g.useGraphScaledData: ", g.useGraphScaledData)
+        # if   g.useGraphScaledData:  rawsigt0 = applyValueFormula(vname, g.logSliceMod[vname], g.GraphScale[vname], info=defname)
+        if   g.useGraphScaledData:  rawsigt0 = applyGraphFormula(vname, g.logSliceMod[vname], g.GraphScale[vname], info=defname)
+        else:                       rawsigt0 = g.logSliceMod[vname]
+        # rawsigt0 = g.logSliceMod[vname]
     except Exception as e:
-        srcinfo = "plotFFT: could not load value data"
-        exceptPrint(e, srcinfo)
+        msg = "plotFFT: could not load value data"
+        exceptPrint(e, msg)
+        vprint(defname, msg)
+        setIndent(0)
         return
 
     if rawsigt0 is None:
-        gglobs.exgg.showStatusMessage("No data available")
+        msg = "No data available"
+        g.exgg.showStatusMessage(msg)
+        vprint(defname, msg)
+        setIndent(0)
         return
 
     rawt0_nonnan   = np.count_nonzero(~np.isnan(rawt0))         # non-nan count
     rawsigt0_nonan = np.count_nonzero(~np.isnan(rawsigt0))      # dito
 
     if rawt0_nonnan < 20 or rawsigt0_nonan < 20:
-        gglobs.exgg.showStatusMessage("Not enough data (need 20+)")
+        msg = "Not enough data - need at least 20 valid records)"
+        g.exgg.showStatusMessage(msg)
+        vprint(defname, msg)
+        setIndent(0)
         return
 
-    setBusyCursor()
+    # mdprint(defname, "rawt0:   ", rawt0[0:3])
+    # mdprint(defname, "rawsigt0:", rawsigt0[0:3])
 
-    #print("rawt0, rawsigt0: len:", len(rawt0), len(rawsigt0))
-    rawt    = np.ndarray(0)
-    rawsigt = np.ndarray(0)
-    for i in range(0, len(rawt0)):
-        if np.isnan(rawsigt0[i]):
-            #print("i, x0[i]:", i, x0[i])
-            continue
-        else:
-            #print("i, x[i]:", i, x0[i])
-            rawt    = np.append(rawt,    rawt0[i])
-            rawsigt = np.append(rawsigt, rawsigt0[i])
-    #print("rawt, rawsigt: len:", len(rawt), len(rawsigt))
+
+    # clean the data from nan:
+    # - first clean all data pairs where y is nan
+    tmask      = np.isfinite(rawt0)
+    t1         = rawt0[tmask]
+    sig1       = rawsigt0[tmask]
+    # - second clean all remaining data pairs where x is nan
+    smask      = np.isfinite(sig1)
+    t          = t1[smask]
+    sigt       = sig1[smask]
+
 
     markersize  = 1.0
-    DataSrc     = os.path.basename(gglobs.currentDBPath)
-
-    t    = rawt.copy()
-    sigt = rawsigt.copy()
+    DataSrc     = os.path.basename(g.currentDBPath)
 
     if t.size == 0:
-        gglobs.exgg.showStatusMessage("No data available")
-        setNormalCursor()
+        msg = "No data available"
+        g.exgg.showStatusMessage(msg)
+        vprint(defname, msg)
+        setIndent(0)
         return
 
     ####### Window functions ##############################################
@@ -155,15 +183,21 @@ def plotFFT():
     cdprint("----------------sigt_err  = ", sigt_err)
 
     if sigt_var == 0:
-        gglobs.exgg.showStatusMessage("All data variances are zero; cannot calculate FFT!")
+        msg = "All data variances are zero; cannot calculate FFT!"
+        g.exgg.showStatusMessage(msg)
+        vprint(defname, msg)
         setIndent(0)
         setNormalCursor()
         return
+
+    # let the calculations begin
+    setBusyCursor()
 
     # FFT calculation #####################################################
     # using amplitude spectrum, not power spectrum; power would be freq^2
     freq         = np.abs(np.fft.rfft(sigt     ))
     #freq2        = np.abs(np.fft.rfft(sigt2    ))
+    # mdprint(defname,"Freq done")
 
     if use_window_functions:
         freq_win     = np.abs(np.fft.rfft(sigt_win ))
@@ -171,37 +205,31 @@ def plotFFT():
     # Return the Discrete Fourier Transform sample frequencies
     f = np.fft.rfftfreq(t.size, d = cycletime)
     #print "f:   len:", f.size, "\n", f
+    # mdprint(defname,"sample frequencies done")
 
     # Return the reciprocal of the argument, element-wise.
     p  = np.reciprocal(f[1:])  # skipping 1st value frequency = 0
     #print "Period: len:", p.size, "\n", p
+    # mdprint(defname,"reciprocal done")
 
-
-    asigt = sigt - sigt_mean
-
-    #print "np.mean(sigt) , np.var(sigt) :", np.mean(sigt),  np.var(sigt)
-    #print "np.mean(asigt), np.var(asigt):", np.mean(asigt), np.var(asigt)
-
+    asigt     = sigt - sigt_mean
     asigtnorm = np.var(asigt) * asigt.size  # to normalize autocorrelation
 
-    # Cross-correlation of two 1-dimensional sequences.
-
-    ac = np.correlate(asigt, asigt, mode='full') / asigtnorm
-    #print( "ac: len:", ac.size)
+    ac = scipy.signal.correlate(asigt, asigt, mode='full', method='fft')/ asigtnorm
     ac = ac[int(ac.size/2):]
-    #print( "ac: len:", ac.size)
-    #print( "ac:", "\n", ac)
+    # mdprint( "ac: len:", ac.size)
+    # mdprint( "ac:", "\n", ac)
 
 
 # figure and canvas ###################################################
-    figFFT = plt.figure(facecolor = "#C9F9F0", dpi=gglobs.hidpiScaleMPL) # blueish tint
+    figFFT = plt.figure(facecolor = "#C9F9F0", dpi=g.hidpiScaleMPL) # blueish tint
     vprint("plotFFT: open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
 
     # canvas - this is the Canvas Widget that displays the `figure`
     # it takes the `figure` instance as a parameter to __init__
     canvas3 = FigureCanvas(figFFT)
     canvas3.setFixedSize(1000, 600)
-    navtoolbar = NavigationToolbar(canvas3, gglobs.exgg)
+    navtoolbar = NavigationToolbar(canvas3, g.exgg)
 
 
 # Data vs Time ################################################################
@@ -216,6 +244,7 @@ def plotFFT():
 
     plt.plot(t, sigt        ,  linewidth=0.4, color='red'   , label ="Time Domain" , marker="o", markeredgecolor='red'   , markersize=markersize)
     #plt.plot(t, sigt_win    ,  linewidth=0.4, color='black' , label ="Time Domain" , marker="o", markeredgecolor='black' , markersize=markersize)
+    # mdprint(defname,"plot sigt done")
 
 
     #def format_coord(x, y):
@@ -272,6 +301,7 @@ def plotFFT():
         a.set_color("blue")
 #            a.set_weight("bold")
 
+    # mdprint(defname,"plot autocorrelate done")
 
 
 # FFT vs Time #########################################################
@@ -285,6 +315,7 @@ def plotFFT():
     plt.loglog(p, freq[1:]        , linewidth= 0.4, color='red'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=markersize)
     #plt.loglog(p, freq2[1:] -freq[1:]       , linewidth= 0.4, color='black'   , label ="FFT" , marker="o", markeredgecolor='red'   , markersize=markersize)
     #plt.loglog(p, freq_win[1:]    , linewidth= 0.4, color='black' , label ="FFT" , marker="o", markeredgecolor='black' , markersize=markersize)
+    # mdprint(defname,"plt fft vs time done")
 
 # FFT vs Frequency ####################################################
     plt.subplot(2,2,4)
@@ -299,13 +330,14 @@ def plotFFT():
     #plt.semilogy (f[1:], freq_win[1:] , linewidth= 0.4, color='black' , label ="FFT" , marker="o", markeredgecolor='black' , markersize=markersize)
 
     #plt.legend(loc='upper left', fontsize=12)
+    # mdprint(defname,"plt ffr vs frequency done")
 
 # arrange sub plots
     plt.subplots_adjust(hspace=0.5, wspace=0.2, left=.08, top=0.95, bottom=0.090, right=.98)
 
 # textboxes ################################################################
     labout_left  = QTextBrowser() # label to hold some data on left side
-    labout_left.setFont(gglobs.fontstd)
+    labout_left.setFont(g.fontstd)
     labout_left.setLineWrapMode(QTextEdit.NoWrap)
     labout_left.setTextInteractionFlags(Qt.LinksAccessibleByMouse|Qt.TextSelectableByMouse)
     labout_left.setMinimumHeight(150)
@@ -320,15 +352,17 @@ def plotFFT():
     labout_left.append("{:22s}= {:4.2f} "                       .format("A.corr(lag={:5.1f} sec)".format(tnew[2] *60.), ac[2]))
 
     labout_right  = QTextBrowser() # label to hold some data on right side
-    labout_right.setFont(gglobs.fontstd)
+    labout_right.setFont(g.fontstd)
     labout_right.setLineWrapMode(QTextEdit.NoWrap)
     labout_right.setTextInteractionFlags(Qt.LinksAccessibleByMouse|Qt.TextSelectableByMouse)
     labout_right.setMinimumHeight(120)
 
     fftmax      = np.max    (freq[1:])
-    fftmaxindex = np.argmax (freq[1:]) + 1
+    # fftmaxindex = np.argmax (freq[1:]) + 1
+    fftmaxindex = np.argmax (freq[1:])
     f_max       = f         [fftmaxindex ]
 
+    # rdprint(defname, fftmaxindex)
     labout_right.append("{:22s}= {:4.0f}"              .format("FFT(f=0)"         , freq[0]) )
     labout_right.append("{:22s}= {:4.2f} (= FFT(f=0)/No of Records)".format("Count Rate Average", freq[0] / len(t)) )
     labout_right.append("{:22s}= {:4.2f}"              .format("Max FFT(f>0)"     , fftmax))
@@ -336,12 +370,12 @@ def plotFFT():
     labout_right.append("{:22s}= {:4.4f}"              .format("  @ Frequency"    , f_max ))
     labout_right.append("{:22s}= {:4.4f}"              .format("  @ Period"       , p[fftmaxindex] ))
 
+    # mdprint(defname,"labouts done")
+
 # Pop Up  #################################################################
     d       = QDialog()
-    d.setWindowIcon(gglobs.iconGeigerLog)
-    #d.setFont(gglobs.fontstd)
+    d.setWindowIcon(g.iconGeigerLog)
     d.setWindowTitle("FFT & Autocorrelation" )
-    #d.setMinimumHeight(gglobs.window_height)
     d.setWindowModality(Qt.WindowModal)
 
     bbox    = QDialogButtonBox()
@@ -352,19 +386,7 @@ def plotFFT():
     layoutH.addWidget(labout_left)
     layoutH.addWidget(labout_right)
 
-
-    #~layoutHtb = QHBoxLayout()
-    #~layoutHtb.addWidget(bbox)
-    #~layoutHtb.addWidget(navtoolbar)
-    #~layoutHtb.addStretch()
-    #~layoutHtb.addStretch() # strange - one is not enough? on Py3.5
-    #~layoutHtb.addStretch() # strange - one is not enough? on Py3.8
-    #~layoutHtb.addStretch() # strange - one is not enough? on Py3.8
-    #~layoutHtb.addStretch() # strange - one is not enough? on Py3.8
-
-
     layoutV   = QVBoxLayout(d)
-    #layoutV.addLayout(layoutHtb)
     layoutV.addWidget(navtoolbar)
     layoutV.addWidget(canvas3)
     layoutV.addLayout(layoutH)
@@ -376,3 +398,4 @@ def plotFFT():
     d.exec()
     plt.close(figFFT)
 
+    setIndent(0)

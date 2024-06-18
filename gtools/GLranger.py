@@ -26,15 +26,15 @@ output:  converted file: path/to/<file-to-be-converted>.csv
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 """
 NOTE:
 from the downloaded Ranger file:
-2033/31/31  37:33   57       cpm per mR/h   115.99 % 
-
+2033/31/31  37:33   57       cpm per mR/h   115.99 %
+
 FF:  0x0C: Form Feed       -- seems meaningless in this setting
 SOH: 0x01: Start of header -- seems meaningless in this setting
 """

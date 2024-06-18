@@ -23,7 +23,7 @@ Adafruit FTDI232H Dongle
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -38,7 +38,7 @@ __license__         = "GPL3"
 import pyftdi
 import pyftdi.i2c
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 
 class FTDdongle:
@@ -62,8 +62,8 @@ class FTDdongle:
     def DongleInit(self):
         """opening the serial port and testing for correct dongle"""
 
-        fncname = "DongleInit: {} ".format(self.name)
-        dprint(fncname)
+        defname = "DongleInit: {} ".format(self.name)
+        dprint(defname)
         setIndent(1)
 
         # Instantiate an I2C controller
@@ -102,11 +102,11 @@ class FTDdongle:
         # freeze (bool) – if set, FTDI port is not reset to its default state on close.
         # Return type: None
 
-        fncname = "DongleTerminate: "
+        defname = "DongleTerminate: "
         msg     = "Closing the FTDI Interface of Dongle {}".format(self.name)
         self.DongleHndl.close()
 
-        return fncname + msg
+        return defname + msg
 
 
     def DongleReset(self):
@@ -135,7 +135,7 @@ class FTDdongle:
         # Dongle Scan for all devices ??? ms per address, ??? sec overall
 
         start = time.time()
-        fncname = "DongleAddrIsUsed: "
+        defname = "DongleAddrIsUsed: "
 
         for i in range(1):
             try:
@@ -186,7 +186,7 @@ class FTDdongle:
             # rdprint("addr: ", hex(addr), ",  bread: ", bread)
 
         duration2 = 1000 * (time.time() - start)
-        cdprint(fncname + "addr: 0x{:02X}  present:{}  dur:{:0.2f} ms".format(addr, bread, duration2))
+        cdprint(defname + "addr: 0x{:02X}  present:{}  dur:{:0.2f} ms".format(addr, bread, duration2))
 
         return bread
 
@@ -206,7 +206,7 @@ class FTDdongle:
         def DongleWriteReg(self, addr, register, readbytes, data, addrScheme=1, msg=""):
         def DongleGetData (self, addr, register, readbytes, data, addrScheme=1, msg=""):
         into one, with error checking after write
-        wait it wait phase between write and read call
+        wait is wait phase between write and read call
         """
 
         wrt       = self.DongleWriteReg(addr, register, readbytes, data, addrScheme=addrScheme, msg=msg)
@@ -229,8 +229,8 @@ class FTDdongle:
 
         start = time.time()
 
-        fncname = "   {:15s}: {:15s} ".format("DongleWriteReg", msg)
-        # dprint(fncname)
+        defname = "   {:15s}: {:15s} ".format("DongleWriteReg", msg)
+        # dprint(defname)
 
         if    addrScheme == 1:  reglen  = 1
         elif  addrScheme == 2:  reglen  = 2
@@ -260,8 +260,8 @@ class FTDdongle:
             success = False
 
         duration = 1000 * (time.time() - start)
-        cdprint(fncname + "duration: ", duration)
-        cdprint(fncname + "success:{:6s}  {:50s}  ".format(str(success), convertB2Hex(bcmd)))
+        cdprint(defname + "duration: ", duration)
+        cdprint(defname + "success:{:6s}  {:50s}  ".format(str(success), convertB2Hex(bcmd)))
 
         return success
 
@@ -275,8 +275,8 @@ class FTDdongle:
         # data     : any data bytes to write
         # command  : LM75: ELV!   b'S 91 02 P'       # prepare to read 2 bytes from previously set Temp register (=0x00)
 
-        fncname = "   {:15s}: {:15s} ".format("DongleGetData", msg)
-        # dprint(fncname)
+        defname = "   {:15s}: {:15s} ".format("DongleGetData", msg)
+        # dprint(defname)
 
         # read bytes
         try:
@@ -288,7 +288,7 @@ class FTDdongle:
             lrec = []
             success = False
 
-        cdprint(fncname + "bwrt:{:6s}  {:50s}  bexp:{:2n} brcvd:{:2n} {}".format(str(success), "no cmd", readbytes, len(lrec), lrec))
+        cdprint(defname + "bwrt:{:6s}  {:50s}  bexp:{:2n} brcvd:{:2n} {}".format(str(success), "no cmd", readbytes, len(lrec), lrec))
 
         return lrec
 

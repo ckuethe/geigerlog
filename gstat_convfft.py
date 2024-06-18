@@ -26,12 +26,12 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-from   gsup_utils            import *
+from gsup_utils   import *
 
 
 def convFFT():
@@ -43,17 +43,17 @@ def convFFT():
     Has extra function for rectangle and autocorr
     """
 
-    markersize     = 1.0
-    rectangle_size = 60     # normally 60 for 60 s = 1 min
+    markersize      = 1.0
+    rectangle_size  = 60     # normally 60 for 60 s = 1 min
 
-    vindex      = gglobs.exgg.select.currentIndex()
-    vname       = list(gglobs.varsCopy)[vindex]
-    vnameFull   = gglobs.varsCopy[vname][0]
-    yunit       = vnameFull
+    vindex          = g.exgg.select.currentIndex()
+    vname           = list(g.VarsCopy)[vindex]
+    vnameFull       = g.VarsCopy[vname][0]
+    yunit           = vnameFull
     vprint("plotFFT: vname: '{}', vnameFull: '{}'".format(vname, vnameFull))
 
-    rawt0    = gglobs.logTimeDiffSlice
-    rawsigt0 = gglobs.logSliceMod[vname]
+    rawt0           = g.logTimeDiffSlice
+    rawsigt0        = g.logSliceMod[vname]
 
     if rawsigt0 is None:
         showStatusMessage("No data available")
@@ -64,7 +64,7 @@ def convFFT():
         return
 
     setBusyCursor()
-    DataSrc = os.path.basename(gglobs.currentDBPath)
+    DataSrc = os.path.basename(g.currentDBPath)
 
     rawt    = np.ndarray(0)
     rawsigt = np.ndarray(0)
@@ -91,7 +91,7 @@ def convFFT():
     sigt = sigt[not_nan_array]
 
     if sigt.size == 0:
-        gglobs.exgg.showStatusMessage("No data available")
+        g.exgg.showStatusMessage("No data available")
         setNormalCursor()
         return
 
@@ -146,14 +146,14 @@ def convFFT():
 
     if t.size < rectangle_size:
         msg = "Not enough data; need {} records as minimum".format(rectangle_size)
-        gglobs.exgg.showStatusMessage(msg)
+        g.exgg.showStatusMessage(msg)
         setNormalCursor()
         return
 
     maxf = int(sigt.size / 60 * 10) # --> up to 10/min frequency
 
 # figure and canvas ###########################################################
-    figEvalFFT = plt.figure(facecolor = "#C9F9F0", dpi=gglobs.hidpiScaleMPL) # blueish tint
+    figEvalFFT = plt.figure(facecolor = "#C9F9F0", dpi=g.hidpiScaleMPL) # blueish tint
     vprint("figEvalFFT: open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
 
 # arrange sub plots
@@ -398,10 +398,10 @@ def convFFT():
 
 # Pop Up  #################################################################
     d       = QDialog()
-    d.setWindowIcon(gglobs.iconGeigerLog)
-    d.setFont(gglobs.fontstd)
+    d.setWindowIcon(g.iconGeigerLog)
+    d.setFont(g.fontstd)
     d.setWindowTitle("FFT & Autocorrelation")
-    #d.setMinimumHeight(gglobs.window_height)
+    #d.setMinimumHeight(g.window_height)
     d.setWindowModality(Qt.WindowModal)
 
     bbox    = QDialogButtonBox()

@@ -9,6 +9,7 @@ Start with: GLestimate.py [datarecords [usePredictive [useLimitStats [statlimit]
             usePredictive: 0 or 1   (0 = No, 1 = Yes, default = 1)
             useLimitStats: 0 or 1   (0 = No, 1 = Yes, default = 1)
             statlimit:     >= 0                       default = 25)
+Example:    gtools/GLestimate.py 1000 1 1 25
 """
 
 ###############################################################################
@@ -29,7 +30,7 @@ Start with: GLestimate.py [datarecords [usePredictive [useLimitStats [statlimit]
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -58,9 +59,8 @@ def main():
     print("-"*200)
 
     fig = plt.figure("GLestimate", figsize=(18, 11))
-    #~fig = plt.figure("GLestimate", figsize=(18, 11), dpi=gglobs.hidpiScaleMPL)
 
-    #~cpsmeans    = [0.3, 1, 3, 10, 30, 100, 300, 1000, 3000, 10000]
+    #~cpsmeans  = [0.3, 1, 3, 10, 30, 100, 300, 1000, 3000, 10000]
     cpsmeans    = [0.3, 1, 3, 10, 100, 10000]
     print("cpsmeans    :", cpsmeans)
 
@@ -72,7 +72,7 @@ def main():
 
     # command line option to set predictive
     # if none given on command line, an exception will set default
-    # True: make est of CPm on first CPS
+    # True: make est of CPM on first CPS
     try:    predictive = True if (int(sys.argv[2]) != 0) else False
     except: predictive = True
     print("predictive  :", "Yes" if predictive else "No")
@@ -96,11 +96,9 @@ def main():
     print("statlimit   :", statlimit, "--> StdDev: {:0.2f}%".format(np.sqrt(statlimit) / statlimit * 100))
 
     chunk       = 120
-    #~chunk       = 300
     walkstep    = 7
 
     for recno in range(0, len(cpsmeans)):
-        #~if recno > 2: break
         cpsmean = cpsmeans[recno]
         data   = np.random.poisson(cpsmean, size=datalen)
 
@@ -191,6 +189,10 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
-    print()
-
+    try:
+        main()
+        print()
+    except KeyboardInterrupt:
+        print()
+        print("Exit by CTRL-C")
+        print()

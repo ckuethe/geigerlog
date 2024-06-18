@@ -29,19 +29,33 @@ GLsermon.py - Serial Monitor to read from and write to a USB-to-Serial Connectio
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
-__version__         = "1.1"
+__version__         = "1.3"
 
-import sys, os, io, time, datetime  # basic modules
-import serial                       # handling the serial port
-import serial.tools.list_ports      # allows listing of serial ports
-import threading                    # thread to read the keyboard
-import getopt                       # parse command line for options and commands
-import traceback                    # for traceback on error; used in: exceptPrint
+import sys, os, io, time, datetime      # basic modules
+import serial                           # handling the serial port
+import serial.tools.list_ports          # allows listing of serial ports
+import threading                        # thread to read the keyboard
+import getopt                           # parse command line for options and commands
+import traceback                        # for traceback on error; used in: exceptPrint
 
-helpOptions = """
+
+# global vars
+ser         = None                      # the pointer to the serial connection
+debug       = False                     # print output for debugging
+traceback   = False                     # detailed exception output
+Port        = "/dev/ttyUSB0"            # Port
+Baud        = 115200                    # Baudrate
+gmc         = False                     # flag to signal use of GMC counter
+waiting     = False                     # to select between reading data and just printint queue size
+filename    = "GLsermon.log"            # file for saving all communication
+Term        = ""                        # CR or LF or both (will be reset to "" for GMC counters!)
+
+
+helpOptions = \
+"""
 Usage:  GLsermon.py [Options] [Commands]
 
 All serial communication will be logged to file 'GLsermon.log'. You'll find it
@@ -59,7 +73,7 @@ Options:
     -B, --Baudrate      Define Baudrate:
                            57600, 115200, ...
                            Default: 115200
-    -L, --List          Show available USB-to-Serial ports
+    -L, --List          Print full details of available USB-to-Serial ports.
                            Ports existing only as Symlinks are also shown
     -T, --Term          Termination characters when sending:
                            'CR' for Carriage Return,
@@ -78,11 +92,13 @@ Runtime guidance:
     Some devices, in particular GMC counters, may become non-responsive under
     certain conditions; commands 'clear' and 'reconnect' may be of help..
 
-    clear:      Clears the serial connection pipeline
+    clear:      Clears the serial connection pipeline (GMC only)
     reconnect:  If 'clear' does not help, try 'reconnect'. Repeat if no success.
-                Last resort is restarting the counter.
+                    Last resort is restarting the device.
     cmds:       Prints a list of all GMC commands
     help:       Prints out this help information during a run
+    list:       Prints full details of available USB-to-Serial ports.
+                    Ports existing only as Symlinks are also shown
 
 
 Using GMC counters:
@@ -131,62 +147,57 @@ GMC Counter Command List:
 see: GQ-RFC1801 GMC Communication Protocol,
 https://www.gqelectronicsllc.com/comersus/store/download.asp
 
-No Parameter:
-    cfgupdate
-    ecfg
-    factoryreset
-    getcfg
+Parameter Count: 0
+    getcpm          # get CPM
+    getcpmh         # get CPM from Low  Sensitivity tube; that should be the 2nd tube in the 500+
+    getcpml         # get CPM from High Sensitivity tube; that should be the 1st tube in the 500+
+    getcps          # get CPS
+    getcpsh         # get CPS from Low  Sensitivity tube; that should be the 2nd tube in the 500+
+    getcpsl         # get CPS from High Sensitivity tube; that should be the 1st tube in the 500+
 
-    getcpm
-    getcpmh
-    getcpml
-    getcps
-    getcpsh
-    getcpsl
+    getdatetime     # get counter's DateTime
+    getgyro         # get motion sensor
+    getserial       # get serial number of counter
+    gettemp         # get temperature (not supported anymore)
+    getver          # get version of firmware
+    getvolt         # get battery voltage
+    heartbeat0      # heartbeat Off  (nothing returned)
+    heartbeat1      # heartbeat On   (starts returning of byte values in 1 sec intervals)
+    poweron         # switch power On
+    poweroff        # switch power Off
 
-    getdatetime
-    getgyro
-    getserial
-    gettemp
-    getver
-    getvolt
-    heartbeat0
-    heartbeat1
-    poweron
-    poweroff
-    reboot
+    getcfg          # get the cpnfiguration
+    ecfg            # erase the configuration
+    cfgupdate       # update the configuration
+    reboot          # reboot the counter
+    factoryreset    # do a factory reset
 
-2 Parameter: for counter 3XX series (2 Bytes)
+Parameter Count: 1
+    No commands
+
+Parameter Count: 2  for counter 3XX series (2 Bytes)
     wcfg,A0,Ch                  A0 - address
                                 Ch - Byte to write
 
-3 Parameter: for counter 5XX, 6XX series (3 bytes)
+Parameter Count: 3  for counter 5XX, 6XX series (3 bytes)
     wcfg,Hi,Lo,Ch               Hi - High byte, Lo - Low byte of address
                                 Ch - Byte to write
 
-5 Parameter:
+Parameter Count: 5
     spir,A2,A1,A0,L1,L0         A2,A1,A0 are three bytes address data, from MSB to LSB
                                 L1,L0 are the data length requested, from MSB to LSB
                                 The length normally not exceed 4096 bytes in each request.
                                 for the first 2048 bytes use:    spir{0,0,0,8,0}
-6 Parameter:
+Parameter Count: 6
     setdatetime,Y,M,D,h,m,s     for: 2021-04-19 13:02:50 use:    setdatetime{21,4,19,13,2,50}
 
 """
-
-ser         = None                   # the pointer to the serial connection
-debug       = False                  # print output for debugging
-Port        = "/dev/ttyUSB0"         # Port
-Baud        = 115200                 # Baudrate
-gmc         = False                  # flag to signal use of GMC counter
-filename    = "GLsermon.log"         # file for saving all communication
-Term        = ""                     # CR or LF or both (will be reset to "" for GMC counters!)
 
 
 def longstime():
     """Return current time as YYYY-MM-DD HH:MM:SS.mmm, (mmm=millisec)"""
 
-    return datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] # trim down to ms resolution
+    return dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3] # trim down to ms resolution
 
 
 def exceptPrint(e, srcinfo):
@@ -197,10 +208,10 @@ def exceptPrint(e, srcinfo):
 
     print("EXCEPTION: '{}' in file: '{}' in line {}".format(e, fname, exc_tb.tb_lineno))
     if srcinfo > "": print("{}".format(srcinfo))
-    # print("EXCEPTION: Traceback:\n", traceback.format_exc()) # more extensive info
+    if traceback:  print("EXCEPTION: Traceback:\n", traceback.format_exc()) # more extensive info
 
 
-def printPortList(symlinks=True):
+def getPortList(symlinks=True, full=False):
     """print serial port details. Include symlinks or not"""
 
     # Pyserial:
@@ -208,21 +219,50 @@ def printPortList(symlinks=True):
     # lp = serial.tools.list_ports.comports(include_links=False) # default; no symlinks shown
     # lp = serial.tools.list_ports.comports(include_links=True)  # also shows symlinks like e.g. /dev/geiger
 
-    fncname = "printPortList: "
-    print("Listing all Ports:")
+    defname   = "getPortList: "
+    PortList  = ""
+    PortList += "All Ports Listing{}:".format(" (with Symlinks)" if symlinks else "") + " - Type 'List' for full details\n"
 
+    lp = []
     try:
-        lp = []
         lp = serial.tools.list_ports.comports(include_links=symlinks)
-        lp.sort()
     except Exception as e:
-        msg = fncname + "Exception on getting port list: {}".format(lp)
+        msg = defname + "lp: {}".format(lp)
         exceptPrint(e, msg)
-        # print(fncname + "Current list: ", lp)
-        # lp = []
+    lp.sort()                 # sorted by device /dev/ttyUSB0, /dev/ttyUSB1, ...
 
-    for p in lp:
-        print(fncname, p)
+    if len(lp) == 0:
+        PortList += "   None\n"
+    else:
+        # example output:
+        #   Ports detected:
+        #       /dev/ttyACM0 - USB-ISS.
+        #       /dev/ttyUSB0 - USB2.0-Serial
+        for p in lp:    PortList += "   " + str(p) + "\n"
+
+    if full and len(lp) > 0:
+            PortList += ""
+            PortList += "All Ports detailed:"
+
+            # complete list of attributes for serial.tools.list_ports.comports()
+            lpAttribs = ["device", "name", "hwid", "description", "serial_number", "location", "manufacturer", "product", "interface", "vid", "pid"]
+            try:
+                for p in lp:
+                    PortList += str(p)
+                    for pA in lpAttribs:
+                        if pA == "vid" or pA == "pid":
+                            x = getattr(p, pA, 0)
+                            if x is None:   PortList += "   {:16s} : None\n".format("p." + pA)
+                            else:           PortList += "   {:16s} : {:5d} (0x{:04X})\n".format("p." + pA, x, x)
+                        else:
+                            PortList += "   {:16s} : {}\n".format("p." + pA, getattr(p, pA, "None"))
+                    PortList += "\n"
+            except Exception as e:
+                msg = defname + "lp: {}".format(lp)
+                exceptPrint(e, msg)
+            PortList += "\n"
+
+    return PortList
 
 
 class KeyboardThread(threading.Thread):
@@ -250,24 +290,28 @@ def input_callback(inp):
 
     global ser
 
-    if debug: print('DEBUG: You Entered:', inp)
-
+    if debug: print("You Entered: '{}'".format(inp))
     inpUP = inp.upper()
+    # if debug: print("Uppered    : '{}'".format(inpUP))
+    # if debug: print("len(inp): {} len(inpUP): {} ".format(len(inp), len(inpUP)))
 
-    if   inpUP == "CLEAR":                      # Clear (read all bytes from pipeline)
+    if   "CLEAR" in inpUP:                      # Clear (read all bytes from pipeline)
         clearPipeline()
 
-    elif inpUP == "RECONNECT":                  # Reconnect (done in main loop)
+    elif "RECONNECT" in inpUP:                  # Reconnect (done in main loop)
         clearPipeline()
-        ser.close()
+        print("About to reconnect")
         ser = None
 
-    elif inpUP == "HELP":                       # print Help info
+    elif "HELP" in inpUP:                       # print Help info
         print(helpOptions)
 
-    elif inpUP == "CMDS":                       # print GMC commands set
-        if gmc: print(gmc_commands)
-        else:   print("Commands available only for GMC")
+    elif "LIST" in inpUP:                       # print detailed port info
+        print(getPortList(symlinks=True, full=True))
+
+    elif "CMDS" in inpUP:                       # print GMC commands set
+        if not gmc: print("COMMANDS VALID ONLY FOR GMC")
+        print(gmc_commands)
 
     else:                                       # write data to device and file
         if gmc:
@@ -285,13 +329,13 @@ def input_callback(inp):
                 cmd = bw
 
             sendb = "<" + cmd + binval + ">>"
-            if debug: print("cmd:    ", cmd, ",  binval: ", binval)
+            if debug: print("cmd:   {}   binval: '{}'".format(cmd, binval))
             print(">>>>> NOTE: Byte values printed to a Terminal may look incomplete! Compare Length with expected length! <<<<<")
 
         else:
             sendb = inp + Term                         # other devices than GMC may need low cap!
 
-        print("Sending: '{}'  (Length:{})".format(sendb, len(sendb)))
+        print("Sending: '{}'  (Length:{})".format(sendb.replace("\n", "LF").replace("\r", "CR"), len(sendb)))
         ser.write(bytes(sendb, 'utf-8'))
         with open(filename, "a") as f:
             f.write("Sending : {}\n".format(sendb))
@@ -300,22 +344,29 @@ def input_callback(inp):
 def clearPipeline():
     """read all bytes from serial until no more bytes"""
 
-    br = b""
-    while True:
-        time.sleep(0.1)
-        bw = ser.in_waiting
-        if bw > 0:
-            try:
-                br += ser.read(1)
-            except Exception as e:
-                msg = "clearPipeline: Exception on reading: "
-                exceptPrint(e, msg)
-                sys.exit()
+    defname = "clearPipeline: "
 
-        else:
-            if len(br) == 0: print("Clearing Pipeline -- it was empty")
-            else:            print("Clearing Pipeline -- its content was: {}".format(br))
-            break
+    br     = b""                # bytes_record
+    bw     = 0                  # bytes_waiting
+    sumbw  = 0                  # sum of all bw
+
+    try:
+        time.sleep(0.1)         # allow some last bytes to get into queue
+        i = -1
+        while True:
+            i     += 1
+            bw     = ser.in_waiting
+            sumbw += bw
+            if bw == 0: break
+            br = ser.read(bw)
+            if debug: print("i: {}  bytes waiting: {:<6d}  total bytes to clear: {:<6d}  len(bytes read): {:<6d}".format(i, bw, sumbw, len(br)))
+            time.sleep(0.001)             # allow some last bytes to get into queue
+
+    except Exception as e:
+        msg = defname + "Exception on reading from Serial"
+        exceptPrint(e, msg)
+
+    print("Cleared Pipeline from {} bytes".format(sumbw))
 
 
 def serConnect():
@@ -327,144 +378,219 @@ def serConnect():
 
     global ser
 
+    defname   = "serConnect: "
+    ConnectOk = False
+
     try:
-        ser  = serial.Serial(Port, Baud, timeout = 0.5, write_timeout=0.5)
-        return True
-    except:
-        return False
+        if not os.path.exists(Port):
+            # den shit gibbes nich  -   kann passieren, wenn nach Start der USB Stecker gezogen wird!
+            emsg = "FAILURE: Serial port '{}' does not exist. ".format(Port)
+            print(defname, emsg)
+
+        ser  = serial.Serial(Port, Baud, timeout=0.5, write_timeout=0.5)
+        # buffer questions
+        # Linux see:   https://github.com/pyserial/pyserial/issues/691
+        # Windows see: https://stackoverflow.com/questions/12302155/how-to-expand-input-buffer-size-of-pyserial
+        # set buffer only on Windows: ser.set_buffer_size(rx_size = 12800, tx_size = 12800)
+        # buffer size in Linux: on CH340C:  4095 (= max no of bytes waiting?)
+        #                                   7097 (in_waiting still showed only 4095?!)
+        #                                   50000 ! how is this possible?
+        ConnectOk = True
+
+    except Exception as e:
+        exceptPrint(e, defname)
+
+    return ConnectOk
 
 
 def main():
     """on errors return with message to print out"""
 
-    global Port, Baud, Term, debug, gmc, ser
+    global ser, Port, Baud, Term, debug, gmc, waiting
 
-    fncname = "main: "
+    defname  = "main: "
+    logInfo  = "\n"
 
-    print("+" * 100)
+    logInfo += "+" * 100 + "\n"
+    logInfo += "{:13s}:  {}\n".format("GLsermon.py",  "Version: {}".format(__version__))
+    logInfo += "{:13s}:  sys.argv: {}\n".format("Command line", sys.argv)
+    print(logInfo, end="")
+
+    # Clear Logfile and save
+    with open(filename, "wt") as f:  # to empty the file
+        f.write(logInfo)
+    print("{:13s}:  {}".format("Logfile", "created as '{}'".format(filename)))
 
     # parse command line options (sys.argv[0] is progname)
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "hdVLP:B:T:", ["help", "debug", "Version", "List", "Port=", "Baudrate=", "Term="])
+        opts, args = getopt.getopt(sys.argv[1:], "hdVP:B:T:", ["help", "debug", "Version", "Port=", "Baudrate=", "Term="])
     except getopt.GetoptError as errmessage :
         # errmessage like "option -a not recognized"; results in exit
         return "ERROR: '{}', use './geigerlog -h' for help".format(errmessage)
 
     # processing the options
     for opt, optval in opts:
-        if opt in ("-h", "--help"):
-            return helpOptions
+        # if opt in ("-h", "--help"):
+        #     return helpOptions
 
-        elif opt in ("-V", "--Version"):
+        if opt in ("-V", "--Version"):
             return "Version: " + __version__
 
         elif opt in ("-d", "--debug"):
-            debug    = True
+            debug = True
 
-        elif opt in ("-L", "--List"):       # which ports are available?
-            #printPortList(symlinks=False)  # not including Sylinks
-            printPortList(symlinks=True)    # including Sylinks
-            return ""
-
-        elif opt in ("-P", "--Port"):       # Port
+        elif opt in ("-P", "--Port"):                               # Port
             Port = optval
 
-        elif opt in ("-B", "--Baudrate"):   # Baudrate
+        elif opt in ("-B", "--Baudrate"):                           # Baudrate
             Baud = optval
 
-        elif opt in ("-T", "--Term"):       # Termination character for sending
-            Term = ""                       # use Term = ""; none used for GMC counter
-            if "CR" in optval.upper():      Term += "\r"
-            if "LF" in optval.upper():      Term += "\n"
+        elif opt in ("-T", "--Term"):                               # Termination character for sending
+            Term = ""                                               # use Term = ""; none used for GMC counter
+            if "CR" in optval.upper(): Term += "\r"
+            if "LF" in optval.upper(): Term += "\n"
 
     # processing the args
     for arg in args:
         if arg.upper() == "GMC":
             gmc  = True
-            TERM = ""                       # no Termination character when sending to GMC!
+            Term = ""
 
-    print("Start with: 'GLsermon.py -h'                          to get Help Info")
-    print("Start with: 'GLsermon.py -P <Port> -B <Baudrate>'     to set Port and Baudrate")
-    print("Start with: 'GLsermon.py -P <Port> -B <Baudrate> gmc' to set Port and Baudrate for any GMC counter")
-    print("Stop  with: CTRL-C")
-    print()
+        if arg.upper() == "WAITING":
+            waiting = True
+            # Term = ""                                               # no Termination character when sending to GMC!
 
-    # Show command line
-    if debug: print("DEBUG: {:15s}: sys.argv: {}".format("Command line", sys.argv))
-    if debug: print("DEBUG: {:15s}: options: {}, commands: {}\n".format("Recognized", opts, args))
+    logInfo = "\n"
 
-    print("Connecting with Port: {}, Baudrate: {} - ".format(Port, Baud), end = " ")
+    # Show recognized command line options, cmds
+    if debug: logInfo += "{:13s}:  options: {}, commands: {}\n\n".format("Settings", opts, args)
 
-    if serConnect() :
-        print("successful")
-        clearPipeline()
-    else:
-        print("NOT successful, exiting")
-        return "Failed making a Serial Connection - Check cable, plugs, connections"
+    logInfo += "Mini Help:\n"
+    logInfo += "   Type 'Help' for more Help\n"
+    logInfo += "\n"
+    logInfo += "   Start with: 'GLsermon.py -P <Port> -B <Baudrate>'     to set Port and Baudrate\n"
+    logInfo += "   Start with: 'GLsermon.py -P <Port> -B <Baudrate> gmc' to set Port and Baudrate for any GMC counter\n"
+    logInfo += "   Stop  with: CTRL-C\n"
+    logInfo += "\n"
 
-    if debug: print("DEBUG: Connection: ", ser)
+    logInfo += getPortList(symlinks=True)    # including Symlinks
+    logInfo += "\n"
 
-    with open(filename, "w") as f:  # to empty the file
-        pass
+    logInfo += "{:13s}:  Serial Connection: Port: '{}', Baudrate: {}\n".format("Configured", Port, Baud)
+
+    # append to log file
+    with open(filename, "a") as f:
+        f.write(logInfo)
+
+    print(logInfo, end="")
 
     #start the Keyboard thread
     kthread = KeyboardThread(input_callback)
-
+    if debug: print("{:13s}:  {}".format("Keyboard",  "Thread started"))
     print()
+
     try:
         while True:
             val = b""
-            # print("begin ser: ", ser)
             while ser is None:
-                print("No Serial-Connection --> reconnecting: ", end=" ")
+                print("Making Serial-Connection: ", end=" ")
                 if serConnect():
-                    print("successful")
+                    print("successful\n")
                     break
                 else:
-                    print("NOT successful")
-
-                time.sleep(1)
+                    print("NOT successful - waiting 1 sec befor retry\n")
+                    time.sleep(1)
 
             while not os.access(Port , os.R_OK):
-                print("Port: ", Port, " can NOT be read --> closing Serial-Connection")
+                print("Port: {} can NOT be read --> closing Serial-Connection".format(Port))
                 ser.close()
                 ser = None
                 time.sleep(1)
                 break
 
             if ser is not None:
+                # print("ser is not None")
                 try:
-                    while True:
-                        bw = ser.in_waiting
-                        if bw > 0:
-                            val += ser.read(bw)
-                        else:
-                            break
-                        time.sleep(0.5)
+                    last_waiting = ser.in_waiting
+
+                    if waiting:
+                        deltatime = 1              # sec
+                        delta     = 0
+                        startt = time.time()
+                        while True:
+                            # get length of waiting queue and print
+                            newt = time.time()
+                            if newt - startt >= deltatime:
+                                startt += deltatime
+                                cum_waiting = 0
+
+                                cc=time.time()
+                                this_waiting = ser.in_waiting
+                                cum_waiting += this_waiting
+                                delta        = this_waiting - last_waiting
+                                last_waiting = this_waiting
+
+                                if cum_waiting == 4095: ser.read(4095)
+
+                                cumdur = 1000 * (time.time() - cc)
+
+                                msg = "{}  cum_dur: {:0.3f} ms   cum_waiting: {:<5d} Changed by: {:<+5d}  {}".format(longstime(), cumdur, cum_waiting, delta, "#" * int((delta / 1)))
+                                print(msg)
+                                with open(filename, "a") as f:          # append one line
+                                    f.write(msg + "\n")
+
+                            time.sleep(0.001)                           # keep ms precision
+
+                    else:
+                        while True:
+                            # read bytes waiting; read as single byte
+
+                            sbyte = ser.read(1)
+                            if sbyte == b"": break                      # break while-loop when nothing to read left
+                            # print("sbyte: ", sbyte)
+
+                            # GMC counter
+                            if gmc:
+                                val += sbyte                            # assemble byte-sequence
+
+                            # Generic Serial Terminal
+                            else:
+                                val  = sbyte                            # use each byte individually
+                                nval = ord(val)                         # convert to int value
+                                # print(nval,  end=" ", flush=True)       # print out w/o LF
+                                try:
+                                    print(val.decode("utf-8") ,  end="", flush=True)       # print out w/o LF
+                                except Exception as e:
+                                    print(str(val), "(" + str(nval) + ")", end="")
+                                with open(filename, "a") as f:          # write as one byte value plus 1 space
+                                    f.write(str(nval) + " ")
+
+                    # print("while break")
 
                 except OSError as e:
-                    print(fncname + "OSError: ERRNO:{} ERRtext:'{}'".format(e.errno, e.strerror))
+                    exceptPrint(e, "OSError")
+                    print(defname + "OSError: ERRNO:{} ERRtext:'{}'".format(e.errno, e.strerror))
                     if e.errno == 5:
-                        msg = fncname + "Serial connectiomn was lost"
+                        msg = defname + "Serial connectiomn was lost"
                         print(msg)
 
                 except Exception as e:
-                    msg = fncname + "Failure in getting data"
+                    msg = defname + "Failure in getting data"
                     exceptPrint(e, msg)
 
-                if(val > b""):
-                    if gmc: # adressing some GMC counter issues
+
+                # print("val: ", val)
+                if gmc and (val > b""):                             # detailing communication with GMC counter
                         print()
 
-                        flag=""
-                        msg = longstime()
-                        msg += " :\nReceive-Bytes: {:3d}: ".format(len(val))
+                        flag = ""
+                        msg  = longstime()
+                        msg += " :\nReceive-Bytes: {:3d}: {}  ".format(len(val), val)
                         try:
-                            msg += val.decode()
+                            msg += "Decoded: " + val.decode()
                         except:
-                            msg += "(Non-decodeable) "
+                            msg += "Non-decodeable"
                             flag = "\n"
-                            # msg += str(val)
 
                         msg += "\nReceive-Values HEX: " + flag
                         for i, a in enumerate(val):
@@ -493,14 +619,6 @@ def main():
                             f.write(msg + "\n")
                         print()
 
-                    else: # generic serial terminal
-                        try:    msg  = val.decode()
-                        except: msg  = "(Non-decodeable) " + str(val)
-                        print(msg, end="")
-
-                        with open(filename, "a") as f:
-                            f.write(msg)
-
             time.sleep(0.01) # to reduce CPU load
 
     except Exception as e:
@@ -510,12 +628,12 @@ def main():
 
     except KeyboardInterrupt:
         kthread.stop()
-        #~print("kthread._is_running ?:", kthread._is_running)
+        # print("kthread._is_running ?:", kthread._is_running)
         return "KeyboardInterrupt"
 
 
 if __name__ == "__main__":
-    print(main())
+    print("\n", main())
     print("\n")
-    os._exit(123) # sys.exit() not helping
+    os._exit(123) # sys.exit() not helping wg threading, requires to press Return key
 

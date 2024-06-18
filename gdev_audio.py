@@ -24,7 +24,7 @@ gdev_audio.py - GeigerLog commands to handle the audio-clicks as CPM/CPS input
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -83,7 +83,7 @@ __license__         = "GPL3"
 # sd.default.latency  = (1.0, 1.0)       --> works, few 'overflowed' observed over >30sec !
 
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 
 def initAudio():
@@ -91,92 +91,103 @@ def initAudio():
 
     global AudioCounterThread
 
-    fncname ="initAudio: "
-
-    dprint(fncname + "Initializing AudioCounter")
+    defname ="initAudio: "
+    dprint(defname)
     setIndent(1)
 
-    errmsg = ""                            # potential errors:  no input device!
-    gglobs.Devices["Audio"][DNAME] = "Audio"
+    errmsg = ""                                                                 # potential errors:  no input device!
+    g.Devices["Audio"][g.DNAME] = "Audio"
 
-    if gglobs.AudioDevice       == "auto": gglobs.AudioDevice       = (None, None)      # the system's defaults
-    if gglobs.AudioLatency      == "auto": gglobs.AudioLatency      = (1.0, 1.0)        # seems like a generic
-    if gglobs.AudioPulseMax     == "auto": gglobs.AudioPulseMax     = 32768             # +/- 15 bit
-    if gglobs.AudioPulseDir     == "auto": gglobs.AudioPulseDir     = False             # => negative
-    if gglobs.AudioThreshold    == "auto": gglobs.AudioThreshold    = 60                # % of max
-    if gglobs.AudioVariables    == "auto": gglobs.AudioVariables    = "CPM3rd, CPS3rd"
+    if g.AudioDevice       == "auto": g.AudioDevice       = (None, None)        # the system's defaults
+    if g.AudioLatency      == "auto": g.AudioLatency      = (1.0, 1.0)          # seems like a generic
+    if g.AudioPulseMax     == "auto": g.AudioPulseMax     = 32768               # +/- 15 bit
+    if g.AudioPulseDir     == "auto": g.AudioPulseDir     = False               # => negative
+    if g.AudioThreshold    == "auto": g.AudioThreshold    = 50                  # % of max
+    if g.AudioVariables    == "auto": g.AudioVariables    = "CPM3rd, CPS3rd"    # to not conflict with the GMC-counter variables
 
-    setLoggableVariables("Audio", gglobs.AudioVariables)
+    g.AudioVariables = setLoggableVariables("Audio", g.AudioVariables)
 
     # print sound driver settings
-    vprint(fncname + "Query Devices: \n",   sd.query_devices() )
-    vprint(fncname + "Query Host Apis:")
-    if gglobs.verbose:
+    vprint(defname + "Query Devices: \n",   sd.query_devices() )
+    vprint(defname + "Query Host Apis:")
+    if g.verbose:
         for a in sd.query_hostapis(index=None):
             vprint("   ", a)
 
-    # samplerate has only one single int value, but others
-    # allow 2 values: 1st=input, 2nd=output
+    # samplerate, device, latency take only one single value,
+    # but others (dtype, channels) need 2 values: 1st=input, 2nd=output
     sd.default.reset()                              # clear all settings to default
-    sd.default.device       = gglobs.AudioDevice    # set the AudioDevice defaults
-    sd.default.latency      = gglobs.AudioLatency   # set latency values in sec, like (1.0, 1.0)
+    sd.default.device       = g.AudioDevice         # set the AudioDevice defaults
+    sd.default.latency      = g.AudioLatency        # set latency values in sec, like (1.0, 1.0)
     sd.default.dtype        = ('int16', 'int16')    # choose from: 'float32', 'int32', 'int16', 'int8', 'uint8'
     sd.default.channels     = (1, 1)                # options: 1, 2, more
     sd.default.samplerate   = 44100                 # options: 96000, 48000, 44100, 22050, 11025
 
     try:
         defaultDevice = sd.default.device
-        dprint(fncname + "Default Device (Input, Output): {}".format(defaultDevice))
+        dprint(defname + "Default Device (Input, Output): {}".format(defaultDevice))
+
         if defaultDevice[1] != -1 :
             sdqd = sd.query_devices(device=None, kind='output')
-            vprint(fncname  + "Output Device: ")
+            vprint(defname  + "Output Device: ")
             for key in sdqd: vprint("   {:30s} : {}".format(key, sdqd[key]))
         else:
-            edprint(fncname + "Output Device: ", "No Default Output Device!")
+            edprint(defname + "Output Device: ", "No Default Output Device!")
 
         if defaultDevice[0] != -1 :
             sdqd = sd.query_devices(device=None, kind='input')
-            vprint(fncname  + "Input Device : ")
+            vprint(defname  + "Input Device : ")
             for key in sdqd: vprint("   {:30s} : {}".format(key, sdqd[key]))
         else:
-            edprint(fncname + "Input Device : ", "No Default Input Device!")
+            edprint(defname + "Input Device : ", "No Default Input Device!")
 
     except Exception as e:
-        info = fncname + "Exception in querying default devices"
+        info = defname + "Exception in querying default devices"
         exceptPrint(e, info)
 
     if defaultDevice[0] != -1:
-        gglobs.AudioFormat      = sd.default.dtype
-        gglobs.AudioChannels    = sd.default.channels
-        gglobs.AudioRate        = sd.default.samplerate
-        gglobs.AudioChunk       = 32
+        g.AudioFormat      = sd.default.dtype           # like: ('int16', 'int16')
+        g.AudioChannels    = sd.default.channels        # like: (1, 1)
+        g.AudioRate        = sd.default.samplerate      # like: 44100
+        g.AudioChunk       = 64                         # Samples per read
 
         #testing #########
-        gglobs.AudioChunk       *= 4  # -> 128 to make longer pulses visible (reduces maximum count rate)
+        # Varying g.AudioChunk
+        # results:  g.AudioChunk = 16   : at CPM=~2850 per Serial, audio is approx  6.0% less !!!   # @16 a GMC-300S pulse is covering about 2/3 of the AudioChunk
+        #           g.AudioChunk = 32   : at CPM=~2850 per Serial, audio is approx  1.9% less
+        #           g.AudioChunk = 32   : at CPM=~2850 per Serial, audio is approx  1.7% less
+        #           g.AudioChunk = 32   : at CPM=~2850 per Serial, audio is approx  1.9% less
+        #           g.AudioChunk = 64   : at CPM=~2850 per Serial, audio is approx  1.2% less
+        #           g.AudioChunk = 64   : at CPM=~2850 per Serial, audio is approx  1.2% less       # gemessen über > 14h!
+        #           g.AudioChunk = 128  : at CPM=~2850 per Serial, audio is approx  3%   less !
+        #           g.AudioChunk = 256  : at CPM=~2850 per Serial, audio is approx 10%   less !!
+        #           g.AudioChunk = 512  : at CPM=~2850 per Serial, audio is approx 25%   less !!!
+        # --> shorter AudioChunk gives more counts!
+        # --> g.AudioChunk = 64 seems best compromise
         # end testing
 
-        dprint(fncname + "DEVICE:{}, CHANNELS:{}, FORMAT:{}, Latency:{}, Host API Index:{}, RATE:{}, CHUNK:{}"\
+        dprint(defname + "DEVICE:{}, CHANNELS:{}, FORMAT:{}, Latency:{}, Host API Index:{}, RATE:{}, CHUNK:{}"\
                         .format(
-                                gglobs.AudioDevice,
-                                gglobs.AudioChannels,
-                                gglobs.AudioFormat,
-                                gglobs.AudioLatency,
+                                g.AudioDevice,
+                                g.AudioChannels,
+                                g.AudioFormat,
+                                g.AudioLatency,
                                 sd.default.hostapi,
-                                gglobs.AudioRate,
-                                gglobs.AudioChunk,
+                                g.AudioRate,
+                                g.AudioChunk,
                                )
-             )
+              )
 
-        gglobs.Devices["Audio"][CONN] = True
+        g.Devices["Audio"][g.CONN] = True
 
-        gglobs.AudioThreadStop  = False
+        g.AudioThreadStop  = False
 
-        AudioCounterThread      = threading.Thread(target=AudioCounterThreadTarget, args=(None,))
+        AudioCounterThread = threading.Thread(target=AudioCounterThreadTarget, args=(None,))
         AudioCounterThread.start()
-        dprint(fncname + "Thread-status: is alive: ", AudioCounterThread.is_alive())
+        dprint(defname + "Thread-status: is alive: ", AudioCounterThread.is_alive())
 
     else:
-        errmsg  = "No Sound Input detected! Is there a proper connection?"
+        errmsg  = "No Sound Input Device detected! Is there a proper connection?"
 
     setIndent(0)
 
@@ -188,13 +199,13 @@ def terminateAudio():
 
     global AudioCounterThread
 
-    fncname ="terminateAudio: "
+    defname ="terminateAudio: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
-    dprint(fncname + "stopping thread")
-    gglobs.AudioThreadStop = True
+    dprint(defname + "stopping thread")
+    g.AudioThreadStop = True
     AudioCounterThread.join() # "This blocks the calling thread until the thread
                               #  whose join() method is called is terminated."
 
@@ -203,50 +214,49 @@ def terminateAudio():
     while AudioCounterThread.is_alive() and (time.time() - start) < 5:
         pass
 
-    dprint(fncname + "thread-status: is alive: {}, waiting took:{:0.1f}ms".format(AudioCounterThread.is_alive(), 1000 * (time.time() - start)))
-    gglobs.Devices["Audio"][CONN] = False
+    dprint(defname + "thread-status: is alive: {}, waiting took:{:0.1f} ms".format(AudioCounterThread.is_alive(), 1000 * (time.time() - start)))
+    g.Devices["Audio"][g.CONN] = False
 
-    dprint(fncname + "Terminated")
+    dprint(defname + "Terminated")
     setIndent(0)
 
 
 def AudioCounterThreadTarget(Dummy):
     """The thread to read the sounddev input"""
 
-    fncname = "AudioCounterThreadTarget: "
+    defname = "AudioCounterThreadTarget: "
 
-    gglobs.AudioLastCps     = 0
-    gglobs.AudioLastCpm     = 0
-    cps_count               = 0
-    llimit                  = gglobs.AudioThreshold / 100 * gglobs.AudioPulseMax
-    ilimit                  = 10000                             # the |pulse| must NOT exceed this value on first count in order to be countesd
-                                                                # higher values give MORE counts!
+    g.AudioLastCps     = 0
+    g.AudioLastCpm     = 0
+    cps_count          = 0
+    llimit             = g.AudioThreshold / 100 * g.AudioPulseMax
+    ilimit             = 10000                              # the |pulse| must NOT exceed this value on first count in order to be counted
+                                                            # higher values give MORE counts!
 
-    gglobs.AudioLast60CPS   = np.full(60, 0)                    # storing last 60 sec of CPS values
-    gglobs.AudioMultiPulses = np.array([0])                     # time courses for last ~40 of the pulses
-    gglobs.AudioRecording   = np.array([0])
-    nandata                 = np.full(10, gglobs.NAN)           # creating a gap of 10 values
-    chunks40                = (gglobs.AudioChunk + 10) * 40     # the length of 40 single pulses with gaps
+    g.AudioLast60CPS   = np.full(60, 0)                     # storing last 60 sec of CPS values
+    g.AudioMultiPulses = np.array([0])                      # time courses for last ~40 of the pulses
+    g.AudioRecording   = np.array([0])
+    nandata            = np.full(10, g.NAN)                 # creating a gap of 10 values
+    chunks40           = (g.AudioChunk + 10) * 40           # the length of 40 single pulses with gaps
 
-    cstart                  = time.time()                       # to record the 1 sec collection period
+    cstart             = time.time()                        # to record the 1 sec collection period
 
     try:
-        CHUNKstream = sd.InputStream(blocksize=gglobs.AudioChunk)   # no callback so we get blocking read
+        CHUNKstream = sd.InputStream(blocksize=g.AudioChunk)   # no callback so we get blocking read
         CHUNKstream.start()
     except Exception as e:
         msg = "Audio cannot be activated. Is an input device missing?"
-        #efprint(msg)
         exceptPrint(e, msg)
-        gglobs.AudioThreadStop = True
+        g.AudioThreadStop = True
         return
 
-    while not gglobs.AudioThreadStop:
+    while not g.AudioThreadStop:
         try:
-            record, overflowed = CHUNKstream.read(gglobs.AudioChunk)
+            record, overflowed = CHUNKstream.read(g.AudioChunk)
             npdata = record.reshape(-1)     # convert from '[ [1] [0] [3] ...[2] ]'  to '[1, 0, 3, ..., 2]'
-            gglobs.AudioRecording = np.concatenate((gglobs.AudioRecording, npdata))[-gglobs.AudioRate:]
+            g.AudioRecording = np.concatenate((g.AudioRecording, npdata))[-g.AudioRate:]
         except Exception as e:
-            info = fncname + "Exception reading stream "
+            info = defname + "Exception reading stream "
             exceptPrint(e, info)
             npdata = np.array([0])
 
@@ -267,7 +277,7 @@ def AudioCounterThreadTarget(Dummy):
         # ignore records catching pulses when already down; they were probably
         # already counted during last record
         gotCount = False
-        if gglobs.AudioPulseDir:                        # True -> positive pulse
+        if g.AudioPulseDir:                        # True -> positive pulse
             if npdata[0] < +ilimit and npdata.max() > +llimit:
                 gotCount = True
         else:                                           # False -> negative pulse
@@ -276,14 +286,14 @@ def AudioCounterThreadTarget(Dummy):
 
         if gotCount:
             cps_count  += 1
-            gglobs.AudioMultiPulses   = np.concatenate((gglobs.AudioMultiPulses, nandata, npdata))[-chunks40:]
+            g.AudioMultiPulses   = np.concatenate((g.AudioMultiPulses, nandata, npdata))[-chunks40:]
 
         deltat = time.time() - cstart
         if deltat >= 1:
-            gglobs.AudioLastCps   = cps_count / deltat  * 1.05 # correct for calc time
-            gglobs.AudioLast60CPS = np.append(gglobs.AudioLast60CPS, gglobs.AudioLastCps)[1:]
-            cps_count             = 0
-            cstart                = time.time()
+            g.AudioLastCps   = cps_count / deltat  * 1.02                        # correct for calc time
+            g.AudioLast60CPS = np.append(g.AudioLast60CPS, g.AudioLastCps)[1:]
+            cps_count        = 0
+            cstart           = time.time()
 
     CHUNKstream.stop()
     CHUNKstream.close()
@@ -292,47 +302,26 @@ def AudioCounterThreadTarget(Dummy):
 def getInfoAudio(extended = False):
     """Info on settings of the sounddev thread"""
 
-    # if not gglobs.AudioConnection:   return "No connected device"
-    # if not gglobs.Devices["Audio"][CONN] :   return "No connected device"
-
     AudioInfo  = "Configured Connection:        Default Audio Input\n"
 
-    if not gglobs.Devices["Audio"][CONN]: return AudioInfo + "<red>Device is not connected</red>"
+    if not g.Devices["Audio"][g.CONN]: return AudioInfo + "<red>Device is not connected</red>"
 
-    AudioInfo += "Connected Device:             {}\n".format(gglobs.Devices["Audio"][DNAME])
-    AudioInfo += "Configured Variables:         {}\n".format(gglobs.AudioVariables)
-    AudioInfo += getTubeSensitivities(gglobs.AudioVariables)
+    AudioInfo += "Connected Device:             {}\n".format(g.Devices["Audio"][g.DNAME])
+    AudioInfo += "Configured Variables:         {}\n".format(g.AudioVariables)
+    AudioInfo += getTubeSensitivities(g.AudioVariables)
 
     if extended == True:
-        AudioInfo += """
-Sampling Details:
-- DEVICE:                     Input:'{}', Output:'{}'
-- FORMAT:                     Input:'{}', Output:'{}'
-- CHANNELS (1=Mono,2=Stereo): Input:'{}', Output:'{}'
-- LATENCY [sec]:              Input:'{}', Output:'{}'
-- Host API Index              {}
-- RATE:                       {} (Samples per second)
-- CHUNK:                      {} (Samples per read)
-- Pulse Height Max            {} (System reported max signal)
-- Pulse Direction             {} (negative or positive)
-- Pulse Threshold             {}% of Pulse Height Max to trigger count"""\
-                .format(
-                        sd.default.device[0],
-                        sd.default.device[1],
-                        sd.default.dtype[0],
-                        sd.default.dtype[1],
-                        sd.default.channels[0],
-                        sd.default.channels[1],
-                        sd.default.latency[0],
-                        sd.default.latency[1],
-                        sd.default.hostapi,
-                        sd.default.samplerate,
-
-                        gglobs.AudioChunk,
-                        gglobs.AudioPulseMax,
-                        "POSITIVE" if gglobs.AudioPulseDir else "NEGATIVE",
-                        gglobs.AudioThreshold,
-                       )
+        AudioInfo += "Sampling Details:\n"
+        AudioInfo += "- DEVICE:                     Input:'{}', Output:'{}'\n"                  .format(sd.default.device[0], sd.default.device[1])
+        AudioInfo += "- FORMAT:                     Input:'{}', Output:'{}'\n"                  .format(sd.default.dtype[0],sd.default.dtype[1])
+        AudioInfo += "- CHANNELS (1=Mono,2=Stereo): Input:'{}', Output:'{}'\n"                  .format(sd.default.channels[0], sd.default.channels[1],)
+        AudioInfo += "- LATENCY [sec]:              Input:'{}', Output:'{}'\n"                  .format(sd.default.latency[0], sd.default.latency[1])
+        AudioInfo += "- Host API Index              {}\n"                                       .format(sd.default.hostapi)
+        AudioInfo += "- RATE:                       {} (Samples per second)\n"                  .format(sd.default.samplerate)
+        AudioInfo += "- CHUNK:                      {} (Samples per read)\n"                    .format(g.AudioChunk)
+        AudioInfo += "- Pulse Height Max            {} (System reported max signal)\n"          .format(g.AudioPulseMax)
+        AudioInfo += "- Pulse Direction             {} (negative or positive)\n"                .format("POSITIVE" if g.AudioPulseDir else "NEGATIVE")
+        AudioInfo += "- Pulse Threshold             {}% of Pulse Height Max to trigger count\n" .format(g.AudioThreshold)
         AudioInfo += "\nFull Device Query:\n"
         AudioInfo += str(sd.query_devices())
         AudioInfo += "\n"
@@ -343,12 +332,12 @@ Sampling Details:
 def toggleAudioCounterPulseDir():
     """toggle which pulse direction is sensed"""
 
-    gglobs.AudioPulseDir = not gglobs.AudioPulseDir
+    g.AudioPulseDir = not g.AudioPulseDir
 
     fprint(header("Switching Pulse Direction of AudioCounter"))
-    if gglobs.AudioPulseDir:  direction = "POSITIVE"
-    else:                     direction = "NEGATIVE"
-    gglobs.AudioMultiPulses = gglobs.AudioMultiPulses[-10:]
+    if g.AudioPulseDir:  direction = "POSITIVE"
+    else:                direction = "NEGATIVE"
+    g.AudioMultiPulses = g.AudioMultiPulses[-10:]
 
     fprint("New pulse direction setting: {}".format(direction))
 
@@ -358,21 +347,22 @@ def getValuesAudio(varlist):
 
     start = time.time()
 
-    fncname   = "getValuesAudio: "
+    defname = "getValuesAudio: "
     alldata = {}
 
-    for vname in varlist:
-        if   vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd"):
-            cpm             = int(round(np.sum(gglobs.AudioLast60CPS), 0))
-            cpm             = scaleVarValues(vname, cpm, gglobs.ValueScale[vname])
-            alldata.update(  {vname: cpm})
+    if g.LogReadings > 2:           # skip first 2 readings; they are 0 and medium value
+        for vname in varlist:
+            if   vname in ("CPM", "CPM1st", "CPM2nd", "CPM3rd"):
+                    cpm             = int(round(np.sum(g.AudioLast60CPS), 0))
+                    cpm             = applyValueFormula(vname, cpm, g.ValueScale[vname])
+                    alldata.update(  {vname: cpm})
 
-        elif vname in ("CPS", "CPS1st", "CPS2nd", "CPS3rd"):
-            cps             = int(round(gglobs.AudioLastCps, 0))
-            cps             = scaleVarValues(vname, cps, gglobs.ValueScale[vname] )
-            alldata.update(  {vname: cps})
+            elif vname in ("CPS", "CPS1st", "CPS2nd", "CPS3rd"):
+                    cps             = int(round(g.AudioLastCps, 0))
+                    cps             = applyValueFormula(vname, cps, g.ValueScale[vname] )
+                    alldata.update(  {vname: cps})
 
-    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
+    vprintLoggedValues(defname, varlist, alldata, (time.time() - start) * 1000)
 
     return alldata
 
@@ -380,10 +370,11 @@ def getValuesAudio(varlist):
 def plotAudio(dtype="Single Pulse", duration=None):
     """Plotting an audio plot"""
 
-    fncname = "plotAudio: "
+    defname = "plotAudio: "
+    print(defname + "dtype:{}".format(dtype))
 
-    data = gglobs.AudioPlotData
-    #print(fncname + "dtype:{}, data:{}".format(dtype, data))
+    data = g.AudioPlotData / 32768 * 100                            # to scale to -100 ... +100
+    print(defname + "data:{}".format(data))
 
     subTitle = dtype
 
@@ -391,7 +382,7 @@ def plotAudio(dtype="Single Pulse", duration=None):
         pass
 
     elif dtype == "Multi Pulse":
-        count     = len(data) / (gglobs.AudioChunk + 10) # 10 is: nan values as gap
+        count     = len(data) / (g.AudioChunk + 10) # 10 is: nan values as gap
         subTitle += " - {:1.0f} pulses shown".format(count)
 
     elif dtype == "Recording":
@@ -409,16 +400,18 @@ def plotAudio(dtype="Single Pulse", duration=None):
                         'alpha'             : 1,
                         }
     plt.close(99)
-    fig2 = plt.figure(99, facecolor = "#E7cccc", dpi=gglobs.hidpiScaleMPL)
-    wprint(fncname + "open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
+    fig2 = plt.figure(99, facecolor = "#E7cccc", dpi=g.hidpiScaleMPL)
+    wprint(defname + "open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
 
     plt.title("AudioCounter Device\n", fontsize=14, loc='center')
     plt.title("Audio Input", fontsize=10, fontweight='normal', loc = 'left')
     plt.title(subTitle, fontsize=10, fontweight='normal', loc = 'right')
 
-    plt.grid(True)
+    plt.grid(visible=True, which='major')
+    plt.minorticks_on()
     plt.subplots_adjust(hspace=None, wspace=.2 , left=.11, top=0.85, bottom=0.15, right=.97)
     plt.ticklabel_format(useOffset=False)
+
 
     # hide the cursor position from showing in the Nav toolbar
     ax1 = plt.gca()
@@ -428,20 +421,20 @@ def plotAudio(dtype="Single Pulse", duration=None):
     # it takes the `figure` instance as a parameter to __init__
     canvas2 = FigureCanvas(fig2)
     canvas2.setFixedSize(1000, 550)
-    navtoolbar = NavigationToolbar(canvas2, gglobs.exgg)
+    navtoolbar = NavigationToolbar(canvas2, g.exgg)
 
     labout = QTextBrowser()                  # label to hold the description
-    labout.setFont(gglobs.fontstd)           # my std font for easy formatting
+    labout.setFont(g.fontstd)           # my std font for easy formatting
     labout.setText("")
 
     mtext1  =   "Device:           Input:'{}', Output:'{}'" .format(sd.default.device[0], sd.default.device[1])
-    mtext1 += "\nSample Format:    {}"                      .format(gglobs.AudioFormat)
-    mtext1 += "\nSampled Channels: {} (1=Mono, 2=Stereo)"   .format(gglobs.AudioChannels)
-    mtext1 += "\nSampling rate:    {} per second"           .format(gglobs.AudioRate)
-    mtext1 += "\nSamples:          {} per read"             .format(gglobs.AudioChunk)
-    mtext1 += "\nPulse Height Max: ±{} "                    .format(gglobs.AudioPulseMax)
-    mtext1 += "\nPulse Threshold:  {} %"                    .format(gglobs.AudioThreshold)
-    mtext1 += "\nPulse Direction:  {} "                     .format(("POSITIVE" if gglobs.AudioPulseDir else "NEGATIVE"))
+    mtext1 += "\nSample Format:    {}"                      .format(g.AudioFormat)
+    mtext1 += "\nSampled Channels: {} (1=Mono, 2=Stereo)"   .format(g.AudioChannels)
+    mtext1 += "\nSampling rate:    {} per second"           .format(g.AudioRate)
+    mtext1 += "\nSamples:          {} per read"             .format(g.AudioChunk)
+    mtext1 += "\nPulse Height Max: ±{} "                    .format(g.AudioPulseMax)
+    mtext1 += "\nPulse Threshold:  {} %"                    .format(g.AudioThreshold)
+    mtext1 += "\nPulse Direction:  {} "                     .format(("POSITIVE" if g.AudioPulseDir else "NEGATIVE"))
 
     if   dtype == "Single Pulse":
         labout.append("Showing the last detected AudioCounter pulse")
@@ -455,8 +448,8 @@ def plotAudio(dtype="Single Pulse", duration=None):
     labout.append(mtext1)
 
     d = QDialog()
-    gglobs.plotAudioPointer = d
-    d.setWindowIcon(gglobs.iconGeigerLog)
+    g.plotAudioPointer = d
+    d.setWindowIcon(g.iconGeigerLog)
     d.setWindowTitle("AudioCounter Device")
     #d.setMinimumHeight(700)
     d.setWindowModality(Qt.WindowModal)
@@ -499,15 +492,16 @@ def plotAudio(dtype="Single Pulse", duration=None):
     layoutV.addWidget(labout)
 
     plt.xlabel("Time [millisec]", fontsize=14)
-    plt.ylabel("Amplitude [rel]", fontsize=14)
-    plt.ylim(-35000, 35000)
+    plt.ylabel("Amplitude [% of 32768]", fontsize=14)
+    # plt.ylim(-35000, 35000)
+    plt.ylim(-100, 100)
 
-    x = np.arange(len(data)) * 1 / gglobs.AudioRate * 1000 # create the x-axis data
+    x = np.arange(len(data)) * 1 / g.AudioRate * 1000 # create the x-axis data
     plt.plot(x, data,  **plotstyle)
     #d.update() # "Updates the widget unless updates are disabled or the widget is hidden."
 
     fig2.canvas.draw_idle()
-    playWav("ok")
+    bip()
     d.exec()
 
 
@@ -517,32 +511,32 @@ def reloadAudioData(dtype):
     #print("reloadAudioData: ", dtype)
 
     try: # fails if it had never been opened; but then it is closed anyway
-        gglobs.plotAudioPointer.close()
+        g.plotAudioPointer.close()
     except:
         pass
 
-    # when a recording was last, then gglobs.AudioMultiPulses will be 44100 samples long,
+    # when a recording was last, then g.AudioMultiPulses will be 44100 samples long,
     # but even Multi needs only 40*(single pulse + 10) => 1680. Therfore crop it,
     # otherwise next Multi will show samples from recording
-    if len(gglobs.AudioMultiPulses) > (40 * (gglobs.AudioChunk + 10)):
-        #~gglobs.AudioMultiPulses = gglobs.AudioMultiPulses[-(gglobs.AudioChunk + 10):]
-        gglobs.AudioMultiPulses =  np.array([0])
+    if len(g.AudioMultiPulses) > (40 * (g.AudioChunk + 10)):
+        #~g.AudioMultiPulses = g.AudioMultiPulses[-(g.AudioChunk + 10):]
+        g.AudioMultiPulses =  np.array([0])
 
     duration = None
 
     if   dtype == "Single Pulse":
-        gglobs.AudioPlotData = gglobs.AudioMultiPulses[-(gglobs.AudioChunk):] # last pulse only without nan
-        #gglobs.AudioMultiPulses = gglobs.AudioMultiPulses[-(gglobs.AudioChunk):] # last pulse only without nan
+        g.AudioPlotData = g.AudioMultiPulses[-(g.AudioChunk):] # last pulse only without nan
+        #g.AudioMultiPulses = g.AudioMultiPulses[-(g.AudioChunk):] # last pulse only without nan
 
     elif dtype == "Multi Pulse":
         pass    # will show all, i.e. up to last 40 pulses
-        gglobs.AudioPlotData = gglobs.AudioMultiPulses
+        g.AudioPlotData = g.AudioMultiPulses
 
     elif dtype == "Recording":
         setBusyCursor()
         duration = 1 # seconds
         #gdev_audio.getLongChunk(duration)
-        gglobs.AudioPlotData = gglobs.AudioRecording
+        g.AudioPlotData = g.AudioRecording
         setNormalCursor()
 
     else: # dtype == "Toggle":
@@ -550,9 +544,9 @@ def reloadAudioData(dtype):
         toggleAudioCounterPulseDir()
         dtype = "Recording"
         duration = 1 # seconds
-        #~gglobs.AudioPlotData = gglobs.AudioMultiPulses[-(gglobs.AudioChunk):] # last pulse only without nan
-        gglobs.AudioMultiPulses = np.array([0]) # set to empty as old pulses do not make sense
-        gglobs.AudioPlotData    = gglobs.AudioRecording
+        #~g.AudioPlotData = g.AudioMultiPulses[-(g.AudioChunk):] # last pulse only without nan
+        g.AudioMultiPulses = np.array([0]) # set to empty as old pulses do not make sense
+        g.AudioPlotData    = g.AudioRecording
 
     plotAudio(dtype, duration)
 
@@ -562,12 +556,14 @@ def audio_callback(indata, frames, time, status):
 
     global liveq
 
-    fncname = "audio_callback: "
-    #print(fncname + "np.shape(indata): ", np.shape(indata), ", frames: ", frames, ", time: ", time, ", status: ", status)
+    defname = "audio_callback: "
+    # print(defname + "np.shape(indata): ", np.shape(indata), ", frames: ", frames, ", time: ", time, ", status: ", status)
+    # print("indata: \n", indata)
 
     if status:
-        edprint(fncname + "status: ", status)
+        cdprint(defname + "status: '{}'  type(status): '{}'".format(status, type(status)))
 
+    # Fancy indexing with mapping creates a (necessary!) copy:
     liveq.put(indata[:, 0])
 
 
@@ -579,20 +575,14 @@ def updateAnimationPlot(frame):
     """
     global liveq, plotdata
 
-    start = time.time()
+    defname = "updateAnimationPlot: "
+    # print(defname + "frame", frame)
 
-    fncname = "updateAnimationPlot: "
-
-    #print(fncname + "frame", frame)
-
-    #counter = 0
     while True:
         try:
             data = liveq.get_nowait()
-            #print("liveq: ", counter)
-            #counter += 1
-        except queue.Empty:
-            #edprint("queue.Empty: ", queue.Empty)
+        except queue.Empty as e:
+            # exceptPrint(e, defname + "queue.Empty")
             break
 
         shift    = len(data)
@@ -600,19 +590,21 @@ def updateAnimationPlot(frame):
         plotdata[-shift:] = data
 
         lines[0].set_ydata(plotdata)
+        # break
 
     return lines
 
 
 def makeEnde():
     global ende
+
     ende = True
 
 
 def showLiveAudioSignal():
     """Plotting a rolling audio plot"""
 
-    fncname = "showLiveAudioSignal: "
+    defname = "showLiveAudioSignal: "
 
     global liveq, lines, plotdata, ende
     global args_device, args_channels, args_samplerate
@@ -621,44 +613,38 @@ def showLiveAudioSignal():
     ende  = False
 
     try:
-        #print(fncname + "Audio Devices found on system:\n{}".format(sd.query_devices()))
+        #print(defname + "Audio Devices found on system:\n{}".format(sd.query_devices()))
 
-        #~args_samplerate = 44100 # get default instead
         args_samplerate = None
-        #args_samplerate = 11050*2
-
-        args_window     = 20000
+        args_window     = 20000     # 5000
         args_downsample = 1
-        #~args_channels   = (1, ) # needed as tuple
         args_channels   = 1
-        #~args_interval   = 300
         args_interval   = 50
         args_device     = None
 
         if args_samplerate is None:
             device_info = sd.query_devices(args_device, 'input')
             args_samplerate = device_info['default_samplerate']
-        #print(fncname + "parameters: ", args_samplerate, args_window, args_downsample, args_channels, args_interval, args_device)
+        #print(defname + "parameters: ", args_samplerate, args_window, args_downsample, args_channels, args_interval, args_device)
 
         length   = int(args_window * args_samplerate / (1000 * args_downsample)) # time length in ms
         plotdata = np.zeros((length))                        # create buffer of required length
-        #~print("length: ", length)                                                # 20000 * 44100 / (1000 * 1) = 882000
-        #~print("plotdata: ", plotdata)                                            # [[0.] [0.] [0.] ... [0.] [0.] [0.]]
-        #~print("np.shape(plotdata): ", np.shape(plotdata))                        # np.shape(plotdata):  (441000, 1)
+        # print("length: ", length)                          # 20000 * 44100 / (1000 * 1) = 882000
+        # print("plotdata: ", plotdata)                      # [[0.] [0.] [0.] ... [0.] [0.] [0.]]
+        # print("np.shape(plotdata): ", np.shape(plotdata))  # np.shape(plotdata):  (441000, 1)
 
     except Exception as e:
-        srcinfo = fncname + "Exception: "
+        srcinfo = defname + "Exception: "
         exceptPrint(e, srcinfo)
 
     plt.close(77)
-    fig77 = plt.figure(77, facecolor = "#E7cccc", dpi=gglobs.hidpiScaleMPL) # light red
-    vprint(fncname + "open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
+    fig77 = plt.figure(77, facecolor = "#E7cccc", dpi=g.hidpiScaleMPL) # light red
+    vprint(defname + "open figs count: {}, current fig: #{}".format(len(plt.get_fignums()), plt.gcf().number))
 
-    lines = plt.plot(plotdata) # creates a plot array x=0,1,2,... y=0,0,0,
-
-    #~for column, line in enumerate(lines):
-        #~print("column: ", column, ", lines: ", lines, column, line)
-        #~print("x: ", line.get_xdata(orig=True), "\ny: ", line.get_ydata(orig=True))
+    lines = plt.plot(plotdata) # creates a plot array x=0,1,2,..., (882000 - 1);  y=0,0,0,..., 0
+    # for column, line in enumerate(lines):
+    #     print("column: ", column, ", lines: ", lines, column, line)
+    #     print("x: ", line.get_xdata(orig=True), "\ny: ", line.get_ydata(orig=True))
 
     plt.title("AudioCounter Device\n", fontsize=14, loc='center')
     plt.title("Live Audio Signal", fontsize=10, fontweight='normal', loc = 'left')
@@ -683,11 +669,11 @@ def showLiveAudioSignal():
     # it takes the `figure` instance as a parameter to __init__
     canvas77 = FigureCanvas(fig77)
     canvas77.setFixedSize(1000, 550)
-    navtoolbar = NavigationToolbar(canvas77, gglobs.exgg)
+    navtoolbar = NavigationToolbar(canvas77, g.exgg)
 
     d = QDialog()
-    gglobs.plotAudioPointer = d
-    d.setWindowIcon(gglobs.iconGeigerLog)
+    g.plotAudioPointer = d
+    d.setWindowIcon(g.iconGeigerLog)
     d.setWindowTitle("AudioCounter Device")
     #d.setMinimumHeight(700)
     d.setWindowModality(Qt.WindowModal)
@@ -722,29 +708,34 @@ def showLiveAudioSignal():
     plt.ylim(-35000, 35000)
 
     # https://stackoverflow.com/questions/16732379/stop-start-pause-in-python-matplotlib-animation
-  #~ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=True)
-    ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=False)
+    #
+    # /home/ullix/geigerlog/geigerlog/gdev_audio.py:741: UserWarning: frames=None which we can infer
+    # the length of, did not pass an explicit *save_count* and passed cache_frame_data=True.  To avoid
+    # a possibly unbounded cache, frame data caching has been disabled. To suppress this warning either
+    # pass `cache_frame_data=False` or `save_count=MAX_FRAMES`.
 
-    playWav("ok")
+    # ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=True)
+    # ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=False)
+    # ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=False, cache_frame_data=False)
+    # ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=False, save_count=matplotlib.MAX_FRAMES) # module 'matplotlib' has no attribute 'MAX_FRAMES'
+    # ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=False, save_count=mplanim.MAX_FRAMES)      # module 'matplotlib.animation' has no attribute 'MAX_FRAMES'
+    ani = mplanim.FuncAnimation(fig77, updateAnimationPlot, interval=args_interval, blit=False, save_count=1000) # scheint ok
+
+    bip()
 
     d.open()    # needed!
 
-    start = time.time()
-    while True: # one cycle is about 350 ms
-        stream = sd.InputStream(device=args_device, channels=args_channels, samplerate=args_samplerate, callback=audio_callback)
+    while True: # one cycle is about 350 ms (300 ... 400 ms)
+        # start = time.time()
 
-        with stream: # not doing anything, but still needed!
+        with sd.InputStream(device=args_device, channels=args_channels, samplerate=args_samplerate, callback=audio_callback):
             pass
+            QtUpdate() # ohne dies nur leerer Fensterrahmen
 
-        QtUpdate() # ohne dies nur leerer Fensterrahmen
-        #d.show() # kein Zusatznutzen; ohne QtUpdate nur leeres Bild
-        #time.sleep(0.2)
-        cdprint("time delta: {:0.3f} ms".format(1000*(time.time() -start))) # alle 300 - 400 ms
-        start = time.time()
+        # d.show() # kein Zusatznutzen; ohne QtUpdate nur leeres Bild
+        # cdprint("time delta: {:0.3f} ms".format(1000*(time.time() -start)))
 
         if ende: break
-
-    #print("with stream done")
 
     d.close()
     ani.event_source.stop() # ouff, this stops the animation!
@@ -761,13 +752,13 @@ def turnEia(tdir, mmovie):
 def showAudioEia():
     """https://www.gqelectronicsllc.com/forum/topic.asp?TOPIC_ID=9517&#7803"""
 
-    fncname = "showAudioEia: "
+    defname = "showAudioEia: "
 
     from PyQt5.QtGui import QMovie
 
     d = QDialog()
 
-    d.setWindowIcon(gglobs.iconGeigerLog)
+    d.setWindowIcon(g.iconGeigerLog)
     d.setWindowTitle("Eia")
     d.setWindowModality(Qt.WindowModal)
 
@@ -790,7 +781,7 @@ def showAudioEia():
 
 
     peia = "".join(map(chr, [101, 105, 97, 46, 103, 105, 102]))
-    dp = os.path.join(getProgPath(), gglobs.gresDirectory, peia)
+    dp = os.path.join(getPathToProgDir(), g.gresDirectory, peia)
 
     label = QLabel()
     movie = QMovie(dp)
@@ -805,14 +796,14 @@ def showAudioEia():
     layoutV.addLayout(layoutH)
     layoutV.addWidget(label)
 
-    playWav("ok")
+    bip()
 
     d.exec()
 
 
 
 ##############################################################################
-# following only relevant for use via 'main()'
+# following code is only relevant for use via 'main()'
 # like: 'python3 geigerlog/gdev_audio.py 7'
 
 
@@ -825,7 +816,7 @@ def getLongChunk(duration, recno):
     mystream = sd.InputStream(blocksize=reclen)
     mystream.start()
     record, overflowed = mystream.read(reclen) # get one record
-    gglobs.AudioMultiPulses = record.reshape(-1)
+    g.AudioMultiPulses = record.reshape(-1)
     mystream.stop()
 
 
@@ -839,15 +830,15 @@ def plotDataT(AudioMultiPulses, inversrate):
     #   Available styles: Windows, Fusion
     os.environ["QT_STYLE_OVERRIDE"] = ""
 
-    fig = plt.figure("Total", figsize=(14, 6), dpi=gglobs.hidpiScaleMPL)
+    fig = plt.figure("Total", figsize=(14, 6), dpi=g.hidpiScaleMPL)
 
     show = 0    # 1: accumulate the counts (don't delete the figure)
                 # 0: delete last figure, and show a fresh record every time
     if    show: pass
     else:       fig.clf()
 
-    x = np.arange(len(gglobs.AudioMultiPulses)) * inversrate * 1000 # create X-axis values
-    y = gglobs.AudioMultiPulses                                     # Y-axis values
+    x = np.arange(len(g.AudioMultiPulses)) * inversrate * 1000 # create X-axis values
+    y = g.AudioMultiPulses                                     # Y-axis values
     #~print("plotDataT: x    :", len(x), x)
     #~print("plotDataT: y    :", len(y), y)
     plt.plot(x, y,  'k.', linestyle='solid', linewidth=0.3, markersize=0.5)
@@ -858,9 +849,9 @@ def plotDataT(AudioMultiPulses, inversrate):
 
 def main():
     """
-    Start with: 'python3 gdev_audio.py' to get a list of available Sound Devices
-    Start with: 'python3 gdev_audio.py N' to get a list of available Sound Devices,
-                followed by N recordings and recoding plots from the default device
+    Start with: 'python3 gdev_audio.py'   : to get a list of available Sound Devices
+    Start with: 'python3 gdev_audio.py N' : to get a list of available Sound Devices, followed
+                                            by N recordings and plots from the default device
     """
 
     print("Available Sound Devices:")
@@ -887,7 +878,7 @@ def main():
          )
 
     inversrate              = 1 / sd.default.samplerate
-    gglobs.AudioMultiPulses = np.zeros(256)
+    g.AudioMultiPulses = np.zeros(256)
 
     try:
         recs = abs(int(sys.argv[1])) # if none given on command line, an exception will be raised
@@ -897,18 +888,31 @@ def main():
     for i in range(0, recs):
         try:
             getLongChunk(1.0, i + 1)
-            plotDataT(gglobs.AudioMultiPulses, inversrate)
+            plotDataT(g.AudioMultiPulses, inversrate)
         except Exception as e:
             print("gdev_audio.py: main: Exception :", e)
 
     if recs > 0:
-        plotDataT(gglobs.AudioMultiPulses, inversrate)
+        plotDataT(g.AudioMultiPulses, inversrate)
         print("Done recording. To Exit close graph, or press CTRL-C in terminal")
         plt.show()
 
 
+#####################################################################################################
 if __name__ == '__main__':
+    """
+    Start with: 'python3 gdev_audio.py' to get a list of available Sound Devices
+    Start with: 'python3 gdev_audio.py N' to get a list of available Sound Devices, followed
+                                          by N recordings and plots from the default device
+    like: 'python3 geigerlog/gdev_audio.py 7
+    """
     import matplotlib.pyplot as plt # plotting possible only when run as main
-    main()
-    print()
+
+    try:
+        main()
+
+    except KeyboardInterrupt:
+        print()
+        print("Exit by CTRL-C")
+        print()
 

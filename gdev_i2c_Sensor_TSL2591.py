@@ -23,11 +23,11 @@ I2C module TSL2591 ALS (Ambient-Light-Sensor) for Visible + Infrared light
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 # Document: "TSL2591 Datasheet - Apr. 2013 - ams163.5"
 # e.g.: https://www.manualshelf.com/manual/adafruit/1980/datasheet-english.html
@@ -89,6 +89,10 @@ class SensorTSL2591:
                                     # This register is a read-only register whose value never changes.
                                     # PID bits 5:4 Package Identification = 00
     CMD         = 0xA0              # CMD Register = 0b1 01 0 0000 = 0xA0 is: CMD + Normal operation
+    handle      = g.I2CDongle       # default for use by 'I2C' device; RaspiI2C defines its own
+    callHandle  = None              # the handle given in init (distinguished betwee I2C and RaspiI2c)
+    print2nd    = False             # Print secondary comments
+
 
     #                Name:  FieldVal,  Factor
     SensorGain  = {
@@ -112,29 +116,29 @@ class SensorTSL2591:
                                     # chance for success in fewest cycles
 
 
-    def __init__(self, addr):
+    def __init__(self, addr, I2Chandle=None):
         """Init SensorTSL2591 class"""
 
-        self.addr = addr            # addr: 0x29 (it has no other, but for conistency of programming)
+        self.addr       = addr          # addr: 0x29 (it has no other, but for conistency of programming)
+        self.callHandle = I2Chandle
+        if I2Chandle is not None: self.handle = I2Chandle
 
 
     def SensorInit(self):
         """check ID, check PID, Reset, enable measurement"""
 
-        fncname = "SensorInit: " + self.name + ": "
-        dmsg    = "Sensor {:8s} at address 0x{:02X} with ID 0x{:02x} ".format(self.name, self.addr, self.id)
-
-        dprint(fncname)
+        defname = "SensorInit: " + self.name + ": "
+        # dprint(defname)
         setIndent(1)
 
         # check for presence of an I2C device at I2C address
-        if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
+        if not self.handle.DongleIsSensorPresent(self.addr):
             # no device found
             setIndent(0)
             return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
         else:
             # device found
-            gdprint("Found an I2C device at address 0x{:02X}".format(self.addr))
+            gdprint(defname, "Found an I2C device at address 0x{:02X}".format(self.addr))
 
         # Get Device ID = 0x50
         # The ID register provides the device identification. This register is a read-only register
@@ -144,10 +148,12 @@ class SensorTSL2591:
         register  = self.CMD + 0x12
         readbytes = 1
         data      = []
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
         if len(answ) == readbytes and answ[0] == self.id:
-            response = (True,  "Initialized " + dmsg)
-            gdprint("Sensor {} at address 0x{:02X} has proper ID: 0x{:02X}".format(self.name, self.addr, self.id))
+            # dmsg    = "Sensor {:8s} at address 0x{:02X} has proper ID 0x{:02x} ".format(self.name, self.addr, self.id)
+            dmsg    = "Sensor {:8s} at address 0x{:02X}".format(self.name, self.addr)
+            response = (True, dmsg)
+            gdprint(defname, dmsg + " has proper ID 0x{:02x}".format(self.id))
         else:
             setIndent(0)
             return (False, "Failure - Did find an I2C device, but it has wrong ID: '{}' instead of {}".format(answ, self.id))
@@ -160,27 +166,27 @@ class SensorTSL2591:
         register  = self.CMD + 0x11
         readbytes = 1
         data      = []
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
         if len(answ) > 0:
             pid       = answ[0] & 0b00110000
             if pid == self.PID:
-                gdprint(fncname + "Package Identification 0b{:02b} confirmed".format(pid))
+                gdprint(defname + "Package Identification 0b{:02b} confirmed".format(pid))
                 pass
             else:
-                efprint(fncname + "Package Identification 0b{:02b} not as expected".format(pid))
+                efprint(defname + "Package Identification 0b{:02b} not as expected".format(pid))
                 setIndent(0)
                 return (False, "Failure - Did find sensor, but Package Identification is: '{}' and not: {}".format(pid, self.PID))
         else:
-            edprint(fncname + "Package Identification 0b{:02b} not as expected, answ:", answ)
+            edprint(defname + "Package Identification 0b{:02b} not as expected, answ:", answ)
             setIndent(0)
             return (False, "Failure - Did find sensor, but Package Identification is: '{}' and not: {}".format(pid, self.PID))
 
         # reset to Power-Up status
-        gdprint(fncname + "Reset to Power-up Status")
+        gdprint(defname + "Reset to Power-up Status")
         self.SensorReset()
 
         # enable measurements
-        gdprint(fncname + "Enable Measurements")
+        gdprint(defname + "Enable Measurements")
         self.TSL2591enableMeasurements()
 
         setIndent(0)
@@ -204,7 +210,7 @@ class SensorTSL2591:
         register  = self.CMD + 0x00
         readbytes = 1
         data      = [0x03]
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
 
     def SensorgetValues(self):
@@ -225,15 +231,15 @@ class SensorTSL2591:
         # ISS dongle: TSL2591:  400 kHz dur: 310 ... 318 ms (avg: 313.3 ms)  15.3 ms    sogar langsamer???
 
         start = time.time()
-        fncname = "SensorgetValues: " + self.name + ": "
-        cdprint(fncname)
+        defname  = "SensorgetValues: {:10s}: ".format(self.name)
+        # dprint(defname)
         setIndent(1)
 
         SensorIntegIndex = "200ms"
         finalatime       = SensorIntegIndex
         finalIntTime     = self.SensorInteg[SensorIntegIndex][1]
-        # gdprint(fncname + "finalatime: ", finalatime)
-        # gdprint(fncname + "finalIntTime: ", finalIntTime)
+        # gdprint(defname + "finalatime: ", finalatime)
+        # gdprint(defname + "finalIntTime: ", finalIntTime)
 
         selector  = ("Low",      # Factor = 1
                      "Med",      # Factor = 25
@@ -244,7 +250,7 @@ class SensorTSL2591:
         again       = selector[selindex]
         atime       = "100ms"      # make first guess fast; then use final, slow inttime
         firstRun    = True
-        dataFormat  = "Vis:{:6.5g}, IR:{:6.5g}, RAW-Vis:{:5.0f}, RAW-IR:{:4.0f}, Gain:{:3.0f}, Integ:{} ms"
+        dataFormat  = "Vis:{:<0.3f}, IR:{:<0.3f}, RAW_Vis:{:<5.0f}, RAW_IR:{:<4.0f}, Gain:{:<3.0f}, Integ:{} ms"
 
         while True:
             breakflag   = False
@@ -253,7 +259,7 @@ class SensorTSL2591:
             lumstart = time.time()
             lumdata  = self.TSL2591getLum(gain=again, intgrl=atime)
             duration = (time.time() - lumstart) * 1000
-            cdprint(fncname + "getLum: " + dataFormat.format(*lumdata) + ", dur:{:0.0f} ms".format(duration))
+            if self.print2nd: gdprint(defname + "getLum: " + dataFormat.format(*lumdata) + ", dur:{:0.0f} ms".format(duration))
 
             vis, ir, visraw, irraw, gainFct, inttime = lumdata  # need visraw and inttime only
 
@@ -271,28 +277,27 @@ class SensorTSL2591:
 
             lastselindex = selindex
             testraw      = visraw * finalIntTime / inttime  # estimate the value with selected final integ time
-            # cdprint(fncname + "testraw: ", testraw)
 
             if testraw > 65000:                         # too much light
                 selindex += -1                          # 1 step down
                 if selindex < 0:
                     selindex = 0
                     breakflag = True       # reached the bottom?
-                # cdprint(fncname + "AutoDEcrease Gain 1 step")
+                # cdprint(defname + "AutoDEcrease Gain 1 step")
 
             elif testraw < 152:                         # allows 2 step up:
                 selindex += 2                           # 1 step up
                 if selindex > 3:
                     selindex = 3
                     breakflag = True       # broke the ceiling?
-                # cdprint(fncname + "AutoINcrease Gain 2 steps")
+                # cdprint(defname + "AutoINcrease Gain 2 steps")
 
             elif testraw < 2500:                        # allows 1 step up
                 selindex += 1                           # 1 step up
                 if selindex > 3:
                     selindex = 3
                     breakflag = True       # broke the ceiling?
-                # cdprint(fncname + "AutoINcrease Gain 1 step")
+                # cdprint(defname + "AutoINcrease Gain 1 step")
             else:
                 breakflag = True
 
@@ -309,7 +314,7 @@ class SensorTSL2591:
         # The Final Auto-lumdata are the same as last prelim lumdata !
 
         duration = (time.time() - start) * 1000
-        gdprint(fncname + "Total:  " + dataFormat.format(*lumdata) + ", dur:{:0.0f} ms".format(duration))
+        # gdprint(defname + "Total:  " + dataFormat.format(*lumdata) + ", dur:{:0.0f} ms".format(duration))
 
         setIndent(0)
         return (vis, ir)
@@ -319,8 +324,8 @@ class SensorTSL2591:
         """non-Auto mode"""
 
         start    = time.time()
-        fncname  = "TSL2591getLum: "
-        response = (gglobs.NAN, ) * 6            # default
+        defname  = "TSL2591getLum: "
+        response = (g.NAN, ) * 6            # default
 
         gainFV   = self.SensorGain[gain][0]      # Field Value
         gainFct  = self.SensorGain[gain][1]      # Gain Factor
@@ -335,11 +340,11 @@ class SensorTSL2591:
         register  = self.CMD + 0x01
         readbytes = 1
         data      = [gainFV << 4 | intFV ]      # at start: 0x10
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
         if len(answ) != 1:
             msg = BOLDRED + "No data or wrong data returned: answ= '{}'".format(answ)
-            rdprint(fncname + msg)
+            rdprint(defname + msg)
             return response
 
         ####################################################################################################################
@@ -353,7 +358,7 @@ class SensorTSL2591:
         register  = self.CMD
         readbytes = 1
         data      = [0x01]  # ALS Disable, only PON is laft
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
         # Enable Register (0x00)
         # AEN: Bit #1:  ALS Enable. This field activates ALS function. Writing a one activates the ALS.
@@ -365,7 +370,7 @@ class SensorTSL2591:
         register  = self.CMD + 0x00         # PON + ALS Enable
         readbytes = 1
         data      = [0x03]
-        answ      = gglobs.I2CDongle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
         ####################################################################################################################
 
         # get status
@@ -382,20 +387,20 @@ class SensorTSL2591:
             register  = self.CMD + 0x13
             readbytes = 1
             data      = []
-            answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+            answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
             if len(answ) == readbytes: answBit0 = answ[0] & 0x01
             else:                      answBit0 = 0
 
             if answBit0:
-                # edprint(fncname + "Data ready")
+                # edprint(defname + "Data ready")
                 break
             else:
                 if (time.time() - start_status) > 3 or callcounter > 3:
-                    edprint(fncname + "Notbremse - Data not ready after 3 sec or callcounter > 10!")
-                    return response         # notbremse nach 5 sec
+                    edprint(defname + "Notbremse - Data not ready after 3 sec or callcounter > 10!")
+                    return response         # notbremse nach N sec
                 time.sleep(0.005)
-                cdprint(fncname + "Data not ready in call #{}".format(callcounter))
+                if self.print2nd: cdprint(defname + "Data not ready in call #{}".format(callcounter))
                 callcounter += 1
 
 
@@ -404,7 +409,7 @@ class SensorTSL2591:
         register  = self.CMD + 0x14
         readbytes = 4
         data      = []
-        answ      = gglobs.I2CDongle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
         if len(answ) == readbytes:
             visraw = answ[0] | (answ[1] << 8)
@@ -418,12 +423,12 @@ class SensorTSL2591:
 
         else:
             # Error: answ too short or too long
-            edprint(fncname + "incorrect data, answ: ", answ)
-            # response = (gglobs.NAN, ) * 6
+            edprint(defname + "incorrect data, answ: ", answ)
+            # response = (g.NAN, ) * 6
 
         # duration = (time.time() - start) * 1000
         # dataFormat  = "Vis:{:6.5g}, IR:{:6.5g}, RAW-Vis:{:5.0f}, RAW-IR:{:4.0f}, Gain:{:3.0f}, Integ:{} ms"
-        # gdprint(fncname + "Init:   " + dataFormat.format(*response) + ", dur:{:0.0f} ms".format(duration))
+        # gdprint(defname + "Init:   " + dataFormat.format(*response) + ", dur:{:0.0f} ms".format(duration))
 
         return response
 
@@ -433,7 +438,7 @@ class SensorTSL2591:
         info  = "{}\n"                            .format("Ambient Light (Visible, Infrared)")
         info += "- Address:         0x{:02X}\n"   .format(self.addr)
         info += "- ID:              0x{:02X}\n"   .format(self.id)
-        info += "- Variables:       {}\n"         .format(", ".join("{}".format(x) for x in gglobs.Sensors["TSL2591"][5]))
+        info += "- Variables:       {}\n"         .format(", ".join("{}".format(x) for x in g.Sensors["TSL2591"][5]))
 
         return info.split("\n")
 
@@ -447,19 +452,27 @@ class SensorTSL2591:
         # Control Register: 0x01
         #
         # IMPORTANT: the System Reset will NOT return an ACK! (observed on both ELV and IOW)
+        #            Is this perhaps the cause of Exception when run with raspii2c on Raspi?
         #
         # duration: ELV: 3.7 ms
         #           ISS: 0.8 ms
 
         start     = time.time()
-        fncname   = "SensorReset: "
+        defname   = "SensorReset: "
 
-        tmsg      = "Reset"
+        tmsg      = "Reset " + self.name
         register  = self.CMD + 0x01     # Control call
         readbytes = 1
         data      = [0x80]              # System Reset, AGAIN=00, ATIME=000
-        answ      = gglobs.I2CDongle.DongleWriteRead(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+
+        if self.callHandle is None:
+            # when calling from I2C Device
+            answ  = self.handle.DongleWriteRead(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        else:
+            # when callung from RaspiI2c Device
+            answ  = self.handle.DongleWriteI2CDirect(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
         duration = 1000 * (time.time() - start)
 
-        return fncname + "Done in {:0.1f} ms".format(duration)
+        return defname + "System Reset; dur{:0.1f} ms".format(duration)
+

@@ -3,6 +3,7 @@
 
 """
 WiFiServer - calling WiFiServer Devices
+NOTE: the external device acts as a http-server: you have to browse it for data
 """
 
 ###############################################################################
@@ -22,19 +23,450 @@ WiFiServer - calling WiFiServer Devices
 #    along with GeigerLog.  If not, see <http://www.gnu.org/licenses/>.
 ###############################################################################
 
+
+__author__          = "ullix"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
+__credits__         = [""]
+__license__         = "GPL3"
+
+from gsup_utils   import *
+
+
+def initWiFiServer():
+    """Initialize WiFiServer"""
+
+    defname = "initWiFiServer: "
+
+    dprint(defname)
+    setIndent(1)
+
+    # set configuration
+    # g.WiFiServerTimeout   = 0.2 # gibt Warnngen like: DVL 2024-02-19 00:53:02.563 getValuesWiFiSrv #0: NO DATA after 1 trial(s) in 211 ms from http://10.0.0.60:4000/lastdata - Failed readings: 0.042%
+                                  # ber eben nur 0.042%
+    g.WiFiServerTimeout   = 0.5
+
+    # get url, devicename, connection
+    for i in range(len(g.WiFiServerList)):
+        if "y" in  g.WiFiServerList[i][0].lower():  # is WiFiServer activated?
+            # url on 5
+            url = getWiFiServerUrl(g.WiFiServerList[i][1], g.WiFiServerList[i][2], g.WiFiServerList[i][3])
+            g.WiFiServerList[i].append(url)
+
+            # name on 6
+            name = getDeviceNameWiFiServer(url)
+            g.WiFiServerList[i].append(name)
+
+            # connection on 7
+            # on device name "NONE" (string) -> failed connection
+            g.WiFiServerList[i].append(False if name == "NONE" else True)
+        else:
+            g.WiFiServerList[i].append("No URL")        # index 5
+            g.WiFiServerList[i].append("No Name")       # index 6
+            g.WiFiServerList[i].append(False)           # index 7 - (False ==> not connected)
+
+
+    # get variables
+    vprint(defname, "g.WiFiServerList:", g.WiFiServerList)
+    VarsComboList = []
+    newVarList    = []
+    for a in g.WiFiServerList:
+        if a[7]:    VarsComboList += a[4]   # select only the variables of connected WiFiServers
+    vprint(defname, "VarsComboList:", VarsComboList)
+
+    for vname in g.VarsCopy:
+        if vname in VarsComboList: newVarList.append(vname) # sort Vars into GeigerLog order
+    g.WiFiServerVariables = ", ".join(newVarList)           # make str from list
+
+    # set device name
+    g.Devices["WiFiServer"][g.DNAME] = "WiFiServer Portal"
+
+    # count connected WiFiServers
+    connected = 0
+    for a in g.WiFiServerList:
+        if a[7]:
+            connected += 1
+            dprint(defname, a)
+
+    if connected > 0:   # at least 1 connected?
+        # connected
+        g.Devices["WiFiServer"][g.CONN] = True
+        msg = ""
+        dprint(defname + "{} WiFiServer connected".format(connected))
+        g.WiFiServerVariables = setLoggableVariables("WiFiServer", g.WiFiServerVariables)
+    else:
+        # not connected
+        g.Devices["WiFiServer"][g.CONN] = False
+        msg = "No connection to any Device"
+        rdprint(defname + msg)
+
+    setIndent(0)
+
+    return msg
+
+
+def terminateWiFiServer():
+    """terminating all connections"""
+    # nothing has to be done; the httpserver is off by default
+
+    defname = "terminateWiFiServer: "
+
+    dprint(defname)
+    setIndent(1)
+
+    g.Devices["WiFiServer"][g.CONN] = False
+
+    dprint(defname + "Terminated")
+    setIndent(0)
+
+
+def getInfoWiFiServer(extended=False):
+    """Info on the WiFiServer Device"""
+
+    WiFiInfo  = "Configured Connection:        GeigerLog PlugIn\n"
+
+    if not g.Devices["WiFiServer"][g.CONN]:
+        # not connected
+        WiFiInfo      += "<red>Device is not connected</red>"
+    else:
+        # is connected
+        wtmplt         = "#{} {:26s} {:9s} {:25s} {}\n"
+
+        WiFiInfo      += "Connected Device:             {}\n".format(g.Devices["WiFiServer"][g.DNAME])
+        WiFiInfo      += "\n"
+        WiFiInfo      += wtmplt.format("#", "Activated WebServers (URL)", "Status", "Name", "Variables")
+
+        for i, a in enumerate(g.WiFiServerList):
+            url        = a[5]
+            connect    = "Connected" if a[7] else "Failure"
+            name       = a[6].strip()
+            vars       = ", ".join(v for v in a[4])
+            WiFiInfo  += wtmplt.format(i + 1, url, connect, name, vars)
+
+        WiFiInfo      += "\n"
+        WiFiInfo      += "Active Variables:             {}\n"        .format(g.WiFiServerVariables)
+        WiFiInfo      += getTubeSensitivities(g.WiFiServerVariables)
+
+    return WiFiInfo
+
+
+def getWiFiServerUrl(IP, Port, Folder):
+    """get url like 'http://10.0.0.78:4000' or 'http://10.0.0.78:4000/folder'"""
+
+    defname = "getWiFiServerUrl: "
+
+    # empty folder MUST NOT have leading "/" in Firefox, but OK in Chrome
+    if Folder == "": WSFolder = ""
+    else:            WSFolder = "/{}".format(Folder)
+    url = "http://{}:{}{}".format(IP, Port, WSFolder)
+    vprint(defname, url)
+
+    return url
+
+
+# calling url for response
+def getUrlResponse(url, GET, trials=1):
+    """get url antwort"""
+
+    ################################################
+    def lcl_exceptMsg(e, excmsg, trial):
+        """print the local exception message"""
+
+        exceptPrint(e, defname + excmsg + " url:{} trial: {} of {}".format(url, trial, trials))
+        if g.devel:
+            dur = 1000 * (time.time() - xstart)
+            # QueuePrint("DVL {} {}{:9s}: trial#{} dur:{:0.0f} ms '{}' {}".format(longstime(), defname, excmsg, trial, dur, cleanHTML(e), url))
+            # rdprint("DVL {} {}{:9s}: trial#{} dur:{:0.0f} ms '{}' {}".format(longstime(), defname, excmsg, trial, dur, cleanHTML(e), url))
+            rdprint("{} {}{:9s}: trial#{} dur:{:0.0f} ms '{}' {}".format(longstime(), defname, excmsg, trial, dur, cleanHTML(e), url))
+    ################################################
+
+    gurStart    = time.time()
+
+    defname     = "getUrlResponse: "
+    FullURL     = url + GET
+    response    = None
+
+    mdprint(defname, FullURL)
+
+    for trial in range(trials):
+        xstart = time.time()
+        try:
+            # urllib.request.urlopen: das dauert 200 ms obwohl timeout mit 100 ms vorgegeben
+            #                         das dauert 400 ms obwohl timeout mit 200 ms vorgegeben
+            with urllib.request.urlopen(FullURL, timeout=g.WiFiServerTimeout) as page:
+                response = page.read().strip().decode("UTF-8")
+
+            # if g.timing:
+            #     xdur = 1000 * (time.time() - xstart)
+            #     g.ManuValue[2] = xdur
+            #     rdprint(defname + "duration: {:5.1f} ms  GET:{} response: ".format(xdur, GET), response)
+
+            if trial >= 1:
+                # tmsg = "DVL {} {}{}".format(longstime(), defname, "Success on trial #{}".format(trial))
+                tmsg = "{} {}{}".format(longstime(), defname, "Success on trial #{}".format(trial))
+                rdprint(tmsg)
+                QueuePrint(tmsg)
+
+            break   # break the while loop on successful wifi call
+
+        except TimeoutError as e:
+            # NOTE: DEPRECATION:  "exception 'socket.timeout':  A deprecated alias of TimeoutError."
+            lcl_exceptMsg(e, 'TimeOutError', trial)
+
+        except urllib.error.HTTPError as e:
+            lcl_exceptMsg(e, 'HTTPError', trial)
+
+        except urllib.error.URLError as e:
+            # <urlopen error [Errno -2] Name or service not known>
+            # <urlopen error [Errno 111] Connection refused>
+            # mdprint(defname, "urllib.error.URLError.reason: ", urllib.error.URLError.reason())
+            # mdprint(defname, "urllib.error.URLError e: ", e)
+            # mdprint(defname, "urllib.error.URLError e: ", e.errno)
+            # mdprint(defname, "urllib.error.URLError e: ", e.reason)
+            # mdprint(defname, "urllib.error.URLError e: ", e.strerror)
+            # mdprint(defname, "urllib.error.URLError e: ", e.filename)
+            # if e.errno == 111: time.sleep(0.05) # does it help on conn refused?
+            lcl_exceptMsg(e, 'URLError', trial)
+
+        except OSError as e:
+            lcl_exceptMsg(e, "OSError", trial)
+
+        except Exception as e:
+            lcl_exceptMsg(e, 'Exception', trial)
+
+        # break when cumulative duration reaches half of cycle time
+        deltat = time.time() - gurStart
+        if deltat > (g.LogCycle * 0.5) :
+            edprint(defname, "time is up: {:0.1f} ms".format(1000 * deltat))
+            break
+
+        time.sleep(0.01)
+
+    TotalDur = 1000 * (time.time() - gurStart)
+    msg = "after {} trial(s) in {:0.0f} ms from {}".format(trial + 1, TotalDur, FullURL)
+
+    return response, msg
+
+
+# "/lastdata" from all WiFiServer devices
+def getValuesWiFiSrvAll(varlist):
+    """Read data from all connected WiFiServer devices"""
+    # NOTE: varlist is ignored; individual vars for devices is used
+
+    defname = "getValuesWiFiSrvAll: "
+
+    alldata = {}
+
+    for index in range(len(g.WiFiServerList)):
+        dev = g.WiFiServerList[index]
+        if dev[7]:  alldata = {**alldata, **getValuesWiFiSrv(index, url=dev[5], varlist=dev[4])}
+
+    # get dict into GeigerLog sort order
+    alldataOrdered = {}
+    for vname in g.VarsCopy:
+        if vname in alldata: alldataOrdered.update({vname : alldata[vname]})
+
+    return alldataOrdered
+
+
+# "/lastdata" for single WiFiServer device
+def getValuesWiFiSrv(index, url, varlist):
+    """Read all WiFiServer data from a single device"""
+
+    # request : http://serverip:port/folder/lastdata
+    # response: CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, Xtra
+    # example : 100.496, 1.159,,,,,,,25.000, 1018.000, 54.000, 97.000
+
+    #### local functions ######################################################
+    def getValueWiFiServer(index):
+        """check for missing value and convert to floats"""
+
+        idata = data[index]
+        val   = g.NAN
+
+        if idata > "":   # real value; not a missing value
+            try:
+                val = float(idata)
+            except Exception as e:
+                exceptPrint(e, "index: {}".format(index))
+
+        return val
+    #### end local functions ##################################################
+
+    gVstart   = time.time()
+
+    defname = "getValuesWiFiSrv #{}: ".format(index)
+    alldata = {}                                                                    # dict for return data
+    thisGET = "/lastdata"
+
+    # get response on /lastdata
+    response, msg = getUrlResponse(url, thisGET, trials=1)
+    # rdprint(defname, "url: '{}'  response:'{}'  msg:'{}' ".format(url, response, msg))
+
+    if response is None:
+        # got no response
+        g.LogReadingsFail += 1
+        msg  = defname + "NO DATA " + msg
+        msg += " - Failed readings: {:0.3%}".format(g.LogReadingsFail / g.LogReadings)
+        # if g.devel: QueuePrint("DVL " + longstime() + " " + msg)
+        if g.devel: QueuePrint(longstime() + " " + msg)
+        edprint(defname + msg)
+
+    else:
+        # got a response
+        data = response.split(",")
+
+        if len(data) >= len(g.VarsCopy):
+            # got complete set of data
+            for i, vname in enumerate(g.VarsCopy):
+                if vname in varlist:
+                    value = getValueWiFiServer(i)
+                    alldata.update({vname: value})
+                    # gdprint(defname + "i={}, vname={}, value={}".format(i, vname, value))
+        else:
+            # got some data but not complete
+            msg = defname + "WiFiServer sent incomplete Data: expecting {} values, got only {}".format(len(g.VarsCopy), len(data))
+            edprint(msg)
+            QueuePrint(msg)
+
+    gVdur = 1000 * (time.time() - gVstart)
+
+    # if g.timing:
+    #     g.ManuValue[1] = gVdur
+
+    vprintLoggedValues(defname, varlist, alldata, gVdur)
+
+    return alldata
+
+
+# id
+def getDeviceNameWiFiServer(url):
+    """return the name of the external device having URL url"""
+
+    # request url:  http://serverip:port/folder/id
+    # return: DeviceName  (example: 'GeigerLog WiFiServer', or: 'WiFiServer Simulator on Apache PHP')
+    # dur: 11 ms (GeigerLog on urkam calling Raspi)
+
+    start    = time.time()
+    defname  = "getDeviceNameWiFiServer: "
+
+    response, msg = getUrlResponse(url, "/id", trials=3)
+    if response is None: devname = "NONE"
+    else:                devname = cleanHTML(response)
+
+    dur = 1000 *(time.time() - start)
+    if devname == "None":   edprint(defname, "msg:{} dur:{:0.0f} ms".format(msg, dur))
+    else:                   vprint (defname, "'{}' dur:{:0.0f} ms"  .format(devname, dur))
+
+    return devname
+
+
+# reset WiFiServer, but not its Devices
+def resetWiFiServer():
+    """Reset the WiFiServer, but not its Devices, and only when connected"""
+
+    start = time.time()
+    defname  = "resetWiFiServer: "
+    setBusyCursor()
+
+    fprint(header("Resetting WiFiServer"))
+    QtUpdate()
+
+    command = "/resetserver"
+
+    for i in range(len(g.WiFiServerList)):
+        url = g.WiFiServerList[i][5]
+
+        if g.WiFiServerList[i][7]:
+            # device reset may take longer than 1 sec!
+            oldTimeout = g.WiFiServerTimeout
+            g.WiFiServerTimeout = 3
+            rdprint(defname, "url: ", url, "  command: ", command)
+            response = getUrlResponse(url, command, trials=3)
+            if response is None: efprint("{}".format(url), "Failed")
+            else:                fprint ("{}".format(url), "Successful")
+            g.WiFiServerTimeout = oldTimeout
+            QtUpdate()
+        else:
+            rdprint(defname, "url: ", url, " not connected")
+
+    setNormalCursor()
+
+    dur = 1000 *(time.time() - start)
+    vprint(defname, "dur:{:0.0f} ms".format(dur))
+
+
+def resetWiFiServerDevices():
+    """Reset WiFiServer Devices - but only when connected - and not the WiFiServer"""
+
+    start = time.time()
+    defname  = "resetWiFiServerDevices: "
+    setBusyCursor()
+
+    fprint(header("Resetting Connected WiFiServer Devices"))
+    QtUpdate()
+    command = "/resetdevices"
+
+    # rdprint(defname, "g.WiFiServerList: ", g.WiFiServerList)
+    for i in range(len(g.WiFiServerList)):
+        url = g.WiFiServerList[i][5]
+        if g.WiFiServerList[i][7]: # connected?
+            # rdprint(defname, "url: ", url, "  command: ", command)
+            # device reset may take longer than 1 sec!
+            oldTO = g.WiFiServerTimeout
+            # g.WiFiServerTimeout = 2
+            g.WiFiServerTimeout = 5
+            response = getUrlResponse(url, command, trials=3)
+            if response is None: efprint("{}".format(url), "Failed")
+            else:                fprint ("{}".format(url), "Successful")
+            g.WiFiServerTimeout = oldTO
+            QtUpdate()
+        else:
+            rdprint(defname, "url: ", url, " not connected")
+
+    setNormalCursor()
+
+    dur = 1000 *(time.time() - start)
+    vprint(defname, "dur:{:0.3f} ms".format(dur))
+
+
+# ping
+def pingWiFiServer():
+    """Ping the WiFiServer"""
+
+    # NOTE: Remember that a host may not respond to a ping (ICMP) request
+    #       even if the host name is valid and the host exists!
+
+    setBusyCursor()
+
+    fprint(header("Pinging WiFiServer"))
+    QtUpdate()
+
+    for i in range(len(g.WiFiServerList)):
+        if g.WiFiServerList[i][7]:                                     # ping connected devices only
+            pr = "Ping Result: IP:{}".format(g.WiFiServerList[i][1])
+
+            presult, ptime = ping(g.WiFiServerList[i][1])
+            if presult:
+                fprint ("<green>" + pr, "Success in ", ptime)
+                bip()
+            else:
+                efprint(pr, "Failure - ", ptime)
+
+    setNormalCursor()
+
+
+###############################################################################################################
+###############################################################################################################
+
 # A WiFiServer needs to respond to these calls:
 # - id
 # - lastdata
-# - lastavg
 # - reset
 #
 # http://serverip:port/folder/id
 #                      response:         DeviceName
 #                      response example: AmbioMon
 # http://serverip:port/folder/lastdata
-#                      response:         CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, Xtra
-#                      response example: 100.496, 1.159,,,,,,,25.000, -18.000, 54.000, 97.000
-# http://serverip:port/folder/lastavg
 #                      response:         CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, Xtra
 #                      response example: 100.496, 1.159,,,,,,,25.000, -18.000, 54.000, 97.000
 # http://serverip:port/folder/reset
@@ -52,7 +484,7 @@ WiFiServer - calling WiFiServer Devices
 # ?>
 #
 # <?php
-# // use for: /lastdata, /lastavg
+# // use for: /lastdata
 # /*
 # * makes approx normal dist
 # * Alternative of "stats_rand_gen_normal()".
@@ -94,388 +526,13 @@ WiFiServer - calling WiFiServer Devices
 # // use for: reset
 # echo "Ok";
 # ?>
-
-
-__author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
-__credits__         = [""]
-__license__         = "GPL3"
-
-from   gsup_utils           import *
-
-
-def initWiFiServer():
-    """Initialize WiFiServer"""
-
-    fncname = "initWiFiServer: "
-
-    dprint(fncname + "Initializing WiFiServer")
-    setIndent(1)
-
-    # set configuration
-    if gglobs.WiFiServerIP          == "auto": gglobs.WiFiServerIP        = getGeigerLogIP()      # GL computer's own IP
-    if gglobs.WiFiServerPort        == "auto": gglobs.WiFiServerPort      = 80                    # std Port (0...65535 ok)
-    if gglobs.WiFiServerFolder      == "auto": gglobs.WiFiServerFolder    = "GL"                  # folder on WiFiServer device
-    if gglobs.WiFiServerTimeout     == "auto": gglobs.WiFiServerTimeout   = 0.3                   # Failed readings: 0.18%)
-    if gglobs.WiFiServerDataType    == "auto": gglobs.WiFiServerDataType  = "LAST"                # using 'lastdata' call, not avg for 'lastavg'
-    if gglobs.WiFiServerVariables   == "auto": gglobs.WiFiServerVariables = "CPM, CPS, Temp, Press, Humid"   # simple default
-
-    gglobs.WiFiServerTotalDur           = 0                           # duration of calling URL
-    gglobs.WiFiServerTrials             = 0                           # max number of trials in calling URL
-
-    gglobs.WiFiServerUrl                = getWiFiServerUrl()          # get like: 'http://10.0.0.78:4000/folder'
-    gglobs.Devices["WiFiServer"][DNAME] = getDeviceNameWiFiServer()   # get like: 'GeigerLog WiFiServer' or 'None'
-
-    if gglobs.Devices["WiFiServer"][DNAME] == "NONE":
-        # not connected
-        gglobs.Devices["WiFiServer"][CONN] = False
-        msg = "No connection to Device at URL: '{}'".format(gglobs.WiFiServerUrl)
-        rdprint(fncname + msg)
-
-    else:
-        # connected
-        gglobs.Devices["WiFiServer"][CONN] = True
-        msg = ""
-        dprint(fncname + "connected to Device at URL: '{}', detected name: '{}'".format(
-                                                        gglobs.WiFiServerUrl,
-                                                        gglobs.Devices["WiFiServer"][DNAME],
-                                                        ))
-
-        setLoggableVariables("WiFiServer", gglobs.WiFiServerVariables)
-
-    setIndent(0)
-
-    return msg
-
-
-def terminateWiFiServer():
-    """opposit of init ;-)"""
-
-    fncname = "terminateWiFiServer: "
-
-    dprint(fncname)
-    setIndent(1)
-
-    gglobs.Devices["WiFiServer"][CONN] = False
-
-    dprint(fncname + "Terminated")
-    setIndent(0)
-
-
-def getInfoWiFiServer(extended=False):
-    """Info on the WiFiServer Device"""
-
-    WiFiInfo  = ""
-    WiFiInfo += "Configured Connection:        URL: '{}'   Timeout: {} sec\n".format(gglobs.WiFiServerUrl, gglobs.WiFiServerTimeout)
-
-    if not gglobs.Devices["WiFiServer"][CONN]: return WiFiInfo + "<red>Device is not connected</red>"
-
-    WiFiInfo +=     "Connected Device:             {}\n"        .format(gglobs.Devices["WiFiServer"][DNAME])
-    WiFiInfo +=     "Configured Variables:         {}\n"        .format(gglobs.WiFiServerVariables)
-    WiFiInfo +=     "Configured Mode [LAST, AVG]:  {}\n"        .format(gglobs.WiFiServerDataType)
-    WiFiInfo +=     getTubeSensitivities(gglobs.WiFiServerVariables)
-
-    if extended:
-        WiFiInfo += "\n"
-        WiFiInfo += "Calling URL: Max Repeats:     {}\n"        .format(gglobs.WiFiServerTrials)
-        WiFiInfo += "Calling URL: Max Deltat:      {:0.1f} ms\n".format(gglobs.WiFiServerTotalDur)
-
-    return WiFiInfo
-
-
-def getWiFiServerUrl():
-    """get url like 'http://10.0.0.78:4000' or 'http://10.0.0.78:4000/folder'"""
-
-    # empty folder must not have leading "/"
-    if gglobs.WiFiServerFolder == "": WSFolder = ""
-    else:                             WSFolder = "/{}".format(gglobs.WiFiServerFolder)
-    url = "http://{}:{}{}".format(gglobs.WiFiServerIP, gglobs.WiFiServerPort, WSFolder)
-    # gdprint(url)
-
-    return url
-
-
-# calling wifi
-def getUrlResponse(GET, trials=1):
-    """get url antwort"""
-
-    # GET == id:         10 ms (range: 6 ... 20 ms)
-    # GET == reset:      10 ms (range: 8 ... 17 ms)
-    # GET == lastdata:   70 ms (range: 60 ... 250 ms)
-    # GET == lastavg:    same as lastdata
-    #                    Spikes up to 250 ms every 60 sec very(!) regularly
-    #                    On Raspi: ~55 ms, no (!) spikes!
-
-    ################################################
-    def lcl_exceptMsg(e, excmsg):
-        """print the local exception message """
-
-        exceptPrint(e, excmsg)
-        if gglobs.devel:
-            Queueprint("DVL {} {}{:9s}: '{}'".format(longstime(), fncname, excmsg, cleanHTML(e)))
-    ################################################
-
-    gurStart    = time.time()
-
-    fncname     = "getUrlResponse: "
-    url         = gglobs.WiFiServerUrl + GET
-    response    = None
-    trial       = 0
-
-    while True:
-        trial += 1
-        try:
-            xstart = time.time()
-            with urllib.request.urlopen(url, timeout=gglobs.WiFiServerTimeout) as page:
-                response = page.read().strip().decode("UTF-8")
-
-            if gglobs.timing:
-                xdur = 1000 * (time.time() - xstart)
-                gglobs.ManuValue[2] = xdur
-                rdprint(fncname + "duration: {:5.1f} ms  GET:{} response: ".format(xdur, GET), response)
-
-                if trial == 2:
-                    t2msg = "DVL {} {}{:9s}: '{}'".format(longstime(), fncname, "Success on 2nd trial", "")
-                    rdprint(t2msg)
-                    Queueprint(t2msg)
-
-            break   # break the while loop on successful wifi call
-
-        except TimeoutError as e:
-            # NOTE: DEPRECATION:  "exception 'socket.timeout':  A deprecated alias of TimeoutError."
-            lcl_exceptMsg(e, 'TimeOutError')
-
-        except urllib.error.HTTPError as e:
-            lcl_exceptMsg(e, 'HTTPError')
-
-        except urllib.error.URLError as e:
-            lcl_exceptMsg(e, 'URLError')
-
-        except OSError as e:
-            lcl_exceptMsg(e, "OSError")
-
-        except Exception as e:
-            lcl_exceptMsg(e, 'Exception')
-
-        # break when - a) max trials reached
-        #       or   - b) cumulative duration reaches half of cycle time
-        if trial >= trials or (time.time() - gurStart) > (gglobs.logCycle * 0.5) :
-            break
-
-        time.sleep(0.01)
-
-
-    TotalDur = 1000 * (time.time() - gurStart)
-    msg = "after {} trial(s) in {:0.0f} ms from {}".format(trial, TotalDur, url)
-
-    if trial    > gglobs.WiFiServerTrials:   gglobs.WiFiServerTrials   = trial
-    if TotalDur > gglobs.WiFiServerTotalDur: gglobs.WiFiServerTotalDur = TotalDur
-
-    # mdprint(fncname + "Trial:#{}, MaxTrials:{}, TotalDur:{:0.1f} ms, MaxTotalDur:{:0.1f} ms, Response:'{}'".format(
-    #         trial,
-    #         gglobs.WiFiServerTrials,
-    #         TotalDur,
-    #         gglobs.WiFiServerTotalDur,
-    #         response,
-    #         ))
-
-    return response, msg
-
-
-# "/lastdata" or "/lastavg"
-def getValuesWiFiServer(varlist):
-    """Read all WiFiServer data"""
-
-    # request : http://serverip:port/folder/lastdata
-    # response: CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, Xtra
-    # example : 100.496, 1.159,,,,,,,25.000, 1018.000, 54.000, 97.000
-
-    #### local functions ######################################################
-    def getValueWiFiServer(index):
-        """check for missing value and make floats"""
-
-        idata = data[index]
-        val   = gglobs.NAN
-
-        if idata > "":   # not a missing value
-            try:
-                val = float(idata)
-            except Exception as e:
-                exceptPrint(e, "index: {}".format(index))
-
-        return val
-    #### end local functions ##################################################
-
-    gVstart   = time.time()
-
-    fncname = "getValuesWiFiServer: "
-    alldata = {}                                                                    # dict for return data
-    thisGET = "/lastdata" if gglobs.WiFiServerDataType == "LAST" else "/lastavg"
-
-    # get response on /lastxyz
-    response, errmsg = getUrlResponse(thisGET, trials=3)
-
-    if response is None:
-        # got no response
-        gglobs.LogReadingsFail += 1
-        msg  = fncname + "NO DATA " + errmsg
-        msg += " - Failed readings: {:0.3%}".format(gglobs.LogReadingsFail / gglobs.LogReadings)
-        if gglobs.devel: Queueprint("DVL " + longstime() + " " + msg)
-        edprint(fncname + msg)
-
-    else:
-        # got a response
-        # rdprint(fncname + "response:{} errmsg:{}".format(response, errmsg))
-
-        data = response.split(",")
-
-        if len(data) >= len(gglobs.varsCopy):
-            # got complete set of data
-            for i, vname in enumerate(gglobs.varsCopy):
-                if vname in varlist:
-                    value = getValueWiFiServer(i)
-                    alldata.update({vname: value})
-                    # gdprint(fncname + "i={}, vname={}, value={}".format(i, vname, value))
-        else:
-            # got some data but not complete
-            msg = fncname + "WiFiServer sent incomplete Data: expecting {} values, got only {}".format(len(gglobs.varsCopy), len(data))
-            edprint(msg)
-            Queueprint(msg)
-
-    gVdur = 1000 * (time.time() - gVstart)
-
-    if gglobs.timing:
-        gglobs.ManuValue[1] = gVdur
-
-    vprintLoggedValues(fncname, varlist, alldata, gVdur)
-
-    return alldata
-
-
-def setWiFiServerProperties():
-    """Set Properties: Data type to request: LAST or AVG"""
-
-    fncname = "setWiFiServerProperties: "
-
-    dprint(fncname)
-    setIndent(1)
-
-    # Choose type of data
-    lstaip2 = QLabel("Data as <b>LAST</b> value or last <b>AVG</b> value? &nbsp; &nbsp;")
-    lstaip2.setAlignment(Qt.AlignLeft )
-    b0      = QRadioButton("LAST")             # this is default
-    b1      = QRadioButton("AVG")
-    ttip    = "Select 'LAST' to get last value of data, or 'AVG' to get last 1 min average of values"
-    b0.setToolTip(ttip)
-    b1.setToolTip(ttip)
-    if    gglobs.WiFiServerDataType == "LAST" : b0.setChecked(True)
-    else:                                       b1.setChecked(True)
-
-    # put radiobutton in H box
-    layoutRB = QHBoxLayout()
-    layoutRB.addWidget(b0)
-    layoutRB.addWidget(b1)
-
-    gridl=QGridLayout()
-    gridl.setContentsMargins(10,10,10,10) # spacing around
-    gridl.addWidget(lstaip2,     0, 0)
-    gridl.addLayout(layoutRB,    0, 1)
-
-    # Dialog box
-    d = QDialog()
-    d.setWindowIcon(gglobs.iconGeigerLog)
-    d.setWindowTitle("Set WiFiServer Data Type")
-    d.setWindowModality(Qt.WindowModal)
-    d.setMinimumWidth(400)
-
-    # Buttons
-    bbox = QDialogButtonBox()
-    bbox.setStandardButtons(QDialogButtonBox.Cancel | QDialogButtonBox.Ok )
-    bbox.accepted.connect(lambda: d.done(1))
-    bbox.rejected.connect(lambda: d.done(-1))
-
-    okbtn = bbox.button(QDialogButtonBox.Ok)
-
-    layoutV = QVBoxLayout(d)
-    layoutV.addLayout(gridl)
-    layoutV.addWidget(bbox)
-
-    if gglobs.logging:         # no change of parameters when logging
-        okbtn.setEnabled(False)
-
-    retval = d.exec()
-    #print("reval:", retval)
-
-    if retval != 1:
-        # ESCAPE pressed or Cancel Button clicked
-        dprint(fncname + "Settings unchanged")
-
-    else:
-        fprint(header("WiFiServer Data Type"))
-
-        # data type
-        if b0.isChecked(): gglobs.WiFiServerDataType = "LAST"    # b0.isChecked()
-        else:              gglobs.WiFiServerDataType = "AVG"     # b1.isChecked()
-        msg = "WiFiServer Data Type:", "{}".format(gglobs.WiFiServerDataType)
-        fprint(msg)
-        dprint(msg)
-
-    setIndent(0)
-
-
-def pingWiFiServer():
-    """Ping the WiFiServer"""
-
-    # NOTE: Remember that a host may not respond to a ping (ICMP) request
-    #       even if the host name is valid and the host exists!
-
-    setBusyCursor()
-
-    fprint(header("Pinging WiFiServer IP: " + gglobs.WiFiServerIP))
-    QtUpdate() # to make the header visible right away
-
-    presult, ptime = ping(gglobs.WiFiServerIP)
-
-    pr = "Ping Result:"
-    if presult:
-        fprint (pr, "Success, ", ptime)
-        playWav("ok")
-    else:
-        efprint(pr, "Failure")
-
-    setNormalCursor()
-
-
-# id
-def getDeviceNameWiFiServer():
-    """get the name of the external device"""
-    # request url:  http://serverip:port/folder/id
-    # return: response:  DeviceName  (example: 'GeigerLog WiFiServer', or: 'WiFiServer Simulator on Apache PHP')
-
-    fncname  = "getDeviceNameWiFiServer: "
-
-    response, errmsg = getUrlResponse("/id", trials=3)
-    if response is None: devname = "NONE"
-    else:                devname = cleanHTML(response)
-    # gdprint("response: ", response, ", devname: ", devname, ", errmsg: ", errmsg)
-
-    return devname
-
-
-# reset
-def resetWiFiServer():
-    """Reset the GLWiFiServer"""
-
-    fncname  = "resetWiFiServer: "
-
-    setBusyCursor()
-
-    fprint(header("Resetting WiFiServer IP: " + gglobs.WiFiServerIP))
-    QtUpdate() # to make the header visible right away when resetting takes longer
-
-    response = getUrlResponse("/reset", trials=3)
-    if response is None: efprint("Failed")
-    else:                fprint ("Successful")
-
-    setNormalCursor()
-
+#
+# Example code for a HTML-only Server
+# Server-Root -> GL ->
+#                   -> id
+#                       - index.html # Content: 'MyWiFiServer'
+#                   -> lastdata
+#                       - index.html # Content: '1,2,3,4,5,6,7,8,9,10,11,12'
+#                   -> reset
+#                       - index.html # Content: 'Ok'
+#

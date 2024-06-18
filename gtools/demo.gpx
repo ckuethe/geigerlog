@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no" ?>
+<gpx xmlns="http://www.topografix.com/GPX/1/1" creator="" version="1.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd">
+<trk>
+  <name>ACTIVE LOG150932</name>
+  <trkseg>
+   <trkpt lat="52.858636" lon="5.699969">
+    <ele>-3.375</ele>
+    <time>2013-06-19T13:09:32Z</time>
+   </trkpt>
+   <trkpt lat="52.858666" lon="5.699985">
+    <ele>5.432</ele>
+    <time>2013-06-19T13:13:26Z</time>
+   </trkpt>
+   <trkpt lat="52.858678" lon="5.700005">
+    <ele>2.791</ele>
+    <time>2013-06-19T13:14:12Z</time>
+   </trkpt>
+   <trkpt lat="52.858657" lon="5.700009">
+    <ele>3.302</ele>
+    <time>2013-06-19T13:16:58Z</time>
+   </trkpt>
+   <trkpt lat="52.858633" lon="5.700008">
+    <ele>5.633</ele>
+    <time>2013-06-19T13:19:13Z</time>
+   </trkpt>
+   <trkpt lat="52.858590" lon="5.700084">
+    <ele>4.082</ele>
+    <time>2013-06-19T13:19:28Z</time>
+   </trkpt>
+   <trkpt lat="52.858477" lon="5.700163">
+    <ele>3.150</ele>
+    <time>2013-06-19T13:19:49Z</time>
+   </trkpt>
+   <trkpt lat="52.858459" lon="5.700180">
+    <ele>2.482</ele>
+    <time>2013-06-19T13:20:05Z</time>
+   </trkpt>
+   <trkpt lat="52.858841" lon="5.700391">
+    <ele>1.502</ele>
+    <time>2013-06-19T16:08:29Z</time>
+   </trkpt>
+   <trkpt lat="52.858867" lon="5.700268">
+    <ele>2.271</ele>
+    <time>2013-06-19T16:08:45Z</time>
+   </trkpt>
+   <trkpt lat="52.858863" lon="5.700258">
+    <ele>3.891</ele>
+    <time>2013-06-19T16:09:01Z</time>
+   </trkpt>
+   <trkpt lat="52.858863" lon="5.700325">
+    <ele>9.132</ele>
+    <time>2013-06-19T16:09:32Z</time>
+   </trkpt>
+   <trkpt lat="52.858845" lon="5.700278">
+    <ele>8.481</ele>
+    <time>2013-06-19T16:11:28Z</time>
+   </trkpt>
+   <trkpt lat="52.858868" lon="5.700260">
+    <ele>6.411</ele>
+    <time>2013-06-19T16:12:21Z</time>
+   </trkpt>
+  </trkseg>
+ </trk>
+
+</gpx>

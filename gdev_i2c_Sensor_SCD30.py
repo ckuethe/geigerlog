@@ -24,46 +24,61 @@ I2C sensor module SCD30 for CO2 (by NDIR), Temperature, and Humidity
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
-"""
-Reference: Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf - Version 0.91 – D1 – August 2018
-https://www.sensirion.com/de/umweltsensoren/kohlendioxidsensor/kohlendioxidsensoren-scd30/
-"""
+
+# Reference: Sensirion_CO2_Sensors_SCD30_Interface_Description.pdf - Version 0.91 – D1 – August 2018
+# https://www.sensirion.com/de/umweltsensoren/kohlendioxidsensor/kohlendioxidsensoren-scd30/
+#
+# ATTENTION: SCD30 needs clock-stretching !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+#
+# Clock-stretching is NOT available on Raspi!
+# Work around is to reduce I2C clock in Raspi to 10 kHz (Default is 100 kHz)
+# see:  https://learn.adafruit.com/circuitpython-on-raspberrypi-linux/i2c-clock-stretching
+#
+# Maximal I2C speed is 100 kHz and the master has to support clock stretching. Sensirion recommends
+# to operate the SCD30 at a baud rate of 50 kHz or smaller. Clock stretching period in write- and
+# read-frames is 30 ms, however, due to internal calibration processes a maximal clock stretching
+# of 150 ms may occur once per day. For detailed information to the I2C protocol, refer to NXP
+# I2C-bus specification1. SCD30 does not support repeated start condition. Clock stretching is
+# necessary to start the microcontroller and might occur before every ACK. I2C master clock
+# stretching needs to be implemented according to the NXP specification. The boot-up time is < 2 s.
 
 
 class SensorSCD30:
     """Code for the Sensirion SCD30 sensor"""
 
-    addr       = 0x61       # the only option for the SCD30
+    addr       = 0x61           # the only option for the SCD30
     name       = "SCD30"
-    firmware   = "not set"  # my device: 3.66 (same as example from manual)
-    measIntvl  = 5          # Measurement Interval in sec (default = 2)
-    frc        = None       # Forced Recalibration value (FRC). Default is 400 [ppm]
+    firmware   = "not set"      # my device: 3.66 (same as example from manual)
+    measIntvl  = 5              # Measurement Interval in sec (default = 2)
+    frc        = None           # Forced Recalibration value (FRC). Default is 400 [ppm]
+    handle     = g.I2CDongle    # default for use by 'I2C' device; RaspiI2C defines its own
 
 
-    def __init__(self, addr):
+    def __init__(self, addr, I2Chandle=None):
         """Init SensorSCD30 class"""
 
         self.addr       = addr
+        if I2Chandle is not None: self.handle = I2Chandle
 
 
     def SensorInit(self):
         """Scan for presence, get Serial No, start periodic measurement"""
 
-        fncname = "SensorInit: " + self.name + ": "
+        defname = "SensorInit: " + self.name + ": "
         dmsg    = "Sensor {:8s} at address 0x{:02X}".format(self.name, self.addr)
 
-        dprint(fncname)
+        # dprint(defname)
         setIndent(1)
 
         ## check for presence of an I2C device at I2C address
-        presence = gglobs.I2CDongle.DongleIsSensorPresent(self.addr)
+        presence = self.handle.DongleIsSensorPresent(self.addr)
         if not presence:
             # no device found
             setIndent(0)
@@ -83,28 +98,28 @@ class SensorSCD30:
         # removing reset!
         #
         ## soft reset
-        # dprint(fncname + "Sensor Reset")
+        # dprint(defname + "Sensor Reset")
         # gdprint(self.SensorReset())
 
         ## get firmware version
-        dprint(fncname + "Get Firmware")
+        # dprint(defname + "Get Firmware")
         gdprint(self.SCD30getFirmwareVersion())
 
         ## get Forced Recalibration value (FRC)
         # after power cycle this returns always "400" irrespective of what it really is!
-        dprint(fncname + "Get Forced Recalibration value (FRC)")
-        gdprint(fncname + "{} ppm".format(self.SCD30getFRC()))
+        # dprint(defname + "Get Forced Recalibration value (FRC)")
+        gdprint(defname + "Forced Recalibration value (FRC): {} ppm".format(self.SCD30getFRC()))
 
         ## set interval (default is 2 sec)
-        dprint(fncname + "Set Measurement Interval")
+        # dprint(defname + "Set Measurement Interval")
         gdprint(self.SCD30MeasurementSetInterval(self.measIntvl))
 
         ## stop auto measurements                   # need to stop first???
-        dprint(fncname + "SCD30MeasurementStop")
+        # dprint(defname + "SCD30MeasurementStop")
         gdprint(self.SCD30MeasurementStop())
 
         ## start auto measurements
-        dprint(fncname + "SCD30MeasurementStart")
+        # dprint(defname + "SCD30MeasurementStart")
         gdprint(self.SCD30MeasurementStart())
 
         setIndent(0)
@@ -125,23 +140,23 @@ class SensorSCD30:
         # ISS: SCD30getFirmwareVersion: duration: 1.6 ms
 
         start = time.time()
-        fncname = "SCD30getFirmwareVersion: "
+        defname = "SCD30getFirmwareVersion: "
 
         tmsg      = "FirmWr"
         register  = 0xD100
         readbytes = 3
         data      = []
         wait      = 0
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=3, msg=tmsg, wait=wait)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=3, msg=tmsg, wait=wait)
 
         if len(answ) != readbytes:
-            edprint(fncname + "Failure reading Serial Number, reponse: ", answ)
+            edprint(defname + "Failure reading Serial Number, reponse: ", answ)
             return "Not Found"
 
         self.firmware = "{}.{}".format(answ[0], answ[1])
 
         duration = (time.time() - start) * 1000
-        msg = fncname + "got firmware:{}  in:{:0.1f} ms".format(self.firmware, duration)
+        msg = defname + "got firmware:{} (expecting: 3.66) in:{:0.1f} ms".format(self.firmware, duration)
 
         return msg
 
@@ -161,21 +176,22 @@ class SensorSCD30:
         # duration: 0.7 ms
 
         start   = time.time()
-        fncname = "SensorReset: " + self.name + ": "
-        # dprint(fncname)
+        # defname = "SensorReset: " + self.name + ": "
+        defname = "SensorReset: "
+        # dprint(defname)
 
         tmsg      = "Reset"
         register  = 0xD304
         readbytes = 0
         data      = []
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
 
         # required wait 0.7 ms
         time.sleep(0.001) # 1 ms
 
         duration = 1000 * (time.time() - start)
 
-        return fncname + "took {:0.1f} ms".format(duration)
+        return defname + "{} took {:0.1f} ms".format(tmsg, duration)
 
 
     def SCD30MeasurementStart(self):
@@ -199,15 +215,16 @@ class SensorSCD30:
         # argument: Format: uint16 Available range: 0 & [700 ... 1400]. Pressure in mBar.
         # argument: 0x00 0x00 0x81 : Start continuous measurement without ambient pressure compensation
 
-        fncname = "SCD30MeasurementStart: "
+        defname = "SCD30MeasurementStart: "
 
         tmsg      = "StartMeas"
         register  = 0x0010
         readbytes = 0
         data      = [0x00, 0x00, 0x81]
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
 
-        return fncname + "Done"
+        # return defname + "Done"
+        return "Measurement START Done"
 
 
     def SCD30MeasurementStop(self):
@@ -218,21 +235,22 @@ class SensorSCD30:
         #                                   ( but in 1.1.2 I2C Sequence there is again 0x0104 )
         # response: None
 
-        fncname = "SCD30MeasurementStop: "
+        defname = "SCD30MeasurementStop: "
 
         tmsg      = "StopMeas"
         register  = 0x0104
         readbytes = 0
         data      = []
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
 
-        return fncname + "Done"
+        # return defname + "Done"
+        return "Measurement STOP Done"
 
 
     def SCD30MeasurementSetInterval(self, interval):
         """sets the measurement interval. Default is 2 sec"""
 
-        fncname = "SCD30MeasurementSetInterval: "
+        defname = "SCD30MeasurementSetInterval: "
 
         # 1.3.3 Set measurement interval
         # Sets the interval used by the SCD30 sensor to measure in continuous measurement mode (see chapter 1.3.1).
@@ -257,7 +275,7 @@ class SensorSCD30:
         # data      = [0x00, 0x02, 0xE3]  # default = 2 sec
         data      = [mi1,  mi2,  mi3]     # my setting (5 sec = 0x00, 0x05, 0x74)
 
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
 
         return "Measurement Interval set to: {} sec".format(data[0]<<8 | data[1])
 
@@ -278,7 +296,7 @@ class SensorSCD30:
         # response: 3 bytes:  FRC MSB, FRC LSB, CRC()
         #           Default 400ppm: 0x01, 0xc2, 0x50
 
-        fncname = "SCD30getFRC: "
+        defname = "SCD30getFRC: "
 
         tmsg      = "getFRC"
         register  = 0x5204
@@ -286,7 +304,7 @@ class SensorSCD30:
         data      = []
         wait      = 0
 
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=3, msg=tmsg, wait=wait)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=3, msg=tmsg, wait=wait)
 
         if len(answ) == readbytes: self.frc  = answ[0] << 8 | answ[1]
 
@@ -316,7 +334,7 @@ class SensorSCD30:
         # response: None (to read the current calib use SCD30getFRC())
         #
 
-        fncname = "SCD30setFRC: "
+        defname = "SCD30setFRC: "
 
         frc       = int(frcvalue)
         frc1      = frc >> 8
@@ -327,11 +345,11 @@ class SensorSCD30:
         register  = 0x5204
         readbytes = 0
         data      = [frc1, frc2, frc3]
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=3, msg=tmsg)
 
         self.frc = self.SCD30getFRC()
 
-        return fncname + "Done"
+        return defname + "Done"
 
 
     def SCD30DataReady(self):
@@ -353,40 +371,44 @@ class SensorSCD30:
         # readbytes: 3;  MSB, LSB, CRC
 
         start   = time.time()
-        fncname = "SCD30DataReady: "
-        # dprint(fncname)
+        defname = "SCD30DataReady: "
+        # dprint(defname)
 
-        ready     = -1      # code for failure
-        tmsg      = "Ready?"
-        msg       = ""
-        register  = 0x0202
-        readbytes = 3
-        data      = []
-        wait      = 0.003           # wait 3 ms acc to datasheet:  Version 1.0 – D1 – May 2020
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=3, msg=tmsg, wait=wait)
+        try:
+            ready     = -1      # code for failure
+            tmsg      = "Ready?"
+            msg       = ""
+            register  = 0x0202
+            readbytes = 3
+            data      = []
+            wait      = 0.003           # wait 3 ms acc to datasheet:  Version 1.0 – D1 – May 2020
+            answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=3, msg=tmsg, wait=wait)
 
-        duration = (time.time() - start) * 1000
+            duration = (time.time() - start) * 1000
 
-        if len(answ) == readbytes:
-            word0 = answ[0] << 8 | answ[1]
-            if    word0 == 1:
-                ready = True        # Data are ready
-                msg   = "30  Data ready"
-                color = BOLDGREEN
+            if len(answ) == readbytes:
+                word0 = answ[0] << 8 | answ[1]
+                if    word0 == 1:
+                    ready = True        # Data are ready
+                    msg   = "30  Data ready"
+                    color = BOLDGREEN
+                else:
+                    ready = False       # Data are NOT ready
+                    msg   = "30  Data NOT ready"
+                    color = BOLDRED
+
+                msg = defname + " "*70 + "{}{}".format(color, msg)
+
+            elif len(answ) == 0:
+                msg = BOLDRED + "30  No data returned: answ= '{}'".format(answ)
+
             else:
-                ready = False       # Data are NOT ready
-                msg   = "30  Data NOT ready"
-                color = BOLDRED
+                msg = BOLDRED + "30  Improper data returned: answ= '{}'".format(answ)
 
-            msg = fncname + " "*70 + "{}{}".format(color, msg)
+            cdprint(msg + "  {:0.1f} ms".format(duration))
 
-        elif len(answ) == 0:
-            msg = BOLDRED + "30  No data returned: answ= '{}'".format(answ)
-
-        else:
-            msg = BOLDRED + "30  Improper data returned: answ= '{}'".format(answ)
-
-        cdprint(msg + "  {:0.1f} ms".format(duration))
+        except Exception as e:
+            exceptPrint(e, defname)
 
         return ready
 
@@ -427,14 +449,25 @@ class SensorSCD30:
 
 
         start   = time.time()
-        fncname = "SensorgetValues: " + self.name + ": "
-        sgvdata = (gglobs.NAN,) * 3
+        defname = "SensorgetValues: " + self.name + ": "
+        sgvdata = (g.NAN,) * 3
 
-        cdprint(fncname)
+        # cdprint(defname)
         setIndent(1)
 
-        dataReady = self.SCD30DataReady()
+        ### does not help
+        # start   = time.time()
+        # success = False
+        # while (time.time() - start) < 1:
+        #     time.sleep(0.02)
+        #     dataReady = self.SCD30DataReady()
+        #     if dataReady:
+        #         success = True
+        #         break
+        # if not success: rdprint(defname, "Giving up")
+        ###
 
+        dataReady = self.SCD30DataReady()
         if  dataReady == 1:
             # data are ready
             tmsg      = "getval"
@@ -442,7 +475,7 @@ class SensorSCD30:
             readbytes = 18
             data      = []
             wait      = 0.003       # wait 3 ms acc to datasheet:  Version 1.0 – D1 – May 2020
-            answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=3, msg=tmsg, wait=wait)
+            answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=3, msg=tmsg, wait=wait)
 
             #####################################################################################################################
             # reference --> CO2 Concentration = 439 PPM, Temperature = 27.2 °C,  Humidity = 48.8 %
@@ -464,13 +497,13 @@ class SensorSCD30:
 
                 if co2 > 300:   sgvdata = (round(co2, 0), round(temp, 3), round(humid, 3))    # first value is most often CO2==0; should be >400, but give it room
 
-                msg = True, fncname + "CO2:{:6.3f}, Temp:{:6.3f}, Humid:{:6.3f}".format(co2, temp, humid)
+                msg = True, defname + "CO2:{:6.3f}, Temp:{:6.3f}, Humid:{:6.3f}".format(co2, temp, humid)
             else:
-                msg = False, fncname + "Failure reading proper byte count"
+                msg = False, defname + "Failure reading proper byte count"
 
         else:
             # data not ready
-            msg = False, fncname + "Data NOT ready, or failure to get status, or wrong bytecount"
+            msg = False, defname + "Data NOT ready, or failure to get status, or wrong bytecount"
 
         duration = (time.time() - start) * 1000
         if msg[0]:      gdprint(msg[1] + "  dur:{:0.2f} ms".format(duration))
@@ -486,7 +519,7 @@ class SensorSCD30:
         info += "- Firmware:        {}\n"          .format(self.firmware)
         info += "- Measure Intvl:   {} sec\n"      .format(self.measIntvl)
         info += "- Ref. Value:      {} ppm\n"      .format(self.frc)
-        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in gglobs.Sensors["SCD30"][5]))
+        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in g.Sensors["SCD30"][5]))
 
         return info.split("\n")
 

@@ -23,75 +23,78 @@ gweb_monserv.py - GeigerLog supports being monitored by smartphones and other co
 ###############################################################################
 
 # NOTE:     http.server.allow_reuse_address = True  # seems to have no effect no matter where I put it???
-# NOTE:     PowerGauge: see: https://github.com/e-tinkers/d3-dashboard-gauge
 # config:   in geigerlog.cfg under: [MonServer]
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from    gsup_utils          import *
+from    gsup_utils   import *
 
 
-def initMonServer(force=False):             # Force=True: bypass dialogue
+def initMonServer(force=False):             # Force=True -> bypass dialogue
     """Init MonServer and set properties"""
 
-    fncname = "initMonServer: "
+    defname = "initMonServer: "
 
-    dprint(fncname)
+    dprint(defname, "by ", "Auto-Installation" if force else "Dialogue Installation")
     setIndent(1)
 
-    DefaultUTCcorr   = int(datetime.datetime.utcnow().timestamp() - datetime.datetime.now().timestamp()) # Germany, summer time: -7200 [sec]
-    DefaultPortRange = list(range(8080, 8090))                                                           # [8080, 8081, ...]
+    DefaultPortRange = list(range(8080, 8090))                                            # [8080, 8081, ...]
 
-    if gglobs.MonServerThresholds   == "auto":  gglobs.MonServerThresholds   = (0.9, 6.0)           # 2 thresholds: 0.9 µSv/h,  6.0 µSv/h
-    if gglobs.MonServerPlotConfig   == "auto":  gglobs.MonServerPlotConfig   = (10, 2, 3)           # 10 min, CPM1st, CPS1st
-    if gglobs.MonServerDataConfig   == "auto":  gglobs.MonServerDataConfig   = (1, 3, 10)           # avg period 1, 3, 10 min
-    if gglobs.MonServerUTCcorr      == "auto":  gglobs.MonServerUTCcorr      = DefaultUTCcorr       # -43200 ... +43200
-    if gglobs.MonServerPorts        == "auto":  gglobs.MonServerPorts        = DefaultPortRange     # 8080 ... 8089
+    if g.MonServerThresholds   == "auto":  g.MonServerThresholds   = (0.9, 6.0)           # 2 thresholds: 0.9 µSv/h,  6.0 µSv/h
+    if g.MonServerPlotConfig   == "auto":  g.MonServerPlotConfig   = (10, 2, 3)           # 10 min, CPM1st, CPS1st
+    if g.MonServerDataConfig   == "auto":  g.MonServerDataConfig   = (1, 3, 10)           # avg period 1, 3, 10 min
+    if g.MonServerPorts        == "auto":  g.MonServerPorts        = DefaultPortRange     # 8080 ... 8089
 
-    gglobs.MonServerPlotLength  = gglobs.MonServerPlotConfig[0]
-    gglobs.MonServerPlotTop     = gglobs.MonServerPlotConfig[1]
-    gglobs.MonServerPlotBottom  = gglobs.MonServerPlotConfig[2]
+    g.MonServerPlotLength  = g.MonServerPlotConfig[0]
+    g.MonServerPlotTop     = g.MonServerPlotConfig[1]
+    g.MonServerPlotBottom  = g.MonServerPlotConfig[2]
 
-    oldSettings = ( gglobs.MonServerIsActive,
-                    gglobs.GeigerLogIP,
-                    gglobs.MonServerPorts,
-                    gglobs.MonServerPlotLength,
-                    gglobs.MonServerPlotTop,
-                    gglobs.MonServerPlotBottom,
+
+    oldSettings = ( g.MonServerIsActive,
+                    g.GeigerLogIP,
+                    g.MonServerPorts,
+                    g.MonServerPlotLength,
+                    g.MonServerPlotTop,
+                    g.MonServerPlotBottom,
                   )
 
     if force:
         # assume defaults, do NOT call dialogue to request properties
         retval = 99
-        gglobs.MonServerIsActive = True
+        g.MonServerIsActive = True
 
     else:
         # call dialogue to request properties
         retval = setMonServerProperties()
-        if gglobs.MonServerPorts == "auto":  gglobs.MonServerPorts = DefaultPortRange
-        gglobs.MonServerPlotConfig = (  gglobs.MonServerPlotLength,
-                                        gglobs.MonServerPlotTop,
-                                        gglobs.MonServerPlotBottom)
 
-    newSettings = ( gglobs.MonServerIsActive,
-                    gglobs.GeigerLogIP,
-                    gglobs.MonServerPorts,
-                    gglobs.MonServerPlotLength,
-                    gglobs.MonServerPlotTop,
-                    gglobs.MonServerPlotBottom,
+        if g.MonServerPorts == "auto":  g.MonServerPorts = DefaultPortRange
+        g.MonServerPlotConfig = ( g.MonServerPlotLength,
+                                  g.MonServerPlotTop,
+                                  g.MonServerPlotBottom,
+                                )
+
+    newSettings = ( g.MonServerIsActive,
+                    g.GeigerLogIP,
+                    g.MonServerPorts,
+                    g.MonServerPlotLength,
+                    g.MonServerPlotTop,
+                    g.MonServerPlotBottom,
                   )
-
-    # edprint("oldSettings: ", oldSettings)
-    # edprint("newSettings: ", newSettings)
 
     msg = ""
     if retval == 0:
         msg += "Cancelled, properties unchanged"
+        dprint(defname, msg)
+
     else:
-        fprint(header("Monitor Server Properties"))
+        # rdprint(defname, "retval: ", retval)
+        # rdprint("oldSettings: ", oldSettings)
+        # rdprint("newSettings: ", newSettings)
+
+        fprint(header("Monitor Server"))
 
         if oldSettings == newSettings:
             # no changes
@@ -99,132 +102,185 @@ def initMonServer(force=False):             # Force=True: bypass dialogue
 
         else:
             # some changes, go activate
-            try:
-                if gglobs.MonServer is not None:
-                    gglobs.MonServer.shutdown()
-                    gglobs.MonServer.socket.close()
-            except Exception as e:
-                exceptPrint(e, fncname + "Cannot close MonServer because ...")
 
-            if gglobs.MonServerIsActive:
+            # mdprint(defname, "new go activate: ", newSettings)
+
+            try:
+                if g.MonServer is not None:
+                    # g.MonServer.shutdown()
+                    g.MonServer.socket.close()
+                    pass
+
+            except Exception as e:
+                exceptPrint(e, defname + "Cannot close MonServer because ...")
+
+            # mdprint(defname, "new go activate: ", "DONE####################################")
+
+            if g.MonServerIsActive:
                 NoFreePort = True
 
-                for monport in gglobs.MonServerPorts:
-                    # dprint(fncname + "Port ", monport)
-                    # if monport == 8080: dummy1 = http.server.ThreadingHTTPServer((gglobs.GeigerLogIP, monport), MyServer)
-                    # if monport == 8081: dummy2 = http.server.ThreadingHTTPServer((gglobs.GeigerLogIP, monport), MyServer)
+                for monport in g.MonServerPorts:
+                    # dprint(defname, "Port: ", monport)
                     try:
                         # this is the server for both NON-SSL and SSL
-                        gglobs.MonServer         = http.server.ThreadingHTTPServer((gglobs.GeigerLogIP, monport), MyServer)
-                        # gglobs.MonServer         = http.server.ThreadingHTTPServer(("10.0.0.33", monport), MyServer)
-                        gglobs.MonServer.timeout = 2
+                        g.MonServer         = http.server.ThreadingHTTPServer((g.GeigerLogIP, monport), MyServer)
+                        g.MonServer.timeout = 0.3
 
-                        if gglobs.MonServerSSL:
+                        if g.MonServerSSL:
+                            # This is the only code needed for SSL, but you MUST provide a PEM file!
                             # Python code for SSL server: https://gist.github.com/timopb/5376bdbd869d4e1e4ae69eacbc9ccbae
                             # make *.pem file: openssl req -x509 -newkey rsa:4096 -keyout geigerlog.pem -out geigerlog.pem -days 365 -nodes
-
-                            # my old version - it is "deprecated"
-                            # gglobs.MonServer.socket = ssl.wrap_socket(
-                            #         gglobs.MonServer.socket,
-                            #         server_side=True,
-                            #         certfile='gweb/localhost.pem',
-                            #         ssl_version=ssl.PROTOCOL_TLS)
-
-                            # my new version. NOT deprecated
                             context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
                             context.load_cert_chain('gweb/geigerlog.pem')
-                            gglobs.MonServer.socket = context.wrap_socket(gglobs.MonServer.socket, server_side=True)
+                            g.MonServer.socket = context.wrap_socket(g.MonServer.socket, server_side=True)
 
                         # Port is ok; use it
-                        gglobs.MonServerPort     = monport
-                        gglobs.MonServerIsActive = True
-                        NoFreePort               = False
-                        gdprint(fncname + "Port {} initializes ok and will be used".format(gglobs.MonServerPort))
+                        g.MonServerPort     = monport
+                        g.MonServerIsActive = True
+                        NoFreePort          = False
+                        gdprint(defname, "Port {} initializes ok and will be used".format(g.MonServerPort))
                         break
 
                     except OSError as e:
-                        gglobs.MonServerIsActive = False
-                        errmsg = "CANNOT initialize Monitor Server at Port:{}".format(monport)
-                        exceptPrint(e, errmsg)
-                        if e.errno == 98 and not force:
-                            Queueprint(errmsg)
-                            Queueprint("Trying next Port number from list: " + str(gglobs.MonServerPorts))
+                        g.MonServerIsActive = False
+                        errmsg  = "OSError on initialization with Port:{}".format(monport)
 
+                        if e.errno == 98:
+                            errmsg += " - Port is already taken!"
+                            mdprint(defname, errmsg)
+                            if force == False:
+                                QueuePrint(errmsg)
+                                QueuePrint("Trying next port from list: " + str(g.MonServerPorts))
+                        else:
+                            exceptPrint(e, "OSError on Port: '{}'".format(monport))
+                            QueuePrint(errmsg)
+                            QueuePrint("Trying next port from list: " + str(g.MonServerPorts))
+
+                        # g.MonServer.socket.close() # socket had not been opened!
 
                     except Exception as e:
-                        gglobs.MonServerIsActive = False
+                        g.MonServerIsActive = False
                         errmsg = "FAILURE, Monitor Server could not be started at port: {}\n".format(monport)
-                        exceptPrint(e, fncname + errmsg)
-                        Queueprint(errmsg + str(e))
-                        gglobs.MonServer.socket.close()
+                        exceptPrint(e, defname + errmsg)
+                        QueuePrint(errmsg + str(e))
+                        # g.MonServer.socket.close() # socket had not been opened!
 
                 if NoFreePort:
-                    errmsg = "None of the ports in your list '{}'<br>is available. Could not start MonServer.".format(gglobs.MonServerPorts)
-                    Queueprint(errmsg)
+                    errmsg = "None of the ports in your list is available, could not start MonServer.<br>Try changing the port number to: auto"
+                    QueuePrint(errmsg)
                     rdprint(errmsg)
                     terminateMonServer()
                 else:
-                    gglobs.MonServerThread        = threading.Thread(target = MonServerTarget)
-                    gglobs.MonServerThread.daemon = True                                          # daemons will be stopped on exit!
-                    gglobs.MonServerThread.start()
+                    g.MonServerThreadStop    = False
+                    g.MonServerThread        = threading.Thread(target = MonServerTarget)
+                    g.MonServerThread.daemon = True                                          # daemons will be stopped on exit!
+                    g.MonServerThread.start()
 
             else:
                 terminateMonServer()
 
-            if gglobs.MonServerIsActive: icon = "icon_monserver.png"
-            else:                        icon = "icon_monserver_inactive.png"
-            gglobs.exgg.MonServerAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, icon))))
+            if g.MonServerIsActive: icon = "icon_monserver.png"
+            else:                   icon = "icon_monserver_inactive.png"
+            g.exgg.MonServerAction.setIcon(QIcon(QPixmap(os.path.join(g.resDir, icon))))
 
-        keylist = list(gglobs.varsCopy.keys()) # keylist == ['CPM', 'CPS', 'CPM1st', 'CPS1st', 'CPM2nd', 'CPS2nd', 'CPM3rd', 'CPS3rd', 'Temp', 'Press', 'Humid', 'Xtra']
-
+        # keylist == ['CPM', 'CPS', 'CPM1st', 'CPS1st', 'CPM2nd', 'CPS2nd', 'CPM3rd', 'CPS3rd', 'Temp', 'Press', 'Humid', 'Xtra']
+        keylist = list(g.VarsCopy.keys())
         frmt = "   {:25s}  {}\n"
         msg += "Current settings:\n"
-        msg += frmt.format("Autostart:",         gglobs.MonServerAutostart)
-        msg += frmt.format("Active State:",      gglobs.MonServerIsActive)
-        msg += frmt.format("IP Adress:",         gglobs.GeigerLogIP)
-        msg += frmt.format("Port:",              gglobs.MonServerPort)
-        msg += frmt.format("RecLength [min]:",   "{:0.6g}".format(gglobs.MonServerPlotLength))
-        msg += frmt.format("Top Plot:",          keylist[gglobs.MonServerPlotTop])
-        msg += frmt.format("Bottom Plot:",       keylist[gglobs.MonServerPlotBottom])
+        msg += frmt.format("Autostart:",         g.MonServerAutostart)
+        msg += frmt.format("Active State:",      g.MonServerIsActive)
+        msg += frmt.format("IP Adress:",         g.GeigerLogIP)
+        msg += frmt.format("Port:",              g.MonServerPort)
+        msg += frmt.format("RecLength [min]:",   "{:0.6g}".format(g.MonServerPlotLength))
+        msg += frmt.format("Top Plot:",          keylist[g.MonServerPlotTop])
+        msg += frmt.format("Bottom Plot:",       keylist[g.MonServerPlotBottom])
 
-        if force: fprint("Autostarted at: {} / {}".format(gglobs.GeigerLogIP, gglobs.MonServerPort))
-        else:     fprint(msg)
+        # if g.MonServerIsActive:
+        #     if force:
+        #         QueuePrint("Autostarted Monitor Server at: {}  Port: {}".format(g.GeigerLogIP, g.MonServerPort), color="")
+        #     else:
+        #         QueuePrint(msg, color="")
+        #         QueuePrint("Started Monitor Server at: {}  Port: {}".format(g.GeigerLogIP, g.MonServerPort), color="")
+        # else:
+        #         QueuePrint("FAILURE starting Monitor Server at: {}  Port: {}".format(g.GeigerLogIP, g.MonServerPort))
 
-    dprint(fncname + msg)
+        # Do I need QueuePrint ????
+        if g.MonServerIsActive:
+            if force:
+                fprint("Auto-Started Monitor Server at: {}  Port: {}".      format(g.GeigerLogIP, g.MonServerPort))
+            else:
+                fprint("Started Monitor Server at: {}  Port: {}".           format(g.GeigerLogIP, g.MonServerPort))
+                fprint(msg)
+        else:
+                fprint("Monitor Server is inactive")
+
+
+    setIndent(1)
+    for m in msg.split("\n")[:-1]:
+        dprint(defname, m)
+    setIndent(0)
 
     setIndent(0)
 
-    gglobs.exgg.MonServerAction.setToolTip("Set Properties of Monitor Server" + "\nCurrent IP:Port: {} : {}".format(gglobs.GeigerLogIP, gglobs.MonServerPort))
+    g.exgg.MonServerAction.setToolTip("Set Properties of Monitor Server\nCurrent IP:Port: {} : {}".format(g.GeigerLogIP, g.MonServerPort))
 
 
 def MonServerTarget():
     """Thread that constantly triggers readings from the port"""
 
-    fncname = "MonServerTarget: "
+    defname = "MonServerTarget: "
 
-    try:                    gglobs.MonServer.serve_forever()
-    except Exception as e:  exceptPrint(e, fncname + "serve_forever")
+    try:
+        while not g.MonServerThreadStop:
+            g.MonServer.handle_request()    # this has a timeout of 1 sec; no extra sleep needed
+            # rdprint(defname, "in while loop")
+
+    except Exception as e:
+        exceptPrint(e, defname + "serve_forever")
 
 
 def terminateMonServer():
     """terminate all MonServer function"""
 
-    fncname = "terminateMonServer: "
+    defname = "terminateMonServer: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
-    if gglobs.MonServer is not None:  gglobs.MonServer.server_close()
-    gglobs.MonServerIsActive = False
+    # shut down thread
+    dprint(defname, "stopping thread")
 
-    dprint(fncname + "Terminated")
+    start = time.time()
+    g.MonServerThreadStop = True
+
+    # crashes when no config file present
+    try:
+        g.MonServerThread.join()                 # "This blocks the calling thread until the thread
+                                                 #  whose join() method is called is terminated."
+    except Exception as e:
+        exceptPrint(e, defname)
+
+    else:
+        # verify that thread has ended, but wait not longer than 5 sec. !!: up to 400ms seen!
+        # start = time.time()
+        while g.MonServerThread.is_alive() and (time.time() - start) < 5:
+            pass
+
+        msgalive = "is alive" if g.MonServerThread.is_alive() else "NOT alive"
+        dprint(defname + "thread-status: {} after:{:0.1f} ms".format(msgalive, 1000 * (time.time() - start)))
+
+        g.MonServer.server_close()
+
+    g.MonServerIsActive = False
+
+    dprint(defname + "Terminated")
     setIndent(0)
 
 
 def setMonServerProperties():
     """Set all properties"""
 
-    fncname = "setMonServerProperties: "
+    defname = "setMonServerProperties: "
 
     # set Activation
     lactivate = QLabel("Activate Monitor Server")
@@ -246,7 +302,7 @@ def setMonServerProperties():
     # set IP
     lMSIP = QLabel("Detected IP Address")
     lMSIP.setAlignment(Qt.AlignLeft)
-    MSIP  = QLabel(gglobs.GeigerLogIP)
+    MSIP  = QLabel(g.GeigerLogIP)
     MSIP.setToolTip("Auto-detected by GeigerLog")
 
     # set Port
@@ -254,16 +310,16 @@ def setMonServerProperties():
     lMSPort.setAlignment(Qt.AlignLeft)
     MSPort  = QLineEdit()
     MSPort.setToolTip("Enter auto or any number from 1024 to 65535")
-    if gglobs.MonServerPort is None: gglobs.MonServerPort = "auto"
+    if g.MonServerPort is None: g.MonServerPort = "auto"
 
-    MSPort.setText("{}".format(gglobs.MonServerPort))
+    MSPort.setText("{}".format(g.MonServerPort))
 
     # set Record length in min
     lreclen = QLabel("Length of Record to show [min]\n(allowed: 0.1 to 1500)")
     lreclen.setAlignment(Qt.AlignLeft)
     reclen  = QLineEdit()
     reclen.setToolTip("Enter any number from 0.1 to 1500")
-    reclen.setText("{:0.6g}".format(gglobs.MonServerPlotLength))
+    reclen.setText("{:0.6g}".format(g.MonServerPlotLength))
 
     # set top graph
     ltopgraph = QLabel("Default Variable for Top Plot")
@@ -271,9 +327,9 @@ def setMonServerProperties():
     TopSelect = QComboBox()
     TopSelect.setToolTip('Select the  default Variable for Top Plot')
     TopSelect.setMaxVisibleItems(12)
-    for vname in gglobs.varsCopy:
+    for vname in g.VarsCopy:
         TopSelect.addItems([vname])
-    TopSelect.setCurrentIndex(gglobs.MonServerPlotTop)
+    TopSelect.setCurrentIndex(g.MonServerPlotTop)
 
     # set bottom graph
     lbottomgraph = QLabel("Default Variable for Bottom Plot")
@@ -281,9 +337,9 @@ def setMonServerProperties():
     BottomSelect = QComboBox()
     BottomSelect.setToolTip('Select the default Variable for Bottom Plot')
     BottomSelect.setMaxVisibleItems(12)
-    for vname in gglobs.varsCopy:
+    for vname in g.VarsCopy:
         BottomSelect.addItems([vname])
-    BottomSelect.setCurrentIndex(gglobs.MonServerPlotBottom)
+    BottomSelect.setCurrentIndex(g.MonServerPlotBottom)
 
     graphOptions=QGridLayout()
     graphOptions.addWidget(lactivate,      0, 0)
@@ -301,9 +357,9 @@ def setMonServerProperties():
 
     graphOptions.addWidget(QLabel(""),     6, 0) # empty line
 
-    d = QDialog() # set parent to None to popup in center of screen
-    d.setWindowIcon(gglobs.iconGeigerLog)
-    d.setFont(gglobs.fontstd)
+    d = QDialog() # set parent to None to popup in center of screen not in center of window
+    d.setWindowIcon(g.iconGeigerLog)
+    d.setFont(g.fontstd)
     d.setWindowTitle("Set up Monitor Server")
     d.setMinimumWidth(300)
 
@@ -325,7 +381,7 @@ def setMonServerProperties():
     layoutV.addWidget(bbox)
 
     retval = d.exec()
-    # print(fncname + "retval:", retval)
+    # print(defname + "retval:", retval)
 
     if retval == 0: # cancel pressed, no changes
         pass
@@ -333,41 +389,41 @@ def setMonServerProperties():
     else:           # ok pressed
         errmsg = ""
         # set MonServer active
-        gglobs.MonServerIsActive = True if rb01.isChecked() else False
-        # cdprint("gglobs.MonServerIsActive: ", gglobs.MonServerIsActive)
+        g.MonServerIsActive = True if rb01.isChecked() else False
+        # cdprint("g.MonServerIsActive: ", g.MonServerIsActive)
 
         # set port number
         pn = MSPort.text().strip().lower().replace(",", ".")  #replace any comma with dot
         if pn.lower() == "auto":
-            gglobs.MonServerPorts = "auto"
+            g.MonServerPorts = "auto"
         else:
             try:
                 pnumber = int(float(pn))
-                if pnumber in range(1024, 65536): gglobs.MonServerPorts = [pnumber]
+                if pnumber in range(1024, 65536): g.MonServerPorts = [pnumber]
                 else:
                     errmsg += "Illegal Port Number entered; resetting to default 'auto'\n"
-                    gglobs.MonServerPorts = "auto"
+                    g.MonServerPorts = "auto"
             except Exception as e:
-                gglobs.MonServerPorts = "auto"
+                g.MonServerPorts = "auto"
 
         # set record length in min
         try:                    rlen = float(reclen.text().strip().lower().replace(",", "."))  #replace any comma with dot
         except Exception as e:  rlen = 10
         if 0.1 <= rlen <= 1500:
-            gglobs.MonServerPlotLength = rlen
+            g.MonServerPlotLength = rlen
         else:
             errmsg += "Illegal Record Length entered; resetting to default '10'\n"
-            gglobs.MonServerPlotLength = 10
+            g.MonServerPlotLength = 10
 
         # set top var index
-        gglobs.MonServerPlotTop = TopSelect.currentIndex()
+        g.MonServerPlotTop = TopSelect.currentIndex()
 
         # set bottom var index
-        gglobs.MonServerPlotBottom = BottomSelect.currentIndex()
+        g.MonServerPlotBottom = BottomSelect.currentIndex()
 
         if errmsg > "":
-            Queueprint(header("ERROR Setting Monitor Server"))
-            Queueprint(errmsg)
+            QueuePrint(header("ERROR Setting Monitor Server"))
+            QueuePrint(errmsg)
 
     return retval
 
@@ -378,21 +434,21 @@ def getLastdataCSV():
     like: b'2021-10-25 11:26:33,1733.0,36.0,1884.7,30.2,34.0,34.2,34.0,0.0,34.0,32.3,32.0,2.0
     """
 #xyz
-    fncname = "getLastdataCSV: "
-    # edprint(fncname + "gglobs.lastLogValues: ", gglobs.lastLogValues)
+    defname = "getLastdataCSV: "
+    # edprint(defname + "g.lastLogValues: ", g.lastLogValues)
 
-    if gglobs.logging:
+    if g.logging:
         lastrec = "{},".format(stime())
         try:
-            for vname in gglobs.lastLogValues:      # ist schneller als join!
-                lastrec += "{:0.6g},".format(gglobs.lastLogValues[vname])
+            for vname in g.lastLogValues:      # ist schneller als join!
+                lastrec += "{:0.6g},".format(g.lastLogValues[vname])
         except Exception as e:
-            exceptPrint(e, fncname + "Data list incomplete")
+            exceptPrint(e, defname + "Data list incomplete")
             lastrec = "Failure during logging," + "nan," * 12  # dummy for: DateTime + 12 nan variables
     else:
         lastrec = "Available when logging," + "nan," * 12      # dummy for: DateTime + 12 nan variables
 
-    # edprint(fncname + "return: ", lastrec)
+    # edprint(defname + "return: ", lastrec)
 
     return bytes(lastrec, "UTF-8") # it does have comma at the end!
 
@@ -402,7 +458,7 @@ def getLastDataAvgCSV(DeltaT): # DeltaT in min
     like: b'2021-10-25 11:39:23,1751.556,31.944,1864.722,30.806,29.667,29.400,29.222,0.444,27.778,27.794,27.611,0.167,3.1'
     """
 
-    fncname = "getLastDataAvgCSV: "
+    defname = "getLastDataAvgCSV: "
 
     varvalues       = {}
     strdata         = "{},".format(stime())
@@ -411,9 +467,9 @@ def getLastDataAvgCSV(DeltaT): # DeltaT in min
     strnan          = "nan,"
 
     try:
-        for vname in gglobs.varsCopy:
+        for vname in g.VarsCopy:
             strvmean = strnan
-            if gglobs.varsSetForLog[vname]:
+            if g.varsSetForLog[vname]:
                 # print("vname is in varsSetForLog", vname)
 
                 timedata, vdata, DeltaT_found = getTimeCourseInLimits(vname, DeltaT)
@@ -446,12 +502,12 @@ def getLastDataAvgCSV(DeltaT): # DeltaT in min
 
     except Exception as e:
         msg = "No proper data available for DeltaT={} min".format(DeltaT)
-        exceptPrint(fncname + str(e), msg)
-        Queueprint(msg)
+        exceptPrint(defname + str(e), msg)
+        QueuePrint(msg)
         strdata += strnan * 12
 
     strdata += "{:0.1f}".format(DeltaT_returned)
-    # rdprint(fncname + "strdata: ", strdata)
+    # rdprint(defname + "strdata: ", strdata)
 
     return bytes(strdata, "UTF-8")     # no last comma present
 
@@ -467,22 +523,22 @@ def getLastRecords(VarIndex, DeltaT): # VarIndex: 0 ... 11
     #     2022-05-12 09:28:12,13.0
     #     ...
 
-    fncname = "getLastRecords: "
+    defname = "getLastRecords: "
 
-    keys  = gglobs.varsCopy.keys()
-    # edprint(fncname, list(keys))
+    keys  = g.VarsCopy.keys()
+    # edprint(defname, list(keys))
     vname = list(keys)[VarIndex]
-    # edprint(fncname + "VarIndex: ", VarIndex, ", vname: ", vname)
+    # edprint(defname + "VarIndex: ", VarIndex, ", vname: ", vname)
 
     try:
         tdata, vdata, delta_t = getTimeCourseInLimits(vname, DeltaT)
-        tdata = tdata * 86400 + gglobs.MonServerUTCcorr
+        tdata = tdata * 86400 - g.TimeZoneOffset
     except Exception as e:
         msg = "No proper data available for DeltaT={} min".format(DeltaT)
-        exceptPrint(fncname + str(e), msg)
+        exceptPrint(defname + str(e), msg)
         tdata, vdata = [], []
-    # edprint(fncname + "len(tdata): ", len(tdata))
-    # edprint(fncname + "len(vdata): ", len(vdata))
+    # edprint(defname + "len(tdata): ", len(tdata))
+    # edprint(defname + "len(vdata): ", len(vdata))
     # edprint("\n", vdata)
     # edprint("\n", tdata)
 
@@ -500,10 +556,10 @@ def getLastRecords(VarIndex, DeltaT): # VarIndex: 0 ... 11
 def getListTubesSensitivities():
     """Sensitivities for all 4 tube definitions as list, like:  '154,154,2.04,154' """
 
-    fncname = "getListTubesSensitivities: "
+    defname = "getListTubesSensitivities: "
 
-    sensitlist = ",".join(str(x) for x in gglobs.Sensitivity)
-    # cdprint(fncname + "return: ",sensitlist)
+    sensitlist = ",".join(str(x) for x in g.Sensitivity)
+    # cdprint(defname + "return: ",sensitlist)
 
     return bytes(sensitlist, "UTF-8")
 
@@ -511,14 +567,14 @@ def getListTubesSensitivities():
 def getWebcodeLastRecord():
     """Prepare Last Rec as table"""
 
-    fncname = "getWebcodeLastRecord: "
+    defname = "getWebcodeLastRecord: "
 
     splbdata = getLastdataCSV().decode("UTF-8").split(",")
     nbdata   = "<div>Last Data Record:<br>"
     nbdata  += "{}\n".format(splbdata[0])
     if len(splbdata) > 1:
         nbdata  += "<pre style='margin-left:120px; text-align:left;'>\n"
-        for i, vname in enumerate(gglobs.varsCopy):
+        for i, vname in enumerate(g.VarsCopy):
             val     = splbdata[i + 1]
             sval    = "-" if val == "nan" else val
             nbdata += "{:7s}: {:<}\n".format(vname, sval)
@@ -532,12 +588,12 @@ def getWebcodeLastRecord():
 def getWebcodeTubes():
     """The 4 tubes and their sensitivities as a Web page table"""
 
-    fncname = "getWebcodeTubes: "
+    defname = "getWebcodeTubes: "
 
     tubes  = "<div>Tube Sensitivity [CPM / (µSv / h)]:"
     tubes += "<pre style='margin-left:110px; text-align:left;'>\n"
     for i in range(0, 4):
-        tubes += "Tube #{} : {}\n".format(i, gglobs.Sensitivity[i])
+        tubes += "Tube #{} : {}\n".format(i, g.Sensitivity[i])
     tubes += "</pre>"
 
     return bytes(tubes, "UTF-8")
@@ -546,13 +602,13 @@ def getWebcodeTubes():
 def getWebcodeOther():
     """record count and cycle time as a Web page table"""
 
-    fncname = "getWebcodeOther: "
+    defname = "getWebcodeOther: "
     sdeltat = "Unknown"
 
-    if gglobs.logTime is not None:
-        countinfo = gglobs.logTime.size
+    if g.logTime is not None:
+        countinfo = g.logTime.size
         try:
-            deltaT = (gglobs.logTime[-1] - gglobs.logTime[0]) * 24 * 60 * 60 # sec
+            deltaT = (g.logTime[-1] - g.logTime[0]) * 24 * 60 * 60 # sec
             if   deltaT < 120         : sdeltat = "{:0.0f} sec".format(deltaT)
             elif deltaT < 3600        : sdeltat = "{:0.1f} min".format(deltaT / 60)
             elif deltaT < 3600 * 24   : sdeltat = "{:0.1f} h".format(deltaT / 60 / 60)
@@ -566,7 +622,7 @@ def getWebcodeOther():
     other += "<pre style='margin-left:60px; text-align:left;'>\n"
     other += "Record Count : {}\n".format(countinfo)
     other += "Log Duration : {}\n".format(sdeltat)
-    other += "Cycle time   : {} sec\n".format(gglobs.logCycle)
+    other += "Cycle time   : {} sec\n".format(g.LogCycle)
     other += "</pre>"
 
     return bytes(other, "UTF-8")
@@ -575,12 +631,12 @@ def getWebcodeOther():
 def getWebcodeDeviceInfo():
     """The non-extended device info"""
 
-    fncname = "getWebcodeDeviceInfo: "
+    defname = "getWebcodeDeviceInfo: "
 
     DevInfo = ""
-    for a in gglobs.DevVarsAsText:
-        if gglobs.DevVarsAsText[a] != None:
-            devs     = gglobs.DevVarsAsText[a].split(" ")
+    for a in g.DevVarsAsText:
+        if g.DevVarsAsText[a] is not None:
+            devs     = g.DevVarsAsText[a].split(" ")
             DevInfo += "{:10s} : {}\n".format(a, devs[0])
             for i in range(1, len(devs)):
                 DevInfo += "{:10s} : {}\n".format(" ", devs[i])
@@ -605,7 +661,7 @@ def getWebPage(page):
     #     GLG
     # </button>
 
-    fncname  = "getWebPage: "
+    defname  = "getWebPage: "
 
     htmlmenu = b"""
 <h2><a href='/' style='text-decoration: none; color:darkblue;'>
@@ -644,13 +700,13 @@ def getWebPage(page):
 
 #xyz
     # get the webpage from file
-    filepath = os.path.join(gglobs.progPath, (gglobs.webPath + "/" + page))
+    filepath = os.path.join(g.progDir, (g.webDir + "/" + page))
     try:
         with open(filepath, "rb") as f:
             fcontent = f.read()
             # print("type fcontent: ", type(fcontent), "\n", fcontent)
     except Exception as e:
-        exceptPrint(e, fncname + "Cannot read file")
+        exceptPrint(e, defname + "Cannot read file")
         fcontent = b""
 
     # insert htmlmenu (header and menu buttons) into web page
@@ -659,24 +715,24 @@ def getWebPage(page):
     return fcontent
 
 
-
 class MyHandler(http.server.BaseHTTPRequestHandler):
     """replacing the log_message function"""
 
     def log_message(self, format, *args):
-        """gglobs.MonServer log message: count(args) = 3"""
+        """g.MonServer log message: count(args) = 3"""
 
         # Example output: 14 13:07:01.248 DEVEL  : ...521 MonServer LogMsg: ('GET /lastdata HTTP/1.1', '200', '-') |
-        # cdprint("MonServer LogMsg: {} | {}".format(args, gglobs.MonServerMsg))
+        # cdprint("MonServer LogMsg: {} | {}".format(args, g.MonServerMsg))
         pass
 
 
 class MyServer(MyHandler):
+    """Based on:  http.server.BaseHTTPRequestHandler  """
 
     def do_GET(self):
         """'do_GET' overwrites class function"""
 
-        fncname = "MonServer do_GET: "
+        defname = "MonServer do_GET: "
 
         do_get_start        = time.time()
 
@@ -684,21 +740,30 @@ class MyServer(MyHandler):
         myheader2           = None      # for 2nd header if needed
         VarName             = ""        # the longname for a variable
         VarIndex            = ""        # the Variable index used in some replacements
-        gglobs.MonServerMsg = ""        # a message to be shown by log_message()
+        g.MonServerMsg      = ""        # a message to be shown by log_message()
 
 
         # GeigerLog main graph as PNG
         if self.path.startswith('/glpng'):
             # time.sleep(120) # getestet bis 120 sec; keine Probleme, Main loop läuft korrekt weiter
-            bdata = gglobs.iconGeigerLogWeb             # send GL icon if no real graph available
             try:
-                makePicFromGraph()                      # size: with no data plotted:      32824 bytes; download time: 126 ms
-                                                        # size: with 2000 rec and 12 vars: 72000 bytes; download time: 151 ms
-                bcheck = gglobs.picbytes.getvalue()
-                if len(bcheck) > 10000: bdata = bcheck  # real graph is 30000 or more, see above
+                g.TelegramNeedsPic = True
+                start = time.time()
+                gotit = False
+                while True:
+                    time.sleep(0.02)
+                    if g.TelegramPicIsReady:
+                        gotit = True
+                        break
+                    if (time.time() - start) > 10:   # allow 10 sec
+                        break
+                    print(".", end="")
+
+                if gotit: bdata = g.TelegramPicBytes.getvalue()
+                else:     bdata = g.iconGeigerLogWeb                   # send GL icon if no real graph available
 
             except Exception as e:
-                exceptPrint(e, fncname + "make and get graph pic")
+                exceptPrint(e, defname + "make and get graph pic")
 
             myheader = "Content-type", "image/png"
             mybytes  = bdata
@@ -710,18 +775,18 @@ class MyServer(MyHandler):
             # 1 x DateTime, 12 x vars, 4 x sensitivity, 2 x threshold, 1 x LogStatus, 1 x Filestatus
             # like: 2021-10-08 10:01:41, 6.500, 994.786, 997.429, 907.214, 983.857, 892.071, 154,  154,  2.08,  154, 0.9, 6.0, 1, 1
 
-            bdata  = getLastdataCSV()                                               # set Datetime, and add values of all 12 vars
-            bdata += getListTubesSensitivities()                                    # add the 4 tube sensitivities
-            bdata += bytes(",{},{}".format(*gglobs.MonServerThresholds), "UTF-8")   # add the lower, upper Mon limits
-            bdata += b",1" if gglobs.logging                   else b",0"           # add logging status
-            bdata += b",1" if (gglobs.logDBPath is not None)   else b",0"           # add status file-loaded
-            GIndx  = ",{},{}".format(gglobs.MonServerPlotTop, gglobs.MonServerPlotBottom)
+            bdata  = getLastdataCSV()                                          # set DateTime, and add values of all 12 vars
+            bdata += getListTubesSensitivities()                               # add the 4 tube sensitivities
+            bdata += bytes(",{},{}".format(*g.MonServerThresholds), "UTF-8")   # add the lower, upper Mon limits
+            bdata += b",1" if g.logging                   else b",0"           # add logging status
+            bdata += b",1" if (g.logDBPath is not None)   else b",0"           # add status file-loaded
+            GIndx  = ",{},{}".format(g.MonServerPlotTop, g.MonServerPlotBottom)
             bdata += bytes(GIndx, "utf-8")
 
             myheader = "Content-type", "text/plain; charset=utf-8"
             mybytes  = bdata
 
-            gglobs.MonServerMsg = str(bdata)
+            g.MonServerMsg = str(bdata)
 
 
         # lastavgdata -  called by /data once per 10 second
@@ -742,7 +807,7 @@ class MyServer(MyHandler):
             myheader = "Content-type", "text/plain; charset=utf-8"
             mybytes  = bdata
 
-            gglobs.MonServerMsg = str(bdata)
+            g.MonServerMsg = str(bdata)
 
 
         # lastrecs - called by /widget_line; gets all recs in last DeltaT minutes for var VarIndex
@@ -764,7 +829,7 @@ class MyServer(MyHandler):
             except Exception as e:
                 exceptPrint(e, "getting DeltaT")
             DeltaT = clamp(DeltaT, 0.1, 1500)           # at least 0.1 min, no more than ~1 day
-            # edprint(fncname + "path:", self.path, "  query:", query_components, "   VarIndex:", VarIndex, "   DeltaT:", DeltaT)
+            # edprint(defname + "path:", self.path, "  query:", query_components, "   VarIndex:", VarIndex, "   DeltaT:", DeltaT)
 
             bdata  = getLastRecords(VarIndex, DeltaT)
 
@@ -774,15 +839,15 @@ class MyServer(MyHandler):
 
         # ROOT
         elif self.path == "/":
-            gglobs.MonServerWebPage = self.path
+            g.MonServerWebPage = self.path
 
             # List of active devices
             wpstr = "<h1 style='margin:20px auto 10px auto'>Devices</h1>"
-            for devname in gglobs.Devices:
-                if gglobs.Devices[devname][ACTIV]:  wpstr += "{}<br>".format(devname)
+            for devname in g.Devices:
+                if g.Devices[devname][g.ACTIV]:  wpstr += "{}<br>".format(devname)
 
             # html
-            wpbytes  = getWebPage("gwebh_root.html").replace(b"GEIGERLOGVERSION", bytes(gglobs.__version__, "UTF-8"))
+            wpbytes  = getWebPage("gwebh_root.html").replace(b"GEIGERLOGVERSION", bytes(g.__version__, "UTF-8"))
             wpbytes += bytes(wpstr, "UTF-8")
 
             # js
@@ -797,7 +862,7 @@ class MyServer(MyHandler):
 
         # MON web page
         elif self.path == "/mon":
-            gglobs.MonServerWebPage = self.path
+            g.MonServerWebPage = self.path
 
             # html
             wpbytes  = getWebPage("gwebh_mon.html")
@@ -815,7 +880,7 @@ class MyServer(MyHandler):
 
         # PLOT web page IFRAMEs with widgets
         elif self.path == "/plot":
-            gglobs.MonServerWebPage = self.path
+            g.MonServerWebPage = self.path
 
             # html
             wpbytes  = getWebPage("gwebh_plot.html");
@@ -832,7 +897,7 @@ class MyServer(MyHandler):
 
         # DATA web page
         elif self.path == "/data":
-            gglobs.MonServerWebPage = self.path
+            g.MonServerWebPage = self.path
 
             # html
             wpbytes  = getWebPage("gwebh_data.html")
@@ -844,9 +909,9 @@ class MyServer(MyHandler):
             wpbytes += b"</script>"
 
             # replace placeholder for MONSERVERDATACONFIG A, B, C
-            wpbytes = wpbytes.replace(b"MONSERVERDATACONFIGA",  bytes(str(gglobs.MonServerDataConfig[0]), "utf-8"))
-            wpbytes = wpbytes.replace(b"MONSERVERDATACONFIGB",  bytes(str(gglobs.MonServerDataConfig[1]), "utf-8"))
-            wpbytes = wpbytes.replace(b"MONSERVERDATACONFIGC",  bytes(str(gglobs.MonServerDataConfig[2]), "utf-8"))
+            wpbytes = wpbytes.replace(b"MONSERVERDATACONFIGA",  bytes(str(g.MonServerDataConfig[0]), "utf-8"))
+            wpbytes = wpbytes.replace(b"MONSERVERDATACONFIGB",  bytes(str(g.MonServerDataConfig[1]), "utf-8"))
+            wpbytes = wpbytes.replace(b"MONSERVERDATACONFIGC",  bytes(str(g.MonServerDataConfig[2]), "utf-8"))
 
             myheader = "Content-type", "text/html; charset=utf-8"
             mybytes  = wpbytes
@@ -854,7 +919,7 @@ class MyServer(MyHandler):
 
         # INFO web page
         elif self.path == "/info":
-            gglobs.MonServerWebPage = self.path
+            g.MonServerWebPage = self.path
 
             # html
             wpbytes  = getWebPage("gwebh_info.html")
@@ -875,7 +940,7 @@ class MyServer(MyHandler):
 
         # ID
         elif self.path == "/id":
-            answer   = "GeigerLog {}".format(gglobs.__version__)
+            answer   = "GeigerLog {}".format(g.__version__)
 
             myheader = 'Content-Type', "text/plain"
             mybytes  = bytes(answer, "UTF-8")
@@ -883,7 +948,7 @@ class MyServer(MyHandler):
 
         # WIDGET Demo web page
         elif self.path == "/widget_demo":
-            gglobs.MonServerWebPage = self.path
+            g.MonServerWebPage = self.path
 
             # html
             wpbytes  = getWebPage("gwebh_w_demo.html")
@@ -912,8 +977,8 @@ class MyServer(MyHandler):
             VarIndex = clamp(VarIndex, 0, 11)
 
             # get VarName
-            vname   = list(gglobs.varsCopy.keys())[VarIndex]
-            VarName = gglobs.varsCopy[vname][0]
+            vname   = list(g.VarsCopy.keys())[VarIndex]
+            VarName = g.VarsCopy[vname][0]
 
             wpbytes  = b""
             if   VarIndex in [0, 2, 4, 6]:                          # CPM *
@@ -953,8 +1018,8 @@ class MyServer(MyHandler):
             VarIndex = clamp(VarIndex, 0, 11)
 
             # get VarName
-            vname    = list(gglobs.varsCopy.keys())[VarIndex]
-            VarName  = gglobs.varsCopy[vname][0]
+            vname    = list(g.VarsCopy.keys())[VarIndex]
+            VarName  = g.VarsCopy[vname][0]
 
             # html
             wpbytes = getWebPage("gwebh_w_line_all.html")
@@ -985,13 +1050,13 @@ class MyServer(MyHandler):
             # send the GeigerLog icon; allow caching
             myheader  = "Content-type", "image/png"
             myheader2 = "Cache-Control", "public, max-age=31536000"
-            mybytes   = gglobs.iconGeigerLogWeb
+            mybytes   = g.iconGeigerLogWeb
 
 
         # quick log
         elif self.path == "/quicklog":
             # set flag and set switching to one the MonServer web pages mon, data, graph, info, or widget_demo after 600 ms
-            gglobs.quickflag     = True
+            g.quickflag     = True
 
             answer   = "ok"
 
@@ -1002,7 +1067,7 @@ class MyServer(MyHandler):
         # start log
         elif self.path == "/startlog":
             # set flag and set switching to one the MonServer web pages mon, data, graph, info, or widget_demo after 600 ms
-            gglobs.startflag     = True
+            g.startflag     = True
 
             answer   = "ok"
 
@@ -1013,7 +1078,7 @@ class MyServer(MyHandler):
         # stop log
         elif self.path == "/stoplog":
             # set flag and set switching to one the MonServer web pages mon, data, graph, info, or widget_demo after 600 ms
-            gglobs.stopflag      = True
+            g.stopflag      = True
 
             answer   = "ok"
 
@@ -1028,11 +1093,11 @@ class MyServer(MyHandler):
         # replace placeholder
         mybytes = mybytes.replace(b"VARNAME",                   bytes(    VarName, "utf-8"))
         mybytes = mybytes.replace(b"VARINDEX",                  bytes(str(VarIndex), "utf-8"))
-        mybytes = mybytes.replace(b"MONSERVER_REC_LENGTH",      bytes(str(gglobs.MonServerPlotLength), "utf-8"))
+        mybytes = mybytes.replace(b"MONSERVER_REC_LENGTH",      bytes(str(g.MonServerPlotLength), "utf-8"))
 
         # supress console.log() output when NOT on devel
-        if gglobs.devel: suppressconsolelog = b""
-        else:            suppressconsolelog = b"console.log = function(){/*suppr*/}"
+        if g.devel: suppressconsolelog = b""
+        else:       suppressconsolelog = b"console.log = function(){/*suppr*/}"
         mybytes = mybytes.replace(b"SUPPRESSCONSOLELOG", suppressconsolelog)
 
         try:
@@ -1042,7 +1107,7 @@ class MyServer(MyHandler):
             self.end_headers()
             self.wfile.write(mybytes)
         except Exception as e:
-            exceptPrint(e, fncname + "send & write")
+            exceptPrint(e, defname + "send & write")
 
         # durations:
         #   lastData:                       <  2 ms
@@ -1058,13 +1123,13 @@ class MyServer(MyHandler):
             if "Firefox" in myUserAgent:   browser = "Firefox"
             if "Chrome"  in myUserAgent:   browser = "Chrome"
 
-            mdprint(fncname + "{:25s}  client:{}  browser:{:10s}  size:{:6.0f}  dur(>{}ms):{:5.1f} ms".format(
+            mdprint(defname + "{:25s}  client:{}  browser:{:10s}  size:{:6.0f}  dur(>{}ms):{:5.1f} ms".format(
                 self.path, self.client_address, browser, len(mybytes), dt, dur))
 
 
 def getNotFoundResponse():
 
-    wpbytes     = getWebPage("gwebh_root.html").replace(b"GEIGERLOGVERSION", bytes(gglobs.__version__, "UTF-8"))
+    wpbytes     = getWebPage("gwebh_root.html").replace(b"GEIGERLOGVERSION", bytes(g.__version__, "UTF-8"))
     wpbytes    += bytes("<h1 style='margin:20px auto 10px auto'>404 Page not found</h1>", "UTF-8")
 
     myresponse  = 404

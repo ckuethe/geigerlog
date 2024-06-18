@@ -26,18 +26,18 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 
 def setupRadWorldMap():
     """Setup Radiation World Map properties"""
 
-    fncname = "setupRadWorldMap: "
-    dprint(fncname)
+    defname = "setupRadWorldMap: "
+    dprint(defname)
     setIndent(1)
 
     # set properties
@@ -48,40 +48,40 @@ def setupRadWorldMap():
 
     else:
         fprint(header("Radiation World Map Properties"))
-        fprint("Activation:",           "{}"    .format("Yes" if gglobs.RWMmapActivation else "No"))
-        fprint("Update Cycle:",         "{} min".format(gglobs.RWMmapUpdateCycle))
-        fprint("Selected Variable:",    "{}"    .format(gglobs.RWMmapVarSelected))
-        if gglobs.RWMmapActivation:
-            if gglobs.RWMmapLastUpdate is None: msg = "No - will wait for expiry of update cycle time"
+        fprint("Activation:",           "{}"    .format("Yes" if g.RWMmapActivation else "No"))
+        fprint("Update Cycle:",         "{} min".format(g.RWMmapUpdateCycle))
+        fprint("Selected Variable:",    "{}"    .format(g.RWMmapVarSelected))
+        if g.RWMmapActivation:
+            if g.RWMmapLastUpdate is None: msg = "No - will wait for expiry of update cycle time"
             else:                               msg = "Yes - will update immediately when logging"
         else:
             msg = "N/A - No Activation"
         fprint("Update immediately:",   "{}"    .format(msg))
 
         msg = "ok, new settings: Activation:{}, UpdateCycle:{} min, Variable:{}, Update Now:{}".format(
-                    gglobs.RWMmapActivation,
-                    gglobs.RWMmapUpdateCycle,
-                    gglobs.RWMmapVarSelected,
-                    "No" if gglobs.RWMmapLastUpdate is None else "Yes",
+                    g.RWMmapActivation,
+                    g.RWMmapUpdateCycle,
+                    g.RWMmapVarSelected,
+                    "No" if g.RWMmapLastUpdate is None else "Yes",
                 )
 
         # Update after next log call
-        if gglobs.RWMmapActivation and gglobs.RWMmapLastUpdate == 0 and not gglobs.logging:
+        if g.RWMmapActivation and g.RWMmapLastUpdate == 0 and not g.logging:
             fprint("Currently not logging; Radiation World Map will be updated after first logging cycle")
 
         # set icons
-        if gglobs.RWMmapActivation:     icon = 'icon_world_v2.png'
-        else:                           icon = 'icon_world_v2_inactive.png'
-        gglobs.exgg.GMCmapAction.setIcon(QIcon(QPixmap(os.path.join(gglobs.gresPath, icon))))
+        if g.RWMmapActivation:     icon = 'icon_world_v2.png'
+        else:                      icon = 'icon_world_v2_inactive.png'
+        g.exgg.GMCmapAction.setIcon(QIcon(QPixmap(os.path.join(g.resDir, icon))))
 
-    dprint(fncname + msg)
+    dprint(defname + msg)
     setIndent(0)
 
 
 def setRadWorldMapProperties():
     """Set activation and cycle time"""
 
-    fncname = "setRadWorldMapProperties: "
+    defname = "setRadWorldMapProperties: "
 
     lmean = QLabel("Activate Updates")
     lmean.setAlignment(Qt.AlignLeft)
@@ -91,7 +91,7 @@ def setRadWorldMapProperties():
     r02=QRadioButton("No")
     r01.setToolTip("Check 'Yes' to send Updates to Radiation World Map in regular intervals")
     r02.setToolTip("Check 'No' to never send Updates to Radiation World Map")
-    if gglobs.RWMmapActivation:
+    if g.RWMmapActivation:
         r01.setChecked(True)
         r02.setChecked(False)
     else:
@@ -109,7 +109,7 @@ def setRadWorldMapProperties():
     lctime.setAlignment(Qt.AlignLeft)
     ctime  = QLineEdit()
     ctime.setToolTip('Enter X to update Radiation World Map every X minutes;\nCPM averaged over this period will be used for CPM and ACPM')
-    ctime.setText("{:0.5g}".format(gglobs.RWMmapUpdateCycle))
+    ctime.setText("{:0.5g}".format(g.RWMmapUpdateCycle))
 
     # The selector for variable-to-use for update
     lavars = QLabel("Select Variable for Map Update")
@@ -122,17 +122,17 @@ def setRadWorldMapProperties():
     lstItem.setToolTip("No variable selected - make your selection")
     avars.addItem(lstItem)
     avars.setCurrentItem(lstItem);
-    for index, vname in enumerate(gglobs.varsCopy):
+    for index, vname in enumerate(g.VarsCopy):
         if not "CPM" in vname: continue
         lstItem = QListWidgetItem(vname)
-        # edprint("vname: ", vname, "  logging: ", gglobs.varsSetForLogNew[vname])
-        if gglobs.varsSetForLogNew[vname] == False:
+        # edprint("vname: ", vname, "  logging: ", g.varsSetForLogNew[vname])
+        if g.varsSetForLogNew[vname] == False:
                 lstItem.setFlags(Qt.NoItemFlags)
 
         avars.addItem(lstItem)
 
     # The checkbox to set immediate update
-    lckbox = QLabel("Do first update immediately")
+    lckbox = QLabel("Do first update immediately\n(Do not unless you already have enough data)")
     ckbox = QCheckBox    ()
     ckbox.setToolTip     ("A first update will be done immediately after button OK is pressed (not recommended)")
     ckbox.setChecked     (False)
@@ -152,8 +152,8 @@ def setRadWorldMapProperties():
     graphOptions.addWidget(QLabel(""),     4, 0)    # a blank line
 
     d = QDialog() # set parent to None to popup in center of screen
-    d.setWindowIcon(gglobs.iconGeigerLog)
-    d.setFont(gglobs.fontstd)
+    d.setWindowIcon(g.iconGeigerLog)
+    d.setFont(g.fontstd)
     srmptitle = "Set up Radiation World Map"
     d.setWindowTitle(srmptitle)
     d.setWindowModality(Qt.NonModal)
@@ -173,29 +173,29 @@ def setRadWorldMapProperties():
 
     if retval != 0:
         # Activation
-        if r01.isChecked(): gglobs.RWMmapActivation = True
-        else:               gglobs.RWMmapActivation = False
+        if r01.isChecked(): g.RWMmapActivation = True
+        else:               g.RWMmapActivation = False
 
         # Cycletime
         uctime = ctime.text().replace(",", ".")  #replace any comma with dot
         try:    dt  = max(round(abs(float(uctime)), 2), 0.1)
-        except: dt  = gglobs.RWMmapUpdateCycle
-        gglobs.RWMmapUpdateCycle = dt
+        except: dt  = g.RWMmapUpdateCycle
+        g.RWMmapUpdateCycle = dt
 
         # Variable
         text  = str(avars.currentItem().text())
         if text == "None":  # no selection was made
             text = "No variable selected - Updating is inactivated"
-            gglobs.RWMmapActivation = False
+            g.RWMmapActivation = False
             efprint(header(srmptitle))
             qefprint(text)
 
         dprint("Variable selection: ", text)
-        gglobs.RWMmapVarSelected = text
+        g.RWMmapVarSelected = text
 
         # Checkbox "update-now"
-        if ckbox.isChecked():   gglobs.RWMmapLastUpdate = 0
-        else:                   gglobs.RWMmapLastUpdate = None
+        if ckbox.isChecked():   g.RWMmapLastUpdate = 0
+        else:                   g.RWMmapLastUpdate = None
 
     return retval
 
@@ -203,25 +203,25 @@ def setRadWorldMapProperties():
 def getRadWorldMapURL():
     """assemble the data into the url and return url and data msg"""
 
-    fncname = "getRadWorldMapURL: "
+    defname = "getRadWorldMapURL: "
 
-    if   gglobs.RWMmapVarSelected in ("CPM",    "CPS"):         sens = gglobs.Sensitivity[0]
-    elif gglobs.RWMmapVarSelected in ("CPM1st", "CPS1st"):      sens = gglobs.Sensitivity[1]
-    elif gglobs.RWMmapVarSelected in ("CPM2nd", "CPS2nd"):      sens = gglobs.Sensitivity[2]
-    elif gglobs.RWMmapVarSelected in ("CPM3rd", "CPS3rd"):      sens = gglobs.Sensitivity[3]
-    else:                                                       sens = gglobs.NAN
+    if   g.RWMmapVarSelected in ("CPM",    "CPS"):         sens = g.Sensitivity[0]
+    elif g.RWMmapVarSelected in ("CPM1st", "CPS1st"):      sens = g.Sensitivity[1]
+    elif g.RWMmapVarSelected in ("CPM2nd", "CPS2nd"):      sens = g.Sensitivity[2]
+    elif g.RWMmapVarSelected in ("CPM3rd", "CPS3rd"):      sens = g.Sensitivity[3]
+    else:                                                  sens = g.NAN
 
-    DeltaT  = gglobs.RWMmapUpdateCycle   # DeltaT in minutes, RWMmapUpdateCycle in min
+    DeltaT  = g.RWMmapUpdateCycle   # DeltaT in minutes, RWMmapUpdateCycle in min
 
-    cdprint(fncname + "gglobs.RWMmapVarSelected: {},  DeltaT: {} min".format(gglobs.RWMmapVarSelected, DeltaT))
+    cdprint(defname + "g.RWMmapVarSelected: {},  DeltaT: {} min".format(g.RWMmapVarSelected, DeltaT))
 
     try:
-        timedata, cpmdata, deltaTime  = getTimeCourseInLimits(gglobs.RWMmapVarSelected, DeltaT)
-        cdprint(fncname + "cpmdata[:10] ... [-10:]: ", cpmdata[:10], "...", cpmdata[-10:])
+        timedata, cpmdata, deltaTime  = getTimeCourseInLimits(g.RWMmapVarSelected, DeltaT)
+        cdprint(defname + "cpmdata[:10] ... [-10:]: ", cpmdata[:10], "...", cpmdata[-10:])
 
     except Exception as e:
         srcinfo = "No proper data available"
-        exceptPrint(fncname + str(e), srcinfo)
+        exceptPrint(defname + str(e), srcinfo)
         return "", srcinfo                      # blank url is used for testing
 
     if np.isnan(cpmdata).all():
@@ -231,16 +231,16 @@ def getRadWorldMapURL():
     CPM          = np.nanmean(cpmdata)
     ACPM         = CPM
     uSV          = CPM / sens
-    # cdprint(fncname + "CPM: {:0.3f}, ACPM: {:0.3f}, uSV: {:0.3f}".format(CPM, ACPM, uSV))
+    # cdprint(defname + "CPM: {:0.3f}, ACPM: {:0.3f}, uSV: {:0.3f}".format(CPM, ACPM, uSV))
 
     data         = {}
-    data['AID']  = gglobs.gmcmapUserID
-    data['GID']  = gglobs.gmcmapCounterID
+    data['AID']  = g.gmcmapUserID
+    data['GID']  = g.gmcmapCounterID
     data['CPM']  = "{:3.1f}".format(CPM)
     data['ACPM'] = "{:3.1f}".format(ACPM)
     data['uSV']  = "{:3.2f}".format(uSV)
 
-    baseURL      = gglobs.gmcmapWebsite + "/" + gglobs.gmcmapURL
+    baseURL      = g.gmcmapWebsite + "/" + g.gmcmapURL
     gmcmapURL    = "http://" + baseURL + "?" + urllib.parse.urlencode(data)                 # MUST use 'http://' in front!
     dmsg         = "CPM:{}  ACPM:{}  uSV:{}".format(data['CPM'],data['ACPM'],data['uSV'])
 
@@ -250,14 +250,14 @@ def getRadWorldMapURL():
 def updateRadWorldMap():
     """get a new data set and send as message to GMCmap"""
 
-    fncname = "updateRadWorldMap: "
+    defname = "updateRadWorldMap: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
     gmcmapURL, dmsg = getRadWorldMapURL()    # gmcmapURL has the url with data as GET
-    dprint(fncname + "URL:  " + gmcmapURL)
-    dprint(fncname + "Data: " + dmsg)
+    dprint(defname + "URL:  " + gmcmapURL)
+    dprint(defname + "Data: " + dmsg)
 
     fprint(header("Update Radiation World Map"))
     if gmcmapURL > "":
@@ -265,7 +265,7 @@ def updateRadWorldMap():
             fprint(" {}  Sending Data: {}".format(stime(), dmsg))
             with urllib.request.urlopen(gmcmapURL) as response:
                 answer = response.read()
-            dprint(fncname + "RAW Server Response: ", answer)
+            dprint(defname + "RAW Server Response: ", answer)
 
         except Exception as e:
             answer  = b"Bad URL"
@@ -282,7 +282,7 @@ def updateRadWorldMap():
         if b"ERR0" in answer:
             # Success
             # b"ERR0" in answer     => Ok
-            gglobs.exgg.addMsgToLog("Success", msg1 + msg2)
+            g.exgg.addMsgToLog("Success", msg1 + msg2)
             fprint("Server Response: OK")
 
         else:
@@ -294,9 +294,10 @@ def updateRadWorldMap():
             efprint ("{} FAILURE".format(stime()))
             qefprint(msg1)
             qefprint(msg2)
-            gglobs.exgg.addMsgToLog("FAILURE", msg1 + msg2)
+            g.exgg.addMsgToLog("FAILURE", msg1 + msg2)
     else:
-        efprint ("{} FAILURE - {}".format(stime(), dmsg) )
-        gglobs.exgg.addMsgToLog("FAILURE", "Updating Radiation World Map: " + dmsg)
+        # efprint ("{} FAILURE - {}".format(stime(), dmsg) )
+        g.exgg.addMsgToLog("FAILURE", "Updating Radiation World Map: " + dmsg)
 
     setIndent(0)
+

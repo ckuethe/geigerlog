@@ -2,7 +2,7 @@
 # -*- coding: UTF-8 -*-
 
 """
-I2C module BH1750 Ambient-Light-Sensor for Visible Light
+I2C module BH1750 Ambient-Light-Sensor for Visible Light (also known as GY-30)
 """
 
 ###############################################################################
@@ -23,11 +23,11 @@ I2C module BH1750 Ambient-Light-Sensor for Visible Light
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 # Document:     https://datasheetspdf.com/datasheet/BH1750FVI.html
 #               Ambient Light Sensor IC Series, Digital 16bit Serial Output Type, Ambient Light Sensor IC, BH1750FVI
@@ -40,40 +40,39 @@ class SensorBH1750:
     addr        = 0x23              # "The standard I2C address of the module is 0x23. You can change
                                     #  it to 0x5C by connecting the address pin (ADDR or ADD) to HIGH."
     # id                            # sensor does not have id
+    handle      = g.I2CDongle       # default for use by 'I2C' device; RaspiI2C defines its own
 
-    def __init__(self, addr):
+
+    def __init__(self, addr, I2Chandle=None):
         """Init SensorBH1750 class"""
 
         self.addr = addr
+        if I2Chandle is not None: self.handle = I2Chandle
 
 
     def SensorInit(self):
         """check ID, check PID, Reset, enable measurement"""
 
-        fncname = "SensorInit: " + self.name + ": "
-        dmsg    = "Sensor {:8s} at address 0x{:02X}  ".format(self.name, self.addr)
-
-        dprint(fncname)
+        defname = "SensorInit: " + self.name + ": "
+        # dprint(defname)
         setIndent(1)
 
         # check for presence of an I2C device at I2C address
-        if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
+        if not self.handle.DongleIsSensorPresent(self.addr):
             # no device found
             setIndent(0)
             return  (False, "Did not find any I2C device at address 0x{:02X}".format(self.addr))
         else:
             # device found
-            gdprint("Found an I2C device at address 0x{:02X}".format(self.addr))
+            gdprint(defname, "Found an I2C device at address 0x{:02X}".format(self.addr))
 
         # reset
-        gdprint(fncname + "Reset data register")
-        gdprint(self.SensorReset())
+        gdprint(defname, self.SensorReset())
 
+        dmsg     = "Sensor {:8s} at address 0x{:02X}  ".format(self.name, self.addr)
         setIndent(0)
 
-        response = (True,  "Initialized " + dmsg)
-
-        return response
+        return (True,  dmsg)
 
 
     def BH1750enableMeasurements(self):
@@ -84,7 +83,7 @@ class SensorBH1750:
         register  = 0x01
         readbytes = 0
         data      = []
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
 
     def SensorgetValues(self):
@@ -92,9 +91,9 @@ class SensorBH1750:
         # duration: ISS: 1 ... 2.5 ms
 
         start    = time.time()
-        fncname  = "SensorgetValues: " + self.name + ": "
+        defname  = "SensorgetValues: {:10s}: ".format(self.name)
 
-        cdprint(fncname)
+        # cdprint(defname)
         setIndent(1)
 
         # One time L-resolution mode
@@ -102,7 +101,7 @@ class SensorBH1750:
         register  = 0x23
         readbytes = 2
         data      = []
-        answ      = gglobs.I2CDongle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
         if len(answ) == readbytes:
             vis = (answ[0] << 8 | answ[1]) / 1.2
@@ -110,14 +109,14 @@ class SensorBH1750:
 
         else:
             # Error: answ too short or too long
-            edprint(fncname + "incorrect data, answ: ", answ)
-            response = (gglobs.NAN, )
+            edprint(defname + "incorrect data, answ: ", answ)
+            response = (g.NAN, )
 
         duration = 1000 * (time.time() - start)
-        gdprint(fncname + "Init:   " + "Vis:{:6.5g}".format(*response) + ", dur:{:0.1f} ms".format(duration))
+        # gdprint(defname, "Vis:{:<0.3f}".format(*response) + ", dur:{:0.1f} ms".format(duration))
 
         setIndent(0)
-        
+
         return response
 
 
@@ -125,7 +124,7 @@ class SensorBH1750:
 
         info  = "{}\n"                            .format("Ambient Light (Visible)")
         info += "- Address:         0x{:02X}\n"   .format(self.addr)
-        info += "- Variables:       {}\n"         .format(", ".join("{}".format(x) for x in gglobs.Sensors["BH1750"][5]))
+        info += "- Variables:       {}\n"         .format(", ".join("{}".format(x) for x in g.Sensors["BH1750"][5]))
 
         return info.split("\n")
 
@@ -138,18 +137,21 @@ class SensorBH1750:
         # measurement result. This command is not working in power down mode, so
         # that please set the power on mode before input this command.
         #
-        # duration: ELV: ??? ms
-        #           ISS: 1.0 ms
+        # duration: ELV:    ??? ms
+        #           ISS:    1.0 ms
+        #           Raspi5: 0.8 ms
 
         start     = time.time()
-        fncname   = "SensorReset: "
+        defname   = "SensorReset: "
 
         tmsg      = "Reset"
         register  = 0x07     # reset
         readbytes = 0
         data      = []
-        answ      = gglobs.I2CDongle.DongleWriteRead(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        answ      = self.handle.DongleWriteRead(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
         duration  = 1000 * (time.time() - start)
 
-        return fncname + "Done in {:0.1f} ms".format(duration)
+        return defname + "Data register => 0; dur:{:0.1f} ms".format(duration)
+
+

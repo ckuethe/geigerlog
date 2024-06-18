@@ -5,9 +5,11 @@
 GLgammascoutsim.py - GeigerLog's Gamma-Scout Simulator
 
 use with GeigerLog to simulate responses of a Gamma-Scout device. See more in
-the header of file gdev_gscout.py located in the GeigerLog folder.
+the header of file gdev_gammascout.py located in the GeigerLog folder.
 
-MUST start as SUDO (!):  sudo ./GLgammascoutsim.py
+- MUST start as SUDO (!):               sudo ./GLgammascoutsim.py
+- pyserial must be installed as root:   sudo python -m pip install -U pyserial
+- socat must be installed:              sudo apt install socat
 
 The communication between GL and the Pseudo device is logged into file
 GLgscoutsim.log
@@ -50,7 +52,7 @@ sudo chmod 777 /dev/ttyS90
 """
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
@@ -739,7 +741,7 @@ time.sleep(0.005) # socat needs ~0.001 sec to complete its action; but then keep
 print("\nListing permissions:")
 try:
     print("   /dev/ttyS90: ", oct(os.stat('/dev/ttyS90')[0]))
-    print("   /dev/ttyS90: ", oct(os.stat('/dev/ttyS90')[0]))
+    print("   /dev/ttyS91: ", oct(os.stat('/dev/ttyS91')[0]))
 except Exception as e:
     print("Listing permissions failed with Exception: ", e)
     print("??????????   Forgot to start program with 'sudo'  ???????????\n\n")
@@ -759,10 +761,11 @@ print("--- success after {:0.3f} ms".format((time.time() - start) * 1000))
 
 print("\nListing permissions:")
 print("   /dev/ttyS90: ", oct(os.stat('/dev/ttyS90')[0]))
-print("   /dev/ttyS90: ", oct(os.stat('/dev/ttyS90')[0]))
+print("   /dev/ttyS91: ", oct(os.stat('/dev/ttyS91')[0]))
 
 print("\nList of Ports found on system (including linked ports): ")
 lps = serial.tools.list_ports.comports(include_links=True)
+lps.sort()
 for lp in lps:  print(" ", lp)
 
 

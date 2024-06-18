@@ -23,47 +23,115 @@ AmbioMon++ - calling AmbioMon++ running on ESP32
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from   gsup_utils           import *
-import gsup_sql                         # database handling
+from gsup_utils   import *
+import gsup_sql                         # database handling for history downloads
 
 
-###############################################################################
-# used only internally within gdev_ambiomon.py
+###  used only internally within gdev_ambiomon.py ##############################
 
 def _getAmbioUrl():
     """get url like 'http://10.0.0.78/'; Port is always 80"""
 
-    return "http://{}".format(gglobs.AmbioServerIP)
+    return "http://{}".format(g.AmbioServerIP)
 
 
 def _getAmbioDevice():
-    # get the device like 'ESP32-WROOM-Dev' by calling page '/id' yielding:
-    #   2020-06-02 09:39:01, ESP32-WROOM-Dev, 10.0.0.85, ambiomon.local, 3
+    """get the device name by calling page '/devid' returning:
+                      like:   'AmbioMon++, ESP32-WROOM-2, ambiomon04, 1, 456, 240'
+                      giving: 'AmbioMon++ on ESP32-WROOM-2'
+    """
 
-    fncname = "_getAmbioDevice: "
+    defname             = "_getAmbioDevice: "
+    retvalue            = "NONE"                  # default for failure
+    g.AmbioCPUFrequency = g.NAN                   # default for failure
+    g.AmbioSelector     = g.NAN                   # default for failure
+    g.AmbioVoltage      = g.NAN                   # default for failure
 
-    try:
-        url   = _getAmbioUrl() + "/id"
-        page  = urllib.request.urlopen(url, timeout=gglobs.AmbioTimeout)
-        data  = page.read().decode("UTF-8").split(",")
-        #print(fncname + "data: ", data)
-    except Exception as e:
-        edprint(fncname + "Failed at url:'{}' with Exception: ".format(url), e, debug=True)
-        return "NONE"
+    loops = 1
+    while loops <= 3:
+        try:
+            url   = _getAmbioUrl() + "/devid"
+            page  = urllib.request.urlopen(url, timeout=g.AmbioTimeout)
+            data  = page.read()
+            data  = data.decode("UTF-8")
+            g.AmbioDevIDPage = data
+            data  = data.split(",")
+            cdprint(defname, "devid data: ", data)
 
-    if len(data) > 3:   gglobs.AmbioCPUFrequency = data[3].strip()
-    else:               gglobs.AmbioCPUFrequency = "unknown"
-    return data[2].strip()
+        except Exception as e:
+            exceptPrint(e, defname + "Failed at url:'{}'".format(url))
+
+        else:
+            # like:   'AmbioMon++, ESP32-WROOM-2, ambiomon04, 1, 456, 240'
+
+            retvalue = "{} on {}".format(data[0].strip(), data[1].strip())      # 0, 1
+
+            # hostname = data[2]                                                # 2 --- not used
+
+            try:    g.AmbioSelector     = float(data[3])                        # 3
+            except: g.AmbioSelector     = g.NAN
+
+            try:    g.AmbioVoltage      = float(data[4])                        # 4
+            except: g.AmbioVoltage      = g.NAN
+
+            try:    g.AmbioCPUFrequency = float(data[5])                        # 5
+            except: g.AmbioCPUFrequency = g.NAN
+
+            break
+
+        loops += 1
+        edprint(defname, "FAILURE: Retrying, attempt #{}".format(loops))
+
+    cdprint(defname, "Device: '{}'  Frequency: {} MHz".format(retvalue, g.AmbioCPUFrequency))
+
+    return retvalue
+
+
+def _getAmbioDeviceCalib():
+    """get the calibration like '123.0' by calling page '/calib' yielding:
+                           like:    '2, ra226, Ra-226, 174.0'
+                                    '3, custom, Custom, 123.0'
+                                    '4, special, LND712, 108.0'
+    """
+
+    defname  = "_getAmbioDeviceCalib: "
+    retvalue = g.NAN
+
+    loops = 1
+    while loops <= 3:
+        try:
+            url   = _getAmbioUrl() + "/calib"
+            page  = urllib.request.urlopen(url, timeout=g.AmbioTimeout)
+            data  = page.read()
+            data  = data.decode("UTF-8")
+            g.AmbioCalibPage = data
+            data  = data.split(",")
+            cdprint(defname, "Calib data: ", data)
+
+        except Exception as e:
+            exceptPrint(e, defname + "Failed at url:'{}'".format(url))
+
+        else:
+            try:    retvalue = float(data[3].strip())
+            except: retvalue = g.NAN
+            break
+
+        loops += 1
+        edprint(defname, "FAILURE: Retrying, attempt #{}".format(loops))
+
+    cdprint(defname, "Calib Value: {}".format(retvalue))
+
+    return retvalue
 
 
 def _convertUnixtimeToDateTime(unixtime):
     """convert a Unix time in sec into datetime like: 2020-05-10 11:48:50"""
 
-    return datetime.datetime.utcfromtimestamp(unixtime).strftime('%Y-%m-%d %H:%M:%S')
+    return dt.datetime.utcfromtimestamp(unixtime).strftime('%Y-%m-%d %H:%M:%S')
 
 
 def _printException(e, rec):
@@ -76,55 +144,69 @@ def _printException(e, rec):
 def _parseValueAdderCPS(i, rec):
     """Add the parse results to the *.his list"""
 
+    defname = "_parseValueAdderCPS: "
+
     # create the data for the database; datalist covers:
-    # Index, DateTime, <modifier>,  CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, Xtra
-    # 0      1         2            3    4    5       6       7        8       9       10      11    12     13     14
+    #     Index, DateTime, CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, X
+    #     0      1         2    3    4       5       6       7        8       9       10    11     12     13
 
-    #~ print("_parseValueAdder: i, rec:", i, rec)
+    # rdprint(defname, "i:{}, rec:{}".format(i, rec))
     try:
-        reclist      = rec.split(",", 5)        #
-        datalist     = [None] * (gglobs.datacolsDefault + 2)   # (13 + 2)=15 x None
-        datalist[0]  = i                        # byte index
-        datalist[1]  = reclist[0]               # DateTime UTC
-        datalist[2]  = "0 hours"                # the modifier for julianday; here: no modification
-        datalist[4]  = reclist[1]               # cps
+        reclist      = rec.split(",", 5)
+        # rdprint(defname, "i:{}, rec:{}".format(i, reclist))
 
-        datalist[9]  = reclist[2]               # selector
-        datalist[10] = reclist[3]               # volt
+        datalist     = [None] * (g.datacolsDefault + 1)     # (13 + 1) = 14 x None
+        datalist[0]                 = i                     # byte index
+        datalist[1]                 = reclist[0]            # DateTime UTC
+        datalist[g.AmbioCPSpointer] = reclist[1]            # cps
+        datalist[8]                 = reclist[2]            # selector
+        datalist[9]                 = reclist[3]            # volt
 
-        gglobs.HistoryDataList.append (datalist)
+        g.HistoryDataList.append (datalist)
 
     except Exception as e:
+        exceptPrint(e, rec)
         _printException(e, rec)
 
 
 def _parseValueAdderCAM(i, rec):
     """Add the parse results to the *.his list"""
 
+    defname = "_parseValueAdderCAM: "
+
     # create the data for the database; datalist covers:
-    # Index, DateTime, <modifier>,  CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, X
-    # 0      1         2            3    4    5       6       7        8       9       10      11    12     13     14
+    #     Index, DateTime, CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  CPM3rd, CPS3rd, Temp, Press, Humid, X
+    #     0      1         2    3    4       5       6       7        8       9       10    11     12     13
 
-    #~ print("_parseValueAdder: i, rec:", i, rec)
+    # rec:          DateTime           ,CPM,T     P      H     X    S,V
+    # rec:          2023-08-06 13:31:40,198,25.31,998.80,50.86,0.00,1,456
+    # reclist:      DateTime             ,  CPM,   T        P          H        X       S,   V
+    # reclist:     ['2023-08-06 17:24:00', '182', '25.39', '1001.30', '50.37', '0.00', '1', '456']
+
+
+    # rdprint(defname, "i:{}, rec:{}".format(i, rec))
     try:
-        reclist      = rec.split(",", 9)    # results in datetime + 6 values + 1 extra for the rest
-        datalist     = [None] * (gglobs.datacolsDefault + 2)   # (13 + 2)=15 x None
-        datalist[0]  = i                    # byte index
-        datalist[1]  = reclist[0]           # DateTime UTC
-        datalist[2]  = "0 hours"            # the modifier for julianday; here: no modification
-        datalist[3]  = reclist[1]           # cpm
+        reclist      = rec.split(",", 9)                    # --> datetime + 6 values + 1 extra for the rest
+        # rdprint(defname, "i:{}, rec:{}".format(i, reclist))
 
-        datalist[9]  = reclist[6]           # selector
-        datalist[10] = reclist[7]           # volt
+        datalist     = [None] * (g.datacolsDefault + 1)     # (13 + 1) = 14 x None
 
-        datalist[11] = reclist[2]           # temp
-        datalist[12] = reclist[3]           # pressure
-        datalist[13] = reclist[4]           # humidity
-        datalist[14] = reclist[5]           # air quality
+        datalist[0]                 = i                    # byte index
+        datalist[1]                 = reclist[0]           # DateTime UTC
+        datalist[g.AmbioCPMpointer] = reclist[1]           # cpm
 
-        gglobs.HistoryDataList.append (datalist)
+        datalist[8]                 = reclist[6]           # selector (CPM3rd)
+        datalist[9]                 = reclist[7]           # volt     (CPS3rd)
+
+        datalist[10]                = reclist[2]           # temp
+        datalist[11]                = reclist[3]           # pressure
+        datalist[12]                = reclist[4]           # humidity
+        datalist[13]                = reclist[5]           # Xtra (e.g. air quality)
+
+        g.HistoryDataList.append (datalist)
 
     except Exception as e:
+        exceptPrint(e, rec)
         _printException(e, rec)
 
 
@@ -137,17 +219,20 @@ def _parseValueAdderCAM(i, rec):
 
 
 def makeAmbioHistory(source, device):  # source == "AMDeviceCAM" or "AMDeviceCPS"
-    """read the history from an AmbioMon device"""
+    """read the history from an AmbioMon device
+       parameter: source == "AMDeviceCAM" or "AMDeviceCPS"
+       return   : error, message
+    """
 
-    fncname = "makeAmbioHistory: "
+    defname = "makeAmbioHistory: "
 
-    if not gglobs.Devices["AmbioMon"][ACTIV]:
+    if not g.Devices["AmbioMon"][g.ACTIV]:
         emsg = "AmbioMon device is not activated"
-        dprint(fncname + emsg)
+        dprint(defname, emsg)
         return -1, emsg
 
-    dprint(fncname + "from source: '{}' using device: '{}'".format(source, device))
-    dprint(fncname + "gglobs.AMFilePath: {}".format(gglobs.AMFilePath))
+    dprint(defname, "from source: '{}' using device: '{}'".format(source, device))
+    dprint(defname, "g.AMFilePath: {}".format(g.AMFilePath))
     setIndent(1)
 
     error           = 0         # default: no error
@@ -155,39 +240,41 @@ def makeAmbioHistory(source, device):  # source == "AMDeviceCAM" or "AMDeviceCPS
 
     start = time.time()
 
+# get device data for AmbioMon
     if   source == "AMDeviceCPS" or source == "AMDeviceCAM":
-    # get data from AmbioMon device
 
-        # if not gglobs.AmbioConnection:
-        if not gglobs.Devices["AmbioMon"][CONN] :
+        if not g.Devices["AmbioMon"][g.CONN] :
             emsg = "AmbioMon device is not connected"
-            dprint(fncname + emsg)
+            dprint(defname + emsg)
             return -1, emsg
 
         if   source == "AMDeviceCPS": url = _getAmbioUrl() + "/cps.data"
         elif source == "AMDeviceCAM": url = _getAmbioUrl() + "/cam.data"
-        fprint("Using URL: ", url)
+        fprint("Using URL: " + url)
+        QtUpdate()
 
         try:
             page        = urllib.request.urlopen(url, timeout=10)
             devicedata  = page.read()   # type(devicedata) = <class 'byte'>
         except Exception as e:
-            dprint("Failed urlib: Exception: ", e, debug=True)
-            playWav("err")
-            efprint("{} Reading data from Web failed with exception:\n{}".format(stime(), cleanHTML(e)))
+            msg = "urllib.request.urlopen Failed"
+            exceptPrint(e, msg)
+            efprint("{} Reading data from AmbioMon++ failed with exception:\n{}".format(stime(), cleanHTML(e)))
             setIndent(0)
-            QtUpdate()
+            # QtUpdate()
             return -1, cleanHTML(e)
 
+# get file data for AmbioMon
     elif source == "AMFileCPS" or source == "AMFileCAM":
-    # get data from AmbioMon File
         try:
-            devicedata = readBinaryFile(gglobs.AMFilePath)
+            devicedata = readBinaryFile(g.AMFilePath)
         except Exception as e:
-            playWav("err")
-            efprint("{} Reading data from File failed with exception:\n{}".format(stime(), cleanHTML(e)))
+            msg1 = "Reading AmbioMon++ data from File failed"
+            msg2 = "{} ".format(stime()) + msg1 + "with exception:\n{}" + cleanHTML(e)
+            exceptPrint(e, msg1)
+            efprint(msg)
             setIndent(0)
-            QtUpdate()
+            # QtUpdate()
             return -1, cleanHTML(e)
 
     stop       = time.time()
@@ -200,56 +287,71 @@ def makeAmbioHistory(source, device):  # source == "AMDeviceCAM" or "AMDeviceCPS
     fprint("Processing data ...")
     QtUpdate()
 
-    data_originDB   = (stime(), gglobs.Devices["AmbioMon"][DNAME])
+    data_originDB   = (stime(), g.Devices["AmbioMon"][g.DNAME])
     dbheader        = "File created by reading log from device"
     dborigin        = "Download from device"
     dbdevice        = "{}".format(data_originDB[1])
 
     dumpdata = []
+# CPS data
     if   source == "AMDeviceCPS" or source == "AMFileCPS":
-        #~ upformat = "<HBBL" + "Humid" * 60
-        #~upformat = "<BBBL" + "Humid" * 60
-        upformat = "<BBHL" + "Humid" * 60
+        upformat = "<BBHL" + "H" * 60
         wprint("Unpack Format: ", upformat)
-        for i in range(0, len(devicedata), 128):
-            dbuf = devicedata[i : i + 128]
-            data = struct.unpack(upformat, dbuf)
-            #~volt = data[2] + 350     # volt is given minus 350 to fit into 1 byte
-            volt = data[2]            # volt is given as int
-            dcfg = data[1] & 0x03    # selector is 1, or 2, or 3
+        try:
+            for i in range(0, len(devicedata), 128):
+                dbuf = devicedata[i : i + 128]
+                data = struct.unpack(upformat, dbuf)
+                volt = data[2]            # volt is given as int
+                dcfg = data[1] & 0x03     # selector is 1, or 2, or 3
 
-            for j in range(0, 60):   # make 60 records
-                dt = _convertUnixtimeToDateTime(data[3] - 60 + j)
-                sdata = "{},{},{},{}".format(
-                                    dt,
-                                    data[4 + j],
+                for j in range(0, 60):   # make 60 records
+                    cdt = _convertUnixtimeToDateTime(data[3] - 60 + j)
+                    sdata = "{},{},{},{}".format(
+                                        cdt,
+                                        data[4 + j],
+                                        dcfg,
+                                        volt,
+                                        )
+                    dumpdata.append(sdata)
+                    # rdprint(defname, sdata)
+                #~ if i > 1000: break
+
+        except Exception as e:
+            msg = "unpacking CPS data"
+            exceptPrint(e, msg)
+            efprint(defname + msg)
+            setIndent(0)
+            return -1, cleanHTML(e)
+
+# CAM data
+    elif source == "AMDeviceCAM" or source == "AMFileCAM":
+        upformat = "<BBHLLfffff"
+        wprint("Unpack Format: ", upformat)
+        try:
+            for i in range(0, len(devicedata), 32):
+                dbuf = devicedata[i : i + 32]
+                data = struct.unpack(upformat, dbuf)
+                volt = data[2]           # volt is now in 2 bytes, int 16
+                dcfg = data[1] & 0x03    # selector is 1, or 2, or 3
+
+                sdata = "{},{},{:0.2f},{:0.2f},{:0.2f},{:0.2f},{},{}".format( # make single record
+                                    _convertUnixtimeToDateTime(data[3]),
+                                    data[4],
+                                    data[5],
+                                    data[6],
+                                    data[7],
+                                    data[8],
                                     dcfg,
                                     volt,
                                     )
                 dumpdata.append(sdata)
-            #~ if i > 1000: break
+        except Exception as e:
+            msg = "unpacking CAM data"
+            exceptPrint(e, msg)
+            efprint(defname + msg)
+            setIndent(0)
+            return -1, cleanHTML(e)
 
-    elif source == "AMDeviceCAM" or source == "AMFileCAM":
-        upformat = "<BBHLLfffff"
-        wprint("Unpack Format: ", upformat)
-        for i in range(0, len(devicedata), 32):
-            dbuf = devicedata[i : i + 32]
-            data = struct.unpack(upformat, dbuf)
-            #~volt = data[2] + 350     # volt is given minus 350 to fit into 1 byte
-            volt = data[2]           # volt is now in 2 bytes, int 16
-            dcfg = data[1] & 0x03    # selector is 1, or 2, or 3
-
-            sdata = "{},{},{:0.2f},{:0.2f},{:0.2f},{:0.2f},{},{}".format( # make single record
-                                _convertUnixtimeToDateTime(data[3]),
-                                data[4],
-                                data[5],
-                                data[6],
-                                data[7],
-                                data[8],
-                                dcfg,
-                                volt,
-                                )
-            dumpdata.append(sdata)
 
     #~for a in dumpdata[:6]:  print("dumpdata:", a)
     #~print()
@@ -262,38 +364,38 @@ def makeAmbioHistory(source, device):  # source == "AMDeviceCAM" or "AMDeviceCPS
 
     else:
     # parse HIST data
-        gglobs.HistoryDataList      = []
-        gglobs.HistoryParseList     = []
-        gglobs.HistoryCommentList   = []
+        g.HistoryDataList      = []
+        g.HistoryParseList     = []
+        g.HistoryCommentList   = []
 
         #~ _getParsedHistoryCPS(dumpdata)
         if   source == "AMDeviceCPS" or source == "AMFileCPS":
             for i, rec in enumerate(dumpdata):
-                _parseValueAdderCPS(i, rec)
+                _parseValueAdderCPS(i, rec)                         # adds values to g.HistoryDataList
 
         elif source == "AMDeviceCAM" or source == "AMFileCAM":
             for i, rec in enumerate(dumpdata):
-                _parseValueAdderCAM(i, rec)
+                _parseValueAdderCAM(i, rec)                         # adds values to g.HistoryDataList
 
     # add headers
         dbhisClines    = [None] * 3
-        #                  ctype    jday, jday modifier to use time unmodified
-        dbhisClines[0] = ["HEADER", None, "0 hours", dbheader]
-        dbhisClines[1] = ["ORIGIN", None, "0 hours", dborigin]
-        dbhisClines[2] = ["DEVICE", None, "0 hours", dbdevice]
+        jtime = getTimeJulian()
+        #                  ctype    jday,  text
+        dbhisClines[0] = ["HEADER", jtime, dbheader]
+        dbhisClines[1] = ["ORIGIN", jtime, dborigin]
+        dbhisClines[2] = ["DEVICE", jtime, dbdevice]
 
     # write to database
-        gsup_sql.DB_insertDevice        (gglobs.hisConn, *data_originDB)
-        gsup_sql.DB_insertComments      (gglobs.hisConn, dbhisClines)
-        gsup_sql.DB_insertComments      (gglobs.hisConn, gglobs.HistoryCommentList)
-        gsup_sql.DB_insertData          (gglobs.hisConn, gglobs.HistoryDataList)
-        gsup_sql.DB_insertParse         (gglobs.hisConn, gglobs.HistoryParseList)
+        gsup_sql.DB_insertDevice        (g.hisConn, *data_originDB)
+        gsup_sql.DB_insertComments      (g.hisConn, dbhisClines)
+        gsup_sql.DB_insertComments      (g.hisConn, g.HistoryCommentList)
+        gsup_sql.DB_insertData          (g.hisConn, g.HistoryDataList)
+        gsup_sql.DB_insertParse         (g.hisConn, g.HistoryParseList)         # remains empty!
 
     # write device data to database
         saveToBin = True
-        if saveToBin:   gsup_sql.DB_insertBin(gglobs.hisConn, devicedata)
+        if saveToBin:   gsup_sql.DB_insertBin(g.hisConn, devicedata)
 
-        # fprint("Database is created", debug=gglobs.debug)
         msg = "Database is created"
         fprint(msg)
         dprint(msg)
@@ -308,9 +410,9 @@ def setAmbioServerIP():
     # setting a server address must be possible without a prior connection,
     # because Init fails if IP not accessible
 
-    fncname = "setAmbioServerIP: "
+    defname = "setAmbioServerIP: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
     # AmbioServer IP
@@ -318,7 +420,7 @@ def setAmbioServerIP():
     lstaip.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
     staip  = QLineEdit()
     staip.setToolTip("Enter the local Domain Name (if supported) or local IP where your AmbioMon device can be reached")
-    staip.setText("{}".format(gglobs.AmbioServerIP))
+    staip.setText("{}".format(g.AmbioServerIP))
 
     graphOptions=QGridLayout()
     graphOptions.setContentsMargins(10,10,10,10) # spacing around the graph options
@@ -327,8 +429,8 @@ def setAmbioServerIP():
 
     # Dialog box
     d = QDialog()
-    d.setWindowIcon(gglobs.iconGeigerLog)
-    d.setFont(gglobs.fontstd)
+    d.setWindowIcon(g.iconGeigerLog)
+    d.setFont(g.fontstd)
     d.setWindowTitle("Set AmbioMon Device IP")
     d.setWindowModality(Qt.WindowModal)
     d.setMinimumWidth(400)
@@ -339,15 +441,15 @@ def setAmbioServerIP():
     bbox.accepted.connect(lambda: d.done(1))
     bbox.rejected.connect(lambda: d.done(-1))
 
-    gglobs.btn = bbox.button(QDialogButtonBox.Ok)
-    gglobs.btn.setEnabled(True)
+    g.btn = bbox.button(QDialogButtonBox.Ok)
+    g.btn.setEnabled(True)
 
     layoutV = QVBoxLayout(d)
     layoutV.addLayout(graphOptions)
     layoutV.addWidget(bbox)
 
-    if gglobs.logging:         # no change of parameters when logging
-        gglobs.btn  .setEnabled(False)
+    if g.logging:         # no change of parameters when logging
+        g.btn  .setEnabled(False)
         staip       .setEnabled(False)
 
     retval = d.exec()
@@ -355,26 +457,25 @@ def setAmbioServerIP():
 
     if retval != 1:
         # ESCAPE pressed or Cancel Button
-        dprint(fncname + "Canceling; settings unchanged")
+        dprint(defname + "Canceling; settings unchanged")
 
     else:
         # OK pressed
-        gglobs.AmbioServerIP = staip.text().strip()
+        g.AmbioServerIP = staip.text().strip()
 
-        dprint(fncname + "new IP Address:    ", gglobs.AmbioServerIP)
+        dprint(defname + "new IP Address:    ", g.AmbioServerIP)
         fprint(header("Configure AmbioMon WiFi Station Mode"))
-        fprint("AmbioMon Station Mode IP:"     , "{}"    .format(gglobs.AmbioServerIP))
+        fprint("AmbioMon Station Mode IP:"     , "{}"    .format(g.AmbioServerIP))
 
     setIndent(0)
-
 
 
 def sendToSerial():
     """Sends text to the AmbioMon via Serial"""
 
-    fncname = "sendToSerial: "
+    defname = "sendToSerial: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
     # Message
@@ -391,8 +492,8 @@ def sendToSerial():
 
     # Dialog box
     d = QDialog()
-    d.setWindowIcon(gglobs.iconGeigerLog)
-    d.setFont(gglobs.fontstd)
+    d.setWindowIcon(g.iconGeigerLog)
+    d.setFont(g.fontstd)
     d.setWindowTitle("Send Message to AmbioMon")
     d.setWindowModality(Qt.WindowModal)
     d.setMinimumWidth(400)
@@ -403,8 +504,8 @@ def sendToSerial():
     bbox.accepted.connect(lambda: d.done(1))
     bbox.rejected.connect(lambda: d.done(-1))
 
-    gglobs.btn = bbox.button(QDialogButtonBox.Ok)
-    gglobs.btn.setEnabled(True)
+    g.btn = bbox.button(QDialogButtonBox.Ok)
+    g.btn.setEnabled(True)
 
     layoutV = QVBoxLayout(d)
     layoutV.addLayout(graphOptions)
@@ -415,20 +516,20 @@ def sendToSerial():
 
     if retval != 1:
         # ESCAPE pressed or Cancel Button
-        dprint(fncname + "Canceling; settings unchanged")
+        dprint(defname + "Canceling; settings unchanged")
 
     else:
         # OK pressed
         msg = staip.text().strip()
 
-        dprint(fncname + "Message:    ", msg)
+        dprint(defname + "Message:    ", msg)
         fprint(header("Sending Message to AmbioMon"))
         fprint("AmbioMon Message:"     , "{}"    .format(msg))
 
-        if gglobs.ESP32Serial == None:
+        if g.ESP32Serial is None:
             openESP32Serial()
 
-        gglobs.ESP32Serial.write(bytes(msg + "\n", "UTF-8"))
+        g.ESP32Serial.write(bytes(msg + "\n", "UTF-8"))
 
     setIndent(0)
 
@@ -436,7 +537,7 @@ def sendToSerial():
 def setAmbioLogDatatype():
     """Set the datatype GeigerLog will request from Ambiomon (LAST or AVG)"""
 
-    if not gglobs.Devices["AmbioMon"][CONN] : return "No connected device"
+    if not g.Devices["AmbioMon"][g.CONN] : return "No connected device"
 
     dprint("setAmbioLogDatatype:")
     setIndent(1)
@@ -449,8 +550,8 @@ def setAmbioLogDatatype():
     b0.setToolTip("Select 'LAST' to get last value of data, or 'AVG' to get last 1 min average of values")
     b1.setToolTip("Select 'LAST' to get last value of data, or 'AVG' to get last 1 min average of values")
 
-    if gglobs.AmbioDataType == "LAST" : b0.setChecked(True)
-    else:                               b1.setChecked(True)
+    if g.AmbioDataType == "LAST" : b0.setChecked(True)
+    else:                          b1.setChecked(True)
 
     layoutT = QHBoxLayout()
     layoutT.addWidget(b0)
@@ -463,8 +564,8 @@ def setAmbioLogDatatype():
 
     # Dialog box
     d = QDialog()
-    d.setWindowIcon(gglobs.iconGeigerLog)
-    d.setFont(gglobs.fontstd)
+    d.setWindowIcon(g.iconGeigerLog)
+    d.setFont(g.fontstd)
     d.setWindowTitle("Select Data Type Mode")
     d.setWindowModality(Qt.WindowModal)
     d.setMinimumWidth(400)
@@ -475,15 +576,15 @@ def setAmbioLogDatatype():
     bbox.accepted.connect(lambda: d.done(1))
     bbox.rejected.connect(lambda: d.done(-1))
 
-    gglobs.btn = bbox.button(QDialogButtonBox.Ok)
-    gglobs.btn.setEnabled(True)
+    g.btn = bbox.button(QDialogButtonBox.Ok)
+    g.btn.setEnabled(True)
 
     layoutV = QVBoxLayout(d)
     layoutV.addLayout(graphOptions)
     layoutV.addWidget(bbox)
 
-    if gglobs.logging:         # no change of parameters when logging
-        gglobs.btn  .setEnabled(False)
+    if g.logging:         # no change of parameters when logging
+        g.btn  .setEnabled(False)
 
     retval = d.exec()
     #print("reval:", retval)
@@ -492,195 +593,57 @@ def setAmbioLogDatatype():
         # ESCAPE pressed or Cancel Button clicked
         dprint("setAmbioLogDatatype: Settings unchanged")
     else:
-        if b0.isChecked(): gglobs.AmbioDataType = "LAST"    # b0.isChecked()
-        else:              gglobs.AmbioDataType = "AVG"     # b1.isChecked()
+        # Ok clicked
+        if b0.isChecked(): g.AmbioDataType = "LAST"    # b0.isChecked()
+        else:              g.AmbioDataType = "AVG"     # b1.isChecked()
 
         fprint(header("Select Data Type Mode"))
-        # fprint("AmbioMon Data Type:", "{}"    .format(gglobs.AmbioDataType), debug=True)
-        msg = "AmbioMon Data Type:", "{}".format(gglobs.AmbioDataType)
+        msg = "New AmbioMon Data Type:", "{}".format(g.AmbioDataType)
         fprint(msg)
         dprint(msg)
 
     setIndent(0)
 
 
-def getValuesAmbioMon(varlist):
-    """Read all AmbioMon data"""
-
-    def getValueAmbioMon(index):
-        """check for missing value and make floats"""
-
-        try:
-            if data[index] == "":   # missing value
-                val = gglobs.NAN
-            else:
-                try:
-                    val = float(data[index])
-                except Exception as e:
-                    msg = "index: {}".format(index)
-                    exceptPrint(e, msg)
-                    val = gglobs.NAN
-        except Exception as e:
-            val = gglobs.NAN
-
-        return val
-
-
-    start = time.time()
-
-    fncname = "getValuesAmbioMon: "
-
-    if gglobs.AmbioDataType == "LAST":  url = _getAmbioUrl() + "/lastdata"
-    else:                               url = _getAmbioUrl() + "/lastavg"
-
-    alldata      = {}       # data to be returned
-    data         = []       # data read from url
-    attempts     = 0        # no of attempts to get a connection
-    attempts_max = 1 if gglobs.AmbioTimeout > gglobs.logCycle else gglobs.logCycle // gglobs.AmbioTimeout # max no of attempts - only as many as fit into logCycle
-
-    while attempts < attempts_max:
-        if not gglobs.logging:  break  # logging might be stopped while trying
-
-        attempts  += 1
-        etext      = "None"
-
-        try:
-            #raise Exception("test")
-            #raise urllib.error.URLError("my dear test")
-
-            dstart = time.time()
-            page   = urllib.request.urlopen(url, timeout=gglobs.AmbioTimeout)        # 40...120 ms, rest < 0.05 ms
-            dstop  = time.time()
-            data   = page.read().decode("UTF-8").split(",")
-
-            # test:
-            data   = data[1:]
-            # gdprint(data)
-            # endtest
-
-            if gglobs.werbose:
-                wprint(fncname + "page: geturl : ", page.geturl())   # e.g.  http://10.0.0.85/lastdata
-                wprint(fncname + "page: getcode: ", page.getcode())  # 200
-                for a, b in page.info().items(): wprint (fncname + "page: info:    {:20s}:   {}".format(a, b))
-                for i, a in enumerate(data):     wprint (fncname + "data: {:2d}:  {:20s}"       .format(i, a.strip()))
-                wprint(fncname + "download ambio data: {:0.1f} ms".format((dstop - dstart) * 1000))
-
-            for vname in varlist:
-                if   vname == "CPM":
-                                        cpm = getValueAmbioMon(1) if (getValueAmbioMon(1) != 4294967295) else gglobs.NAN
-
-                                        alldata.update({vname:      cpm              })   # CPM
-                elif vname == "CPS":    alldata.update({vname:      getValueAmbioMon(2)      })   # CPS
-                elif vname == "CPS2nd": alldata.update({vname:      getValueAmbioMon(16)     })   # CPU frequency MHz
-
-                ##################### this is the normal definition
-                elif vname == "Temp":   alldata.update({"Temp":    getValueAmbioMon(3)      })   # T   from BMEX80
-                elif vname == "Press":  alldata.update({"Press":   getValueAmbioMon(4)      })   # P   from BMEX80
-                elif vname == "Humid":  alldata.update({"Humid":   getValueAmbioMon(5)      })   # H   from BMEX80
-                elif vname == "Xtra":   alldata.update({"Xtra":    getValueAmbioMon(6)      })   # X   Airq BME680 resistance kOhm (plotted as (LOG10(1/VAL) + 3 )*50)
-                ##################### end normal definition
-
-                # # special definition
-                # elif vname == "Temp":  alldata.update({vname:      float(data[12])     })   # T   ESPBattReading
-                # elif vname == "Press": alldata.update({vname:      float(data[16])     })   # P   ESP CPU frequency
-                # elif vname == "Humid": alldata.update({vname:      float(data[17])     })   # H   CurrentReading
-                # elif vname == "Xtra":  alldata.update({vname:      float(data[15])     })   # X   readVoltESPpin(PIN_Vchip, 200)
-
-            gglobs.AmbioCPUFrequency = getValueAmbioMon(16) # i.e. is updated with every call for data
-
-            break
-
-        except urllib.error.URLError as e:
-            exceptPrint(e, "")
-            etext = cleanHTML(e.reason)
-
-        except Exception as e:
-            exceptPrint(e, "")
-            etext = cleanHTML(e)
-
-        if attempts == 1:
-            msg  = "Reading AmbioMon Values from '{}'\nfailed with error: '{}'".format(url, etext)
-            msg += " (Timeout setting: {} sec)".format(gglobs.AmbioTimeout) if "timed out" in etext else ""
-            qefprint(stime() + " " + msg)
-        else:
-            msg = "Repeat #{} of {} failed".format(attempts, attempts_max)
-            edprint(msg)
-            qefprint(msg)
-
-        if attempts == attempts_max:
-            playWav("err")
-            if attempts_max > 1:
-                msg = "max repeats reached, giving up"
-                edprint(msg)
-                qefprint(msg)
-            fprint("")
-            break
-
-        QtUpdate() # without it no update of NotePad
-
-
-    # # calling ESP32 via serial
-    # rsc = readESP32Serial()
-    # #print(rsc)
-    # listrsc = rsc.strip().split(",")
-    # #print("readESP32Serial: listrsc: ", listrsc)
-    # try:
-    #     #~alldata.update({"Temp":     float(listrsc[0])     })   # T   CurrentLastDeltat
-    #     alldata.update({"Temp":       float(listrsc[4])     })   # T   Duration in µs of all shunt actions
-    #     alldata.update({"Press":      float(listrsc[1])     })   # P   CurrentLastADC
-    #     alldata.update({"Humid":      float(listrsc[2])     })   # H   CurrentLastVolt
-    #     if gglobs.FirstLogValuesCall:
-    #         alldata.update({"Xtra":      gglobs.NAN         })   # X   CurrentIntegral - 1st value is wrong
-    #     else:
-    #         alldata.update({"Xtra":      float(listrsc[3])  })   # X   CurrentIntegral
-    #     #raise Exception("test readSerial")
-    # except Exception as e:
-    #     exceptPrint(e, fncname + "readESP32Serial: listrsc: {}".format(listrsc))
-
-    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
-
-    return alldata
-
-
 def openESP32Serial():
     """Open the Serial connection to the ESP32"""
 
-    fncname = "openESP32Serial: "
+    defname = "openESP32Serial: "
 
-    dv              = "/dev/ttyUSB0" # device
-    br              = 115200         # baudrate
-    to              = 3              # timeout
-    wto             = 1              # write timeout
+    dv      = "/dev/ttyUSB0" # device
+    br      = 115200         # baudrate
+    to      = 3              # timeout
+    wto     = 1              # write timeout
 
     # try to close it first
     closeESP32Serial()
 
     # now try to open it
     try:
-        gglobs.ESP32Serial = serial.Serial(dv, br, timeout=to, write_timeout=wto)
-        fprint(fncname + "connected")
+        g.ESP32Serial = serial.Serial(dv, br, timeout=to, write_timeout=wto)
     except Exception as e:
         closeESP32Serial()
-        msg = fncname + "Open failed"
+        msg = defname + "Open failed"
         exceptPrint(e, msg)
         qefprint(msg)
+    else:
+        fprint(defname + "connected")
 
 
 def closeESP32Serial():
     """Try to close the Serial connection to the ESP32 and Null it"""
 
-    try:    gglobs.ESP32Serial.close()
+    try:    g.ESP32Serial.close()
     except: pass
 
-    gglobs.ESP32Serial = None
-
+    g.ESP32Serial = None
 
 
 def writeESP32Serial(msg):
     """Try to close the Serial connection to the ESP32 and Null it"""
 
     try:
-        gglobs.ESP32Serial.write(msg)
+        g.ESP32Serial.write(msg)
         # without delay after writing, ESP isn't fast enough to provide answer
         #  1 ms: too short
         #  2 ms: works most but not always
@@ -689,7 +652,10 @@ def writeESP32Serial(msg):
         #  5 ms: works most but not always
         # 10 ms: works; occasionally a failure
         time.sleep(0.010)
-    except: qefprint("Failure writing to the ESPSerial")
+    except Exception as e:
+        msg = "Failure writing to the ESPSerial"
+        exceptPrint(e, msg)
+        qefprint(msg)
 
 
 def readESP32Serial():
@@ -699,24 +665,24 @@ def readESP32Serial():
     # using 2 terminals
     # https://unix.stackexchange.com/questions/261531/how-to-send-output-from-one-terminal-to-another-without-making-any-new-pipe-or-f
 
-    fncname = "readESP32Serial: "
-    vprint(fncname)
+    defname = "readESP32Serial: "
+    vprint(defname)
 
     logfile         = "esp32.termlog"
     bytesWaiting    = 0                             # to avoid reference error
     empty           = "nan, nan, nan, nan, nan, nan, nan, nan, nan"
     glval           = empty
-    logfilepath     = os.path.join(gglobs.dataPath, logfile) # save in data dir
+    logfilepath     = os.path.join(g.dataDir, logfile) # save in data dir
 
     # if the serial port is not open then try to open it now,
     # and clear the logfile if sucessful
-    if gglobs.ESP32Serial == None:
+    if g.ESP32Serial is None:
         openESP32Serial()
-        if gglobs.ESP32Serial == None:  # tried to connect again, but failed
-            edprint("gglobs.ESP32Serial == None --- returning with nans")
+        if g.ESP32Serial is None:  # tried to connect again, but failed
+            edprint("g.ESP32Serial is None --- returning with nans")
             return glval
         try:
-            with open(logfilepath, 'wt', encoding="UTF-8", errors='replace', buffering = 1) as f:
+            with open(logfilepath, "wt", encoding="UTF-8", errors='replace', buffering = 1) as f:
                 f.write("Starting at: {}\n".format(longstime()))
         except Exception as e:
             exceptPrint(e, "readESP32Serial")
@@ -727,25 +693,25 @@ def readESP32Serial():
 
     while True:
         try:
-            bytesWaiting = gglobs.ESP32Serial.in_waiting
+            bytesWaiting = g.ESP32Serial.in_waiting
             #print("bytesWaiting: ", bytesWaiting)
         except Exception as e:
             msg = "Exception: fasilure in getting bytesWaiting"
-            exceptPrint(e, fncname + msg)
+            exceptPrint(e, defname + msg)
             closeESP32Serial()
             break
 
         if bytesWaiting == 0: break
 
         try:
-            # readline(size): Read and return one line from the stream. If
-            # size is specified, at most size bytes will be read.
-            #print("bytes waiting before readline: ", gglobs.ESP32Serial.in_waiting)
-            rec = gglobs.ESP32Serial.readline()
+            # readline(size): Read and return one line from the stream.
+            # If size is specified, at most size bytes will be read.
+            #print("bytes waiting before readline: ", g.ESP32Serial.in_waiting)
+            rec = g.ESP32Serial.readline()
             #print("rec: ", rec)
         except Exception as e:
             msg = "Exception: failure in 'readline'"
-            exceptPrint(e, fncname + msg)
+            exceptPrint(e, defname + msg)
             closeESP32Serial()
             break
 
@@ -754,7 +720,7 @@ def readESP32Serial():
             #print("rec.decode: ", rec)
         except Exception as e:
             msg = "Exception: failure in 'decode'"
-            exceptPrint(e, fncname + msg)
+            exceptPrint(e, defname + msg)
             closeESP32Serial()
             break
 
@@ -764,10 +730,10 @@ def readESP32Serial():
             glval = rec[17:-1]                  # cut off 'GeigerLog:' and LF
 
         try:
-            with open(logfilepath, 'at', encoding="UTF-8", errors='replace', buffering = 1) as f:
+            with open(logfilepath, "at", encoding="UTF-8", errors='replace', buffering = 1) as f:
                 f.write(rec)                        # keep LF
         except Exception as e:
-            exceptPrint(e, fncname + "write to logfilepath")
+            exceptPrint(e, defname + "write to logfilepath")
 
     #print("glval: ", glval)
     if glval == empty: vprint("ESP32: GeigerLog - No Data!")
@@ -777,35 +743,69 @@ def readESP32Serial():
     return glval
 
 
+#iii
 def initAmbioMon():
     """Initialize AmbioMon"""
 
-    fncname = "initAmbioMon: "
+    defname = "initAmbioMon: "
 
-    dprint(fncname)
+    dprint(defname, "Initializing AmbioMon Device")
     setIndent(1)
 
     # set configuration
-    if gglobs.AmbioServerIP    == "auto": gglobs.AmbioServerIP    = getGeigerLogIP()    # GeigerLog's onw IP
-    if gglobs.AmbioServerPort  == "auto": gglobs.AmbioServerPort  = 80                  # default port no
-    if gglobs.AmbioTimeout     == "auto": gglobs.AmbioTimeout     = 3                   # 1 sec scheint zu kurz, 2 häufig zu kurz, 3 meist ok, 5 sec bringt nichts
-    if gglobs.AmbioDataType    == "auto": gglobs.AmbioDataType    = "LAST"              # using 'lastdata' call, not avg for 'lastavg'
-    if gglobs.AmbioVariables   == "auto": gglobs.AmbioVariables   = "CPM, CPS, Temp, Press, Humid, Xtra"
+    if g.AmbioServerIP    == "auto": g.AmbioServerIP    = getGeigerLogIP()    # GeigerLog's onw IP
+    if g.AmbioServerPort  == "auto": g.AmbioServerPort  = 80                  # default port no
+    if g.AmbioTimeout     == "auto": g.AmbioTimeout     = 3                   # 1 sec scheint zu kurz, 2 häufig zu kurz, 3 meist ok, 5 sec bringt nichts
+    if g.AmbioDataType    == "auto": g.AmbioDataType    = "LAST"              # using 'lastdata' call, not avg for 'lastavg'
+    if g.AmbioVariables   == "auto": g.AmbioVariables   = "CPM3rd, CPS3rd, Temp, Press, Humid, Xtra"
 
-    gglobs.Devices["AmbioMon"][DNAME] = _getAmbioDevice()                               # expect like 'ESP32-WROOM-Dev'; needs IP; 'NONE' on failure
+    g.AmbioVariables = setLoggableVariables("AmbioMon", g.AmbioVariables)
 
-    if gglobs.Devices["AmbioMon"][DNAME] == "NONE":
+    for vname in g.AmbioVariables.split(","):
+        vname = vname.strip()
+        # rdprint(defname, "vname: ", vname)
+        if   vname == "CPM":      g.AmbioCPMpointer = 2
+        elif vname == "CPS":      g.AmbioCPSpointer = 3
+        elif vname == "CPM1st":   g.AmbioCPMpointer = 4
+        elif vname == "CPS1st":   g.AmbioCPSpointer = 5
+        elif vname == "CPM2nd":   g.AmbioCPMpointer = 6
+        elif vname == "CPM2nd":   g.AmbioCPSpointer = 7
+        # elif vname == "CPM3rd":   g.AmbioCPMpointer = 8   # is used for selector
+        # elif vname == "CPM3rd":   g.AmbioCPSpointer = 9   # is used for volt
+
+    g.Devices["AmbioMon"][g.DNAME] = _getAmbioDevice() # expect like 'AmbioMon++ on ESP32-WROOM-Dev' on success, 'NONE' on failure
+
+    if g.Devices["AmbioMon"][g.DNAME] == "NONE":
         # not connected
-        gglobs.Devices["AmbioMon"][CONN] = False
-        msg = "No connection to: AmbioServerIP: '{}'".format(gglobs.AmbioServerIP)
-        edprint(fncname + msg)
+        g.Devices["AmbioMon"][g.CONN] = False
+        msg = "No connection to: AmbioServerIP: '{}'".format(g.AmbioServerIP)
+        edprint(defname + msg)
     else:
-        # connected
-        gglobs.Devices["AmbioMon"][CONN] = True
+        # is connected
+        g.Devices["AmbioMon"][g.CONN] = True
         msg  = ""
-        dprint(fncname + "connected to: AmbioServerIP: '{}', detected device: '{}'".format(gglobs.AmbioServerIP, gglobs.Devices["AmbioMon"][DNAME]))
+        dprint(defname, "connected to: AmbioServerIP: '{}', detected device: '{}'".format(g.AmbioServerIP, g.Devices["AmbioMon"][g.DNAME]))
 
-        setLoggableVariables("AmbioMon", gglobs.AmbioVariables)
+        AmbioSense = _getAmbioDeviceCalib()
+        for vname in g.AmbioVariables.split(","):
+            vname = vname.strip()
+            # rdprint(defname, "vname: ", vname)
+            if   vname == "CPM":      g.Sensitivity[0] = AmbioSense
+            elif vname == "CPS":      g.Sensitivity[0] = AmbioSense
+            elif vname == "CPM1st":   g.Sensitivity[1] = AmbioSense
+            elif vname == "CPS1st":   g.Sensitivity[1] = AmbioSense
+            elif vname == "CPM2nd":   g.Sensitivity[2] = AmbioSense
+            elif vname == "CPM2nd":   g.Sensitivity[2] = AmbioSense
+
+    # set all active g.AmbioValues to nan (only the active ones!)
+    # rdprint(defname, "g.Devices['AmbioMon'][g.VNAMES]: ", g.Devices["AmbioMon"][g.VNAMES])
+    for vname in g.Devices["AmbioMon"][g.VNAMES]:
+        g.AmbioValues[vname] = g.NAN
+
+    g.AmbioThreadRun         = True
+    g.AmbioMonThread            = threading.Thread(target = AmbioMonThreadTarget)
+    g.AmbioMonThread.daemon     = True   # must come before daemon start: makes threads stop on exit!
+    g.AmbioMonThread.start()
 
     setIndent(0)
     return msg
@@ -814,46 +814,362 @@ def initAmbioMon():
 def terminateAmbioMon():
     """opposit of init ;-)"""
 
-    fncname = "terminateAmbioMon: "
+    defname = "terminateAmbioMon: "
 
-    dprint(fncname)
+    dprint(defname)
     setIndent(1)
 
-    gglobs.Devices["AmbioMon"][CONN]  = False
+    # shut down thread
+    dprint(defname, "stopping thread")
+    g.AmbioThreadRun        = False
+    g.AmbioMonThread.join()                 # "This blocks the calling thread until the thread
+                                            #  whose join() method is called is terminated."
 
-    dprint(fncname + "Terminated")
+    # verify that thread has ended, but wait not longer than 5 sec (takes 0.006...0.016 ms)
+    start = time.time()
+    while g.AmbioMonThread.is_alive() and (time.time() - start) < 5:
+        pass
+
+    msgalive = "Yes" if g.AmbioMonThread.is_alive() else "No"
+    dprint(defname + "thread-status: alive: {}, waiting took:{:0.3f} ms".format(msgalive, 1000 * (time.time() - start)))
+
+    g.Devices["AmbioMon"][g.CONN]  = False
+
+    dprint(defname + "Terminated")
     setIndent(0)
+
+
+def AmbioMonThreadTarget():
+    """Thread triggers readings about every 1 sec"""
+
+    defname = "AmbioMonThreadTarget: "
+
+    while g.AmbioThreadRun:
+
+        # go to sleep until 500ms before next cycle begins
+        oldnexttime = g.nexttime
+        # sleeptime   = max(0, g.nexttime - time.time() - 0.5)              # sec
+        sleeptime   = max(0, g.nexttime - time.time() - 0.2)              # sec
+        time.sleep(sleeptime)
+        if g.logging: g.AmbioValues = THREAD_AMBIO_fetchVals(g.Devices["AmbioMon"][g.VNAMES])
+
+        # wait until the next cycle has started
+        # while oldnexttime == g.nexttime:                            # wait until g.nexttime changes
+        #     if not g.AmbioThreadRun: break
+        #     time.sleep(0.020)
+
+
+        # wait until the next cycle has started, but no longer than 0.6 sec
+        start = time.time()
+        while time.time() - start < 0.6:                            # wait until g.nexttime changes
+            if not g.AmbioThreadRun: break
+            if g.nexttime > oldnexttime: break
+            time.sleep(0.020)
+
+        # # wait until the next cycle has started, but no longer than 0.5 sec
+        # start = time.time()
+        # while time.time() - start < 0.5:                            # wait until g.nexttime changes
+        #     if not g.AmbioThreadRun: break
+        #     if g.nexttime > oldnexttime: break
+        #     time.sleep(0.020)
+
+
+def getValuesAmbioMon(varlist):
+    """Read all data; return empty dict when not available"""
+
+    start = time.time()
+    defname = "getValuesAmbioMon: " # + str(varlist)
+
+    alldata = {}
+
+    # rdprint(defname, "  g.AmbioValues: ", g.AmbioValues)
+    if len(g.AmbioValues) > 0:
+        for vname in varlist:
+            # rdprint(defname, "  vname: ", vname)
+            if vname in g.AmbioValues:
+                value = g.AmbioValues[vname]
+                value = applyValueFormula(vname, value, g.ValueScale[vname], info=defname)
+                g.AmbioValues[vname] = g.NAN        # reset after use
+
+                alldata.update({vname: value})
+
+    duration = 1000 * (time.time() - start)
+    vprintLoggedValues(defname, varlist, alldata, duration)
+
+    return alldata
+
+
+def THREAD_AMBIO_fetchVals(varlist):
+    """Read all AmbioMon data"""
+
+    ###############################################################
+    def getValueAmbioMon(index):
+        """check for missing value and return float value"""
+
+        try:
+            if data[index] == "":   # missing value
+                val = g.NAN
+            else:
+                try:
+                    val = float(data[index])
+                except Exception as e:
+                    msg = "index: {}".format(index)
+                    exceptPrint(e, msg)
+                    val = g.NAN
+        except Exception as e:
+            val = g.NAN
+
+        return val
+    ###############################################################
+
+    fetchstart = time.time()
+
+    defname = "THREAD_AMBIO_fetchVals: "
+
+    if g.AmbioDataType == "LAST":  url = _getAmbioUrl() + "/lastdata"
+    else:                          url = _getAmbioUrl() + "/lastavg"
+
+    alldata      = {}       # data to be returned
+    data         = []       # data read from url as list
+    etext        = None     # error_text, used as flag
+    ddur         = g.NAN    # default duration of the downloading only
+    ddur2        = g.NAN    # default duration of the downloading plus processing
+    pread        = b"empty" # page_read
+    GLtime       = "empty"  # GeigerLog DateTime like: 2023-11-04 09:32:43
+
+    try:
+        mdprint("")
+        dstart = time.time()
+        # mdprint(defname, "start: '{}'".format(num2datestrMS(dstart)))
+        mdprint(defname, "start")
+
+        # rdprint(defname, "delta starts[ms]: ", 1000 * (dstart - fetchstart))
+        page   = urllib.request.urlopen(url, timeout=g.AmbioTimeout)        # 40...150 ms, rest < 0.2 ms
+        ddur   = 1000 * (time.time() - dstart)
+        pread  = page.read()
+        data   = pread.decode("UTF-8")
+        g.AmbioDataPage = data                                              # used in: AmbioInfo
+        data   = data.split(",")
+        for i, d in enumerate(data): data[i] = d.strip()                    # clean each value
+        GLtime = num2datestr(dstart)                                        # return like: '2023-11-04 10:36:24'
+        ddur2  = 1000 * (time.time() - dstart)                              # is <1 ms more than ddur
+
+    except urllib.error.URLError as e:
+        exceptPrint(e, "URLError")
+        etext = cleanHTML(e.reason)
+
+    except Exception as e:
+        exceptPrint(e, "General")
+        etext = cleanHTML(e)
+
+    else:
+        if g.werbose:
+            wprint(defname, "page: geturl : ", page.geturl())   # e.g.  http://10.0.0.85/lastdata
+            wprint(defname, "page: getcode: ", page.getcode())  # 200 if ok
+            for a, b in page.info().items(): wprint (defname, "page: info:    {:20s}: {}".format(a, b))              # page.info
+            for i, a in enumerate(data):     wprint (defname, "data: {:4d}:    {:20s}"   .format(i, a.strip()))      # data
+            wprint(defname, "download ambio data: {:0.3f} ms".format(ddur))
+            wprint(defname, "total    ambio data: {:0.3f} ms".format(ddur2))
+
+        mdprint(defname, "Dnld-cmpct: {}".format(pread.replace(b"  ", b"").replace(b", ", b",")))
+        # mdprint(defname, "pread: len:{}  dnld: {:0.1f} ms  dnldplus: {:0.1f} ms".format(len(pread), ddur, ddur2))
+
+        if not data[0].startswith("1970-01-01"):        # this old date indicates a failure
+            #              ,     CPM,     CPS,    Temp,    Press,   Humid,     Airq, Sel, Volt, Save, FreeHp, HpAllc,   BattV,   ChipV,    ADSV,   Avg33, Frq,      Ws,   Hall,               Ambio,                RTC,                  NTP
+            # lastdata:    ,     167,   4.000,  24.470,  984.908,  45.343,    0.000,   1,  456,    1, 151552,  86004,   4.988,   3.235,   0.000,   3.213, 240,   0.000,     29, 2023-10-19 10:50:03, 2023-10-19 10:50:02, 2023-10-19 10:50:03
+            # lastavg:     ,     167,   2.783,  24.468,  984.930,  45.346,    0.000,   1,  456,    1, 153948,  86004,   4.988,   3.235,   0.000,   3.213, 240,   0.000,     41, 2023-10-19 10:50:03, 2023-10-19 10:50:02, 2023-10-19 10:50:03
+
+            # Basic
+                # DateTime                               // 0  DateTime from record (is ignored here)
+                # CPM                                    // 1  CPM
+                # CPS                                    // 2  CPS
+
+                # Temp                                   // 3  Temp from BME Sensor
+                # Press                                  // 4  Press from BME Sensor
+                # Humid                                  // 5  Humid from BME Sensor
+                # Airq                                   // 6  AirQuality from BME 680 Sensor
+
+            # Extended
+                # getAvgDcfg() & 0x03;                   // 7  abc-Selector setting
+                # getAvgVolt();                          // 8  Anode Voltage
+                # bSavingIsON,                           // 9  Saving status
+                # ESP.getFreeHeap(),                     // 10 Free Heap
+                # ESP.getMaxAllocHeap(),                 // 11 Max Heap Allocation
+                # ESPBattVolt,                           // 12 Batt Voltage (~5V on USB, 3 ... 4.2V by Batt)
+                # ESPChipVolt,                           // 13 Chip Voltage (~3.3V)
+                # ADSBattVolt,                           // 14 Batt Volt measured by ADS
+                # getAvgV33(),                           // 15 Average of ESPChipVolt
+                # ESP.getCpuFreqMHz(),                   // 16 CPU Freq
+                # ESPLastWs,                             // 17 Energy consumed by device (Ws)
+                # hallRead()                             // 18 Hall sensor
+                # Ambiotime                              // 19 Ambio DateTime
+                # RTCtime                                // 20 RTC DateTime
+                # NTPtime                                // 21 NTP DateTime
+
+            # updated with every call for data
+            g.AmbioCPUFrequency = getValueAmbioMon(16)
+            g.AmbioSelector     = getValueAmbioMon(7)
+            g.AmbioVoltage      = getValueAmbioMon(8)
+
+            for vname in varlist:
+                if   vname == "CPM":    value = getValueAmbioMon(1)                    # CPM
+                elif vname == "CPS":    value = getValueAmbioMon(2)                    # CPS
+                elif vname == "CPM1st": value = getValueAmbioMon(1)                    # CPM
+                elif vname == "CPS1st": value = getValueAmbioMon(2)                    # CPS
+
+                # elif vname == "CPM2nd": value = getValueAmbioMon(1)                  # CPM
+                # elif vname == "CPS2nd": value = getValueAmbioMon(2)                  # CPS
+
+                elif vname == "CPM2nd": value = getAmbioClockDelta(data[21], data[20], UTCcorr=False)   # NTP - RTC clock difference in sec
+                elif vname == "CPS2nd": value = getAmbioClockDelta(data[21], GLtime,   UTCcorr=True)    # NTP   clock difference in sec
+
+                elif vname == "CPM3rd": value = getAmbioClockDelta(data[19], GLtime,   UTCcorr=True)    # Ambio clock difference in sec
+                elif vname == "CPS3rd": value = getAmbioClockDelta(data[20], GLtime,   UTCcorr=True)    # RTC   clock difference in sec
+
+                elif vname == "Temp":   value = getValueAmbioMon(3)                    # T      from BME280 / BME680
+                # elif vname == "Temp":   value = getNTPDateTime()[0] / 1000           # NTP Offset in sec  (offset is single digit ms)
+
+                elif vname == "Press":  value = getValueAmbioMon(4)                    # P      from BME280 / BME680
+
+                elif vname == "Humid":  value = getValueAmbioMon(5)                    # H      from BME280 / BME680
+                # elif vname == "Humid":  value = getValueAmbioMon(13)                 # ESP Chip Volt
+
+                # elif vname == "Xtra":   value = getValueAmbioMon(6)                  # X      Air Quality
+                # elif vname == "Xtra":   value = getValueAmbioMon(12)                 # ESPBattVolt
+                elif vname == "Xtra":   value = getValueAmbioMon(15)                   # ESPChipVolt Avg
+
+                alldata.update({vname: value})
+
+       # failure
+    if etext is not None:
+        msg  = defname + "'{}' @url:'{}' ".format(etext, url)
+        msg += (" (Timeout setting: {} sec)".format(g.AmbioTimeout)) if "timed out" in etext else ""
+        edprint(msg)
+        QueuePrintDVL(msg)
+
+    duration = 1000 * (time.time() - fetchstart)
+
+    if duration > 1000:
+        msg = defname + "Long Dwnld: data:{:0.0f} ms Total:{:0.0f} ms".format(ddur2, duration)
+        rdprint(msg)
+        QueuePrintDVL(msg)
+
+    print(INVMAGENTA, end="")
+    vprintLoggedValues(defname, varlist, alldata, duration)
+
+    return alldata
+
+
+def THREAD_AMBIO_fetchValsBySerial(varlist):
+    """not tested!!!"""
+
+    return
+
+    # calling ESP32 via serial
+    rsc = readESP32Serial()
+    #print(rsc)
+    listrsc = rsc.strip().split(",")
+    #print("readESP32Serial: listrsc: ", listrsc)
+    try:
+        alldata.update({"Temp":       float(listrsc[4])     })   # T   Duration in µs of all shunt actions
+        alldata.update({"Press":      float(listrsc[1])     })   # P   CurrentLastADC
+        alldata.update({"Humid":      float(listrsc[2])     })   # H   CurrentLastVolt
+        if g.FirstLogValuesCall:
+            alldata.update({"Xtra":      g.NAN         })   # X   CurrentIntegral - 1st value is wrong
+        else:
+            alldata.update({"Xtra":      float(listrsc[3])  })   # X   CurrentIntegral
+        #raise Exception("test readSerial")
+    except Exception as e:
+        exceptPrint(e, defname + "readESP32Serial: listrsc: {}".format(listrsc))
+
+
+def getAmbioClockDelta(DateTimeA, DateTimeB, UTCcorr=False):
+    """Delta of time_computer (DateTimeB) minus time_device (DateTimeA) - negative: device is faster"""
+    # duration: 0.3 ... 1.1 ms
+
+    from datetime import timezone
+
+    cstart = time.time()
+
+    defname = "getAmbioClockDelta: "
+    # mdprint(defname)
+    setIndent(1)
+    # mdprint(defname, "DateTimeA: >{}<  DateTimeB: >{}<".format(DateTimeA, DateTimeB))
+
+    clock_delta = g.NAN
+
+    try:
+        datetime_device    = DateTimeA
+        timestamp_device   = mpld.datestr2num(datetime_device)                          # days
+
+        datetime_computer  = DateTimeB
+        timestamp_computer = mpld.datestr2num(datetime_computer)                        # days
+
+        if UTCcorr: DefaultUTCcorr = - g.TimeZoneOffset
+        else:       DefaultUTCcorr = 0
+        # cdprint(defname, "New DefaultUTCcorr: ", DefaultUTCcorr)
+
+        timestamp_delta    = (timestamp_computer - timestamp_device) * 86400 + DefaultUTCcorr # --> sec (plus time offset to UTC)
+        # cdprint(defname, "datetime_device: ", datetime_device,   "  timestamp_device: ", timestamp_device, "   Delta: {:0.6f} sec".format(timestamp_delta))
+
+        rounding           = 3                                  # count of decimals
+        clock_delta        = round(timestamp_delta, rounding)   # delta time in sec
+    except Exception as e:
+        exceptPrint(e, defname)
+
+    cdur = 1000 * (time.time() - cstart)
+    # mdprint(defname, "Clock Delta is: {:6.3f} s   dur: {:0.1f} ms".format(clock_delta, cdur))
+
+    if abs(clock_delta) > 60000: clock_delta = g.NAN            # when ESP is OFF results are > 1E9! and meaningless
+                                                                # time zone delta range is -43200 ... 50400 sec
+
+    setIndent(0)
+    return clock_delta
 
 
 def getInfoAmbioMon(extended=False):
     """Info on the AmbioMon Device"""
 
     AmbioInfo  = ""
-    AmbioInfo += "Configured Connection:        Server IP:Port: '{}:{}'  Timeout: {} sec\n"\
-        .format(gglobs.AmbioServerIP, gglobs.AmbioServerPort, gglobs.AmbioTimeout)
+    AmbioInfo += "Configured Connection:        Server IP:Port: '{}:{}'  Timeout: {} sec\n".format(
+                                                                                                    g.AmbioServerIP,
+                                                                                                    g.AmbioServerPort,
+                                                                                                    g.AmbioTimeout
+                                                                                                  )
 
-    if not gglobs.Devices["AmbioMon"][CONN]: return AmbioInfo + "<red>Device is not connected</red>"
+    if not g.Devices["AmbioMon"][g.CONN]: return AmbioInfo + "<red>Device is not connected</red>"
 
-    AmbioInfo += "Connected Device:             {}\n"             .format(gglobs.Devices["AmbioMon"][DNAME])
-    AmbioInfo += "CPU Frequency:                {} MHz\n"           .format(gglobs.AmbioCPUFrequency)
-    AmbioInfo += "Configured Variables:         {}\n"               .format(gglobs.AmbioVariables)
-    AmbioInfo += getTubeSensitivities(gglobs.AmbioVariables)
+    AmbioInfo       += "Connected Device:             {}\n"                                     .format(g.Devices["AmbioMon"][g.DNAME])
+    AmbioInfo       += "CPU Frequency:                {:0.0f} MHz\n"                            .format(g.AmbioCPUFrequency)
+    AmbioInfo       += "Geiger tube voltage:          {:0.0f} Volt\n"                           .format(g.AmbioVoltage)
+    AmbioInfo       += "Radiation Selector:           {:0.0f}   (1:Alpha+B+G, 2:Beta+G, 3:Gamma)\n"   .format(g.AmbioSelector)
+    AmbioInfo       += "Configured Variables:         {}\n"                                     .format(g.AmbioVariables)
+    AmbioInfo       += getTubeSensitivities(g.AmbioVariables)
 
-    AmbioInfo += "Data Type Mode [LAST, AVG]:   {}\n"               .format(gglobs.AmbioDataType)
-    AmbioInfo += "\n"
-    AmbioInfo += "TESTING USAGE:\n"
-    AmbioInfo += "   CPS2nd:                    CPU frequency\n"
-    AmbioInfo += "   T     :                    ESP Batt volt\n"
-    AmbioInfo += "   H     :                    ?            \n"
-    AmbioInfo += "   X     :                    Avg ESP BattV\n"
+    AmbioInfo       += "Data Type Mode [LAST, AVG]:   {}\n"                                     .format(g.AmbioDataType)
+    AmbioInfo       += "\n"
+    AmbioInfo       += "AmbioMon++ Configuration:\n"
+    AmbioInfo       += "   CPM:                       CPM\n"
+    AmbioInfo       += "   CPS:                       CPS\n"
+    AmbioInfo       += "   CPM1st:                    CPM\n"
+    AmbioInfo       += "   CPS1st:                    CPS\n"
+    AmbioInfo       += "   CPM2nd:                    Delta NTP - RTC calculated by GeigerLog\n"
+    AmbioInfo       += "   CPS2nd:                    Delta NTP Time to GeigerLog Time [sec]\n"
+    AmbioInfo       += "   CPM3rd:                    Delta Ambio Time to GeigerLog Time [sec]\n"
+    AmbioInfo       += "   CPS3rd:                    Delta RTC Time to GeigerLog Time [sec]\n"
+    AmbioInfo       += "   T:                         Temperature BME280\n"
+    AmbioInfo       += "   P:                         Pressure BME280\n"
+    AmbioInfo       += "   H:                         ESP Chip Volt\n"
+    AmbioInfo       += "   X:                         ESPChipVolt Avg\n"                        # alt: ESP Batt Volt
 
     if extended == True:
-        AmbioInfo += "Geiger tube voltage:          {} Volt\n"  .format(gglobs.AmbioVoltage)
-        AmbioInfo += "Cycletime:                    {} sec\n"   .format(gglobs.AmbioCycletime)
-        AmbioInfo += "Frequency:                    {} Hz\n"    .format(gglobs.AmbioFrequency)
-        AmbioInfo += "PWM:                          {}\n"       .format(gglobs.AmbioPwm)
-        AmbioInfo += "Saving:                       {}\n"       .format(gglobs.AmbioSav)
-        AmbioInfo += "Server Timeout [s]            {}\n"       .format(gglobs.AmbioTimeout)
+        AmbioInfo   += "\n"
+        AmbioInfo   += "Extended Info:\n"
+        AmbioInfo   += "   Frequency:                 {} Hz\n"        .format(g.AmbioFrequency)
+        AmbioInfo   += "   PWM:                       {}\n"           .format(g.AmbioPwm)
+        AmbioInfo   += "   DevID Page:                {}\n"           .format(g.AmbioDevIDPage)
+        AmbioInfo   += "   Calib Page:                {}\n"           .format(g.AmbioCalibPage)
+        AmbioInfo   += "   Data Page:                 {}\n"           .format(g.AmbioDataPage.replace("  ", ""))
 
     return AmbioInfo
 
@@ -861,22 +1177,26 @@ def getInfoAmbioMon(extended=False):
 def pingAmbioServer():
     """
     Ping the AmbioMon Server.
-    Remember that a host may not respond to a ping (ICMP) request even if the
-    host name is valid!
+    Remember that a host may not respond to a ping (ICMP) request even if the host name is valid!
     """
+
+    # fprints like:
+    #       ==== Pinging AmbioMon Server 10.0.0.56 ===============================================
+    #       Ping Result:                  Success, time=191 ms
+
     setBusyCursor()
 
-    fprint(header("Pinging AmbioMon Server " + gglobs.AmbioServerIP))
-    QtUpdate() # to make the header visible right away
+    fprint(header("Pinging AmbioMon Server " + g.AmbioServerIP))
+    QtUpdate() # to make the header visible right away as ping may take time
 
-    presult, ptime = ping(gglobs.AmbioServerIP)
+    presult, ptime = ping(g.AmbioServerIP)
 
     pr = "Ping Result:"
     if presult:
-        playWav("ok")
+        bip()
         fprint (pr, "Success, ", ptime)
     else:
-        efprint(pr, "Failure")
+        efprint(pr, "Failure")          # includes burp()
 
     setNormalCursor()
 

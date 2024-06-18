@@ -24,18 +24,24 @@ I2C sensor module SCD41 for CO2 (by photoacoustic sensing), Temperature, and Hum
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
-"""
-Reference: Sensirion Data sheet SCD4x - Breaking the size barrier in CO2 sensing; Version 1.1 – April 2021
-File: "Sensirion_CO2_Sensors_SCD40_SCD41_Datasheet.pdf"
-https://www.sensirion.com/de/umweltsensoren/evaluationskit-sek-environmental-sensing/evaluationskit-sek-scd41/
-"""
+
+# Reference: Sensirion Data sheet SCD4x - Breaking the size barrier in CO2 sensing; Version 1.1 – April 2021
+# File: "Sensirion_CO2_Sensors_SCD40_SCD41_Datasheet.pdf"
+# https://www.sensirion.com/de/umweltsensoren/evaluationskit-sek-environmental-sensing/evaluationskit-sek-scd41/
+#
+# Datasheets do NOT mention need for clock stretching! Max freq = 100 kHz
+#
+# Apparently SCD41 is incompatible with Raspi!
+# see:  "Are the Sensirion CO2 sensors SCD30 and SCD41 completely incompatible with the Raspi?"
+#  at:  https://forums.raspberrypi.com/viewtopic.php?t=346216
+
 
 
 
@@ -45,25 +51,27 @@ class SensorSCD41:
     addr    = 0x62          # the only option for the SCD41
     name    = "SCD41"
     serno   = "not set"     # SCD41 Serial Number, like: 273.325.796.834.238
+    handle  = g.I2CDongle   # default for use by 'I2C' device; RaspiI2C defines its own
 
 
-    def __init__(self, addr):
+    def __init__(self, addr, I2Chandle=None):
         """Init SensorSCD41 class"""
 
         self.addr    = addr
+        if I2Chandle is not None: self.handle = I2Chandle
 
 
     def SensorInit(self):
         """Scan for presence, get Serial No, start periodic measurement"""
 
-        fncname = "SensorInit: " + self.name + ": "
+        defname = "SensorInit: " + self.name + ": "
         dmsg    = "Sensor {:8s} at address 0x{:02X}".format(self.name, self.addr)
 
-        dprint(fncname)
+        dprint(defname)
         setIndent(1)
 
         # check for presence of an I2C device at I2C address
-        if not gglobs.I2CDongle.DongleIsSensorPresent(self.addr):
+        if not self.handle.DongleIsSensorPresent(self.addr):
             # no device found
             setIndent(0)
             return  False, "Did not find any I2C device at address 0x{:02X}".format(self.addr)
@@ -73,29 +81,29 @@ class SensorSCD41:
 
         # # reset (takes 1.2 sec)
         # not good. Also resets the calibration!
-        # gdprint(fncname + "Sensor Reset")
+        # gdprint(defname + "Sensor Reset")
         # self.SensorReset()
 
         # # reinit
         # Before sending the reinit command, the stop measurement command must be issued.!!!
-        # gdprint(fncname + "Sensor re-init")
+        # gdprint(defname + "Sensor re-init")
         # self.SCD41reinit()
 
         # # run self test - das geht schief auf ISS!!! vielleicht:  (timing out after 500mS)???
-        # gdprint(fncname + "Sensor Self-Test")
+        # gdprint(defname + "Sensor Self-Test")
         # self.SCD41SelfTest()
 
         # # stop auto measurements (maybe active from last start!!)
-        gdprint(fncname + "stopping Auto-Measurement")
+        gdprint(defname + "stopping Auto-Measurement")
         wrt  = self.SCD41StopPeriodicMeasurement()
 
         # # get serial number - requires that auto-measurement is stopped!
-        gdprint(fncname + "Getting SerNo:")
+        gdprint(defname + "Getting SerNo:")
         self.serno = "{:n}".format(self.SCD41getSerialNumber())
-        gdprint(fncname + "Got SerNo: " + self.serno)
+        gdprint(defname + "Got SerNo: " + self.serno)
 
         # # Trigger auto measurements
-        # gdprint(fncname + "Triggering Auto-Measurement")
+        # gdprint(defname + "Triggering Auto-Measurement")
         wrt  = self.SCD41StartPeriodicMeasurement()
 
         setIndent(0)
@@ -113,13 +121,13 @@ class SensorSCD41:
         # should be applied to the SCD4x.
         # takes 20 ms
 
-        fncname = "SCD41reinit: "
+        defname = "SCD41reinit: "
 
         tmsg      = "reinit"
         register  = 0x3646
         readbytes = 0
         data      = []
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
 
         # Required wait 20 ms
         time.sleep(0.02)
@@ -137,17 +145,17 @@ class SensorSCD41:
         # Wait 10000 ms
         # Response 0x0000 0x81 No malfunction detected (CRC of 0x0000 = 0x81)
 
-        fncname = "SCD41SelfTest: "
+        defname = "SCD41SelfTest: "
 
         tmsg      = "SelfTest"
         register  = 0x3639
         readbytes = 3
         data      = []
         wait      = 10      # Required wait 10000 ms!
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg, wait=wait)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg, wait=wait)
 
-        if len(answ) == readbytes and answ == [0x00, 0x00, 0x81]: gdprint(fncname + "SelfTest OK, response: ", answ)
-        else:                                                     edprint(fncname + "SelfTest WRONG, response: ", answ)
+        if len(answ) == readbytes and answ == [0x00, 0x00, 0x81]: gdprint(defname + "SelfTest OK, response: ", answ)
+        else:                                                     edprint(defname + "SelfTest WRONG, response: ", answ)
 
         return answ
 
@@ -171,20 +179,20 @@ class SensorSCD41:
         # ELV: SCD41getSerialNumber: answ: [13, 65, 205, 191, 7, 30, 59, 79, 58]  SerNo:  14.576.028.957.519     # das isses wohl
 
 
-        fncname = "SCD41getSerialNumber: "
+        defname = "SCD41getSerialNumber: "
 
         tmsg      = "SerNo"
         register  = 0x3682
         readbytes = 9
         data      = []
         wait      = 0.001       # 1 ms wait suggested by manual (bei IOW: 100 ms reicht auch nicht)
-        answ      = gglobs.I2CDongle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg, wait=wait)
+        answ      = self.handle.DongleWriteRead  (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg, wait=wait)
 
         if    len(answ) != readbytes                                    \
            or answ == [128, 6, 4, 128, 6, 4, 128, 6, 4]                 \
            or answ == [255, 255, 255, 255, 255, 255, 255, 255, 255]:
-            edprint(fncname + "Failure reading Serial Number, reponse: ", answ)
-            return gglobs.NAN
+            edprint(defname + "Failure reading Serial Number, reponse: ", answ)
+            return g.NAN
 
         # check for correct crc
         words = 3
@@ -192,12 +200,12 @@ class SensorSCD41:
         if getCRC8((answ[3], answ[4])) == answ[5]:   words -= 1
         if getCRC8((answ[6], answ[7])) == answ[8]:   words -= 1
         if words > 0:
-            if getCRC8((answ[0], answ[1])) == answ[2]:   gdprint(fncname + "Word0 has correct crc8")
-            else:                                        edprint(fncname + "Word0 has WRONG crc8")
-            if getCRC8((answ[3], answ[4])) == answ[5]:   gdprint(fncname + "Word1 has correct crc8")
-            else:                                        edprint(fncname + "Word1 has WRONG crc8")
-            if getCRC8((answ[6], answ[7])) == answ[8]:   gdprint(fncname + "Word2 has correct crc8")
-            else:                                        edprint(fncname + "Word2 has WRONG crc8")
+            if getCRC8((answ[0], answ[1])) == answ[2]:   gdprint(defname + "Word0 has correct crc8")
+            else:                                        edprint(defname + "Word0 has WRONG crc8")
+            if getCRC8((answ[3], answ[4])) == answ[5]:   gdprint(defname + "Word1 has correct crc8")
+            else:                                        edprint(defname + "Word1 has WRONG crc8")
+            if getCRC8((answ[6], answ[7])) == answ[8]:   gdprint(defname + "Word2 has correct crc8")
+            else:                                        edprint(defname + "Word2 has WRONG crc8")
 
         # answ = [0xf8, 0x96, 0x31, 0x9f, 0x07, 0xc2, 0x3b, 0xbe, 0x89] # example serial number
         # answ = [13, 65, 205, 191, 7, 30, 59, 79, 58]                  # my serial number
@@ -206,7 +214,7 @@ class SensorSCD41:
         word2 = answ[6] << 8 | answ[7]
         serialno = word0 << 32 | word1 << 16 | word2
 
-        gdprint(fncname + " "*68 + "SerNo: {:n}".format(serialno) )
+        gdprint(defname + " "*68 + "SerNo: {:n}".format(serialno) )
 
         return serialno
 
@@ -219,13 +227,13 @@ class SensorSCD41:
         # write 0x21b1
         # response: None
 
-        fncname = "SCD41StartPeriodicMeasurement: "
+        defname = "SCD41StartPeriodicMeasurement: "
 
         tmsg      = "StartMeas"
         register  = 0x21b1
         readbytes = 0
         data      = []
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
 
         return wrt
 
@@ -239,16 +247,16 @@ class SensorSCD41:
         # Write 0x3f86
         # response: None
 
-        fncname = "SCD41StopPeriodicMeasurement: "
+        defname = "SCD41StopPeriodicMeasurement: "
 
         tmsg      = "StopMeas"
         register  = 0x3f86
         readbytes = 0
         data      = []
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
 
         # Required wait 500 ms
-        dprint(fncname + "waiting 500 ms")
+        dprint(defname + "waiting 500 ms")
         time.sleep(0.5)
 
         return wrt
@@ -270,8 +278,8 @@ class SensorSCD41:
         # response should  be an 0x8XXX value
 
         start   = time.time()
-        fncname = "SCD41DataReady: "
-        # dprint(fncname)
+        defname = "SCD41DataReady: "
+        # dprint(defname)
 
         ready     = -1      # code for failure
         tmsg      = "Ready?"
@@ -279,7 +287,7 @@ class SensorSCD41:
         readbytes = 3
         data      = []
         wait      = 0.001       # Required wait 1 ms
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg, wait=wait)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg, wait=wait)
 
         duration = (time.time() - start) * 1000
 
@@ -296,8 +304,8 @@ class SensorSCD41:
                 msg   = "41  Data NOT ready"
                 color = BOLDRED
 
-            # msg = " "*74 + fncname + "{} {}".format(color, msg)
-            msg = fncname + " "*70 + "{}{}".format(color, msg)
+            # msg = " "*74 + defname + "{} {}".format(color, msg)
+            msg = defname + " "*70 + "{}{}".format(color, msg)
 
         elif len(answ) == 0:
             msg = BOLDRED + "41  No data returned: answ= '{}'".format(answ)
@@ -307,8 +315,10 @@ class SensorSCD41:
 
         cdprint(msg + "  {:0.1f} ms".format(duration))
 
+### testing
         return ready
-
+        # return True
+###
 
     def SensorgetValues(self):
         """Read the CO2, Temp and Humid values if available"""
@@ -343,10 +353,10 @@ class SensorSCD41:
 
 
         start   = time.time()
-        fncname = "SensorgetValues: " + self.name + ": "
-        sgvdata = (gglobs.NAN,) * 3
+        defname = "SensorgetValues: " + self.name + ": "
+        sgvdata = (g.NAN,) * 3
 
-        cdprint(fncname)
+        cdprint(defname)
         setIndent(1)
 
         dataReady = self.SCD41DataReady()
@@ -365,12 +375,12 @@ class SensorSCD41:
             register  = 0xec05
             readbytes = 9
             data      = []
-            answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
+            answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
             duration  = (time.time() - start) * 1000
 
             if len(answ) == readbytes:
                 if set([0x80, 0x06, 0x04]).issubset(answ):  # check if 80 06 04 is in answ (Indicates wrong data)
-                    msg = TYELLOW + fncname + "Wrong data: ", answ
+                    msg = TYELLOW + defname + "Wrong data: ", answ
 
                 else:
                     # data look ok
@@ -384,9 +394,9 @@ class SensorSCD41:
                     humid   = word2 / p16 * 100
                     sgvdata = (co2, temp, humid)
 
-                    msg = TGREEN + fncname + "CO2:{:6.3f}, Temp:{:6.3f}, Humid:{:6.3f}  dur:{:0.2f} ms".format(*sgvdata, duration)
+                    msg = TGREEN + defname + "CO2:{:6.3f}, Temp:{:6.3f}, Humid:{:6.3f}  dur:{:0.2f} ms".format(*sgvdata, duration)
             else:
-                msg = TYELLOW + fncname + "Failure reading proper byte count"
+                msg = TYELLOW + defname + "Failure reading proper byte count"
 
             gdprint(msg)
 
@@ -400,7 +410,7 @@ class SensorSCD41:
         info  = "{}\n"                             .format("CO2, Temperature, Humidity")
         info += "- Address:         0x{:02X}\n"    .format(self.addr)
         info += "- Serial No:       {}\n"          .format(self.serno)
-        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in gglobs.Sensors["SCD41"][5]))
+        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in g.Sensors["SCD41"][5]))
 
         return info.split("\n")
 
@@ -416,21 +426,21 @@ class SensorSCD41:
         # duration: 0.6 ms + 1.2 sec waiting!
 
         start   = time.time()
-        fncname = "SensorReset: " + self.name + ": "
-        # dprint(fncname)
+        defname = "SensorReset: " + self.name + ": "
+        # dprint(defname)
 
         tmsg      = "Reset"
         register  = 0x3632
         readbytes = 0
         data      = []
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=2, msg=tmsg)
 
         duration = 1000 * (time.time() - start)
 
         # Required wait 1200 ms
         time.sleep(1.2)
 
-        return fncname + "took {:0.1f} ms + 1.2 sec wait".format(duration)
+        return defname + "took {:0.1f} ms + 1.2 sec wait".format(duration)
 
 
     def SCD41setFRC(self, co2ref):
@@ -456,15 +466,15 @@ class SensorSCD41:
         # Response: 3 bytes:  0x7fce 0x7b (hexadecimal) Response: -50 ppm CRC of 0x7fce
 
 
-        fncname = "SCD41setFRC: " + self.name + ": "
-        dprint(fncname)
+        defname = "SCD41setFRC: " + self.name + ": "
+        dprint(defname)
 
         # convert the reference value to msb lsb, crc
         msb, lsb  = int((co2ref // 256)),  (co2ref & 0xFF)
         # msb, lsb, crc8 = 0x01, 0xe0, 0xb4                     # TEST set to 480 ppm
 
         crc8      = getCRC8((msb, lsb))
-        cdprint(fncname + "CO2ref: {} ppm, => msb:{}, lsb:{}, crc8:{}, Hex: {:02X} {:02X} {:02X}".format(co2ref, msb, lsb, crc8, msb, lsb, crc8))
+        cdprint(defname + "CO2ref: {} ppm, => msb:{}, lsb:{}, crc8:{}, Hex: {:02X} {:02X} {:02X}".format(co2ref, msb, lsb, crc8, msb, lsb, crc8))
 
         self.SCD41StopPeriodicMeasurement() #register  = 0x3f86
 
@@ -474,16 +484,16 @@ class SensorSCD41:
         readbytes = 3
         data      = [msb, lsb, crc8]
         wait      = 0.4             # 400 ms wait
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg, wait=wait)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=2, msg=tmsg, wait=wait)
 
-        cdprint(fncname + "force calib answ: {}".format(answ) )
+        cdprint(defname + "force calib answ: {}".format(answ) )
 
         # calc corr
-        corr = gglobs.NAN
+        corr = g.NAN
         if len(answ) == 3:
             word0 = answ[0] << 8 | answ[1]  # answ[2] is CRC
             corr  = word0 - 0x8000
-            cdprint(fncname + "word0:{} (=0x{:04x}), CO2 corr:{} ppm".format(word0, word0, corr) )
+            cdprint(defname + "word0:{} (=0x{:04x}), CO2 corr:{} ppm".format(word0, word0, corr) )
 
         self.SCD41StartPeriodicMeasurement()
 

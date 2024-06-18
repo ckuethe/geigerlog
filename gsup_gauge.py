@@ -26,14 +26,14 @@ include in programs with:
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = ["""The original code is from here:
                         https://github.com/StefanHol/AnalogGaugeWidgetPyQt
                         and modified
                         """]
 __license__         = "GPL3"
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 
 class AnalogGaugeWidget(QWidget):
@@ -433,7 +433,7 @@ class AnalogGaugeWidget(QWidget):
         # print(type(color_array))
         if 'list' in str(type(color_array)):
             self.scale_polygon_colors = color_array
-        elif color_array == None:
+        elif color_array is None:
             self.scale_polygon_colors = [[.0, Qt.transparent]]
         else:
             self.scale_polygon_colors = [[.0, Qt.transparent]]
@@ -469,7 +469,7 @@ class AnalogGaugeWidget(QWidget):
 
         # todo enable/disable bar graf here
         if not self.enable_barGraph:
-            # float_value = ((length / (self.value_max - self.value_min)) * (self.value - self.value_min))
+            float_value = ((length / (self.value_max - self.value_min)) * (self.value - self.value_min))
             length = int(round((length / (self.value_max - self.value_min)) * (self.value - self.value_min)))
             print("f: %s, l: %s" %(float_value, length))
             pass
@@ -494,7 +494,7 @@ class AnalogGaugeWidget(QWidget):
         return polygon_pie
 
     def draw_filled_polygon(self, outline_pen_with=0):
-        if not self.scale_polygon_colors == None:
+        if not self.scale_polygon_colors is None:
             painter_filled_polygon = QPainter(self)
             painter_filled_polygon.setRenderHint(QPainter.Antialiasing)
             # Koordinatenursprung in die Mitte der Flaeche legen

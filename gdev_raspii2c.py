@@ -25,259 +25,654 @@ include in programs with:
 #    along with GeigerLog.  If not, see <http://www.gnu.org/licenses/>.
 ###############################################################################
 
+
+
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
-from   gsup_utils  import *
+from gsup_utils   import *
+
+# Pseudo-dongle needs global access
+RaspiI2CDongle  = None
+
+# the local storage every second for alldata
+RaspiI2Calldata = {}
+
+# Index into g.RaspiI2CSensor dict
+I2CADDR    = 0      # I2C address
+I2CACTIV   = 1      # Activations status
+I2CCONN    = 2      # Connection status
+I2CHNDL    = 3      # Handle
+I2CVCNT    = 4      # Var Count
+I2CVARS    = 5      # Var List
+I2CRUNS    = 6      # Burn-in cycles
+I2CAVG     = 7      # Averaging cycles
+I2CFUNC    = 8      # Functions (short notation, like T,P,H)
+
 
 
 def initRaspiI2C():
-    """Initialize I2C"""
+    """Initialize Raspi I2C"""
 
-    global RaspiRevision, RaspiGPIOVersion, GPIO
+    global RaspiI2CDongle
 
-    fncname   = "initRaspiI2C: "
+    defname = "initRaspiI2C: "
+    dprint(defname)
 
-    # configuration device
-    if gglobs.RaspiI2CVariables   == "auto": gglobs.RaspiI2CVariables   = "Temp, Press"     # everything available (Press=Avg(T)
+    g.Devices["RaspiI2C"][g.DNAME] = "RaspiI2C"
+    g.Devices["RaspiI2C"][g.CONN]  = False          # default to no connection
 
-    # configuration I2C hardware
-    if gglobs.RaspiI2CAdress      == "auto": gglobs.RaspiI2CAdress      = 0x48              # default address
+    # computer is NOT a Raspi
+    if not g.isRaspi:
+        # NOT on Raspi
+        g.RaspiI2CSmbusHandle      = None
+        g.RaspiSmbus_Version       = "Not a Raspi"
+        return "Not a Raspi. The RaspiI2C Device can be run only on a Raspberry Pi computer."
 
-    setLoggableVariables("RaspiI2C", gglobs.RaspiI2CVariables)
+    # computer is a Raspi
+    try:
+        # for smbus2 see:  https://github.com/kplindegaard/smbus2
+        import smbus2 as smbus
 
-    gglobs.Devices["RaspiI2C"][VNAME] = gglobs.Devices["RaspiI2C"][VNAME][0:2]              # no more than 2 variables
+    except ImportError as ie:
+        msg  = "The module 'smbus2' could not be imported, but is required."
+        exceptPrint(ie, msg)
+        msg += "\nRedo the GeigerLog setup."
+        return msg + str(e)
 
-    # is it a raspberrypi?
-    gglobs.isRaspi = is_raspberrypi()
-
-    if gglobs.isRaspi:
-        # I2C on Raspi
-        simul = ""
-        try:
-            import smbus
-        except ImportError as ie:
-            msg  = "The module 'smbus' could not be imported, but is required."
-            exceptPrint(ie, msg)
-            msg  = "\n\n" + msg + "\nOn Raspberry Pi install with: 'sudo apt install Python-smbus'."
-            msg += "\nOn other computers install with 'python3 -m pip install -U smbus'."
-            return msg
-        except Exception as e:
-            msg = str(e)
-            exceptPrint(e, "")
-            return msg
-
-        try:
-            import RPi.GPIO as GPIO
-        except ImportError as ie:
-            msg  = "The module 'RPi.GPIO' could not be imported, but is required."
-            exceptPrint(ie, msg)
-            msg  = "\n\n" + msg + "\nOn Raspberry Pi install with: 'sudo apt install python3-rpi.gpio'."
-            msg += "\nOn other computers install with 'python3 -m pip install -U RPi.GPIO'."
-            return msg
-        except Exception as e:
-            msg = str(e)
-            exceptPrint(e, "")
-            return msg
-
-
-        # initialize I2C-Bus
-        gglobs.RaspiI2CHandle   = smbus.SMBus(1)
-        gglobs.Devices["RaspiI2C"][DNAME] = "Raspi I2C {}".format(gglobs.RaspiI2CSensor)
-
-        RaspiRevision    = GPIO.RPI_INFO['P1_REVISION']
-        RaspiGPIOVersion = GPIO.VERSION
+    except Exception as e:
+        msg = "Failure on Importing 'smbus2' "
+        exceptPrint(e, msg)
+        return msg + str(e)
 
     else:
-        # NOT on Raspi; simulation only
-        simul = "SIM"
-        gglobs.RaspiI2CHandle   = None
-        gglobs.Devices["RaspiI2C"][DNAME] = "RaspiI2C SIMULATION-ONLY (Normal distribution data)"
-
-        RaspiRevision       = "(Not a Raspi)"
-        RaspiGPIOVersion    = "(Not a Raspi)"
-
-        fprintInColor("INFO: A Raspi was NOT found. This is only a simulation!", "blue")
+        g.RaspiSmbus_Version = smbus.__version__
+        g.versions["smbus2"] = g.RaspiSmbus_Version
 
 
-    dprint("I2C Settings:")
-    dprint("   {:27s} : {}".format("I2C Sensor"                 , gglobs.RaspiI2CSensor))
-    dprint("   {:27s} : {}".format("I2C Sensor Register"        , gglobs.RaspiI2CSensorRegister))
+    # init the I2C-Bus #1
+    try:
+        g.RaspiI2CSmbusHandle  = smbus.SMBus(1)
+        g.RaspiI2CdirectHandle = smbus.i2c_msg()  # used for Reset code below
 
-    gglobs.Devices["RaspiI2C"][CONN] = True
+    except Exception as e:
+        msg = "Failure initializing I2C-Bus - is it activated in the Raspi Interfaces?"
+        exceptPrint(e, defname + msg)
+        return msg + str(e)
 
-    # resetRaspiI2C()                                           # reset all datapoints
-    resetRaspiI2C("init")
 
-    gglobs.RaspiI2CThreadStopFlag = False
-    gglobs.RaspiI2CThread         = threading.Thread(target = RaspiI2CThreadTarget)
-    gglobs.RaspiI2CThread.daemon  = True
-    gglobs.RaspiI2CThread.start()
+    ### init dongle and all sensors ######################
+    setIndent(1)
+    cdprint(defname, "Init & Connect dongle and all activated sensors")
+    setIndent(1)
 
-    dprint("   {:27s} : {}".format("RaspiI2CThread.daemon"      , gglobs.RaspiI2CThread.daemon))
-    dprint("   {:27s} : {}".format("RaspiI2CThread.is_alive"    , gglobs.RaspiI2CThread.is_alive()))
+    # instantiate Pseudo-Dongle
+    RaspiI2CDongle = RaspiDongle()
+    cdprint("Dongle: ", RaspiDongle.name)
+    RaspiI2CDongle.DongleInit()
 
-    return simul
+    SensorCount = 0
+    for sensor in g.RaspiI2CSensor:
+        if g.RaspiI2CSensor[sensor][1]:
+            cdprint("Sensor: ", sensor)
+        else:
+            cdprint("Sensor: {:8s} - not activated".format(sensor) )
+            continue
+
+        setIndent(1)
+
+        ### set the I2C handle for the current sensor
+        address = g.RaspiI2CSensor[sensor][I2CADDR]
+
+        # LM75 - I2C sensor Temperature
+        if   sensor == "LM75"      :
+            import gdev_i2c_Sensor_LM75         as LM75
+            g.RaspiI2CSensor[sensor][I2CHNDL] = LM75    .SensorLM75     (address, RaspiI2CDongle)
+
+        # BME280 - I2C sensor Temperature, Pressure, Humidity
+        elif sensor == "BME280"    :
+            import gdev_i2c_Sensor_BME280       as BME280
+            g.RaspiI2CSensor[sensor][I2CHNDL] = BME280  .SensorBME280   (address, RaspiI2CDongle)
+
+        # BH1750 - I2C sensor Ambient-Light-Sensor (Visible Light)
+        elif sensor == "BH1750"    :
+            import gdev_i2c_Sensor_BH1750       as BH1750
+            g.RaspiI2CSensor[sensor][I2CHNDL] = BH1750  .SensorBH1750   (address, RaspiI2CDongle)
+
+        # TSL2591 - I2C sensor Light Intensity Visible + Infrared
+        elif sensor == "TSL2591"   :
+            import gdev_i2c_Sensor_TSL2591      as TSL2591
+            g.RaspiI2CSensor[sensor][I2CHNDL] = TSL2591 .SensorTSL2591  (address, RaspiI2CDongle)
+
+        # BMM150 - I2C sensor Geomagnetic
+        elif sensor == "BMM150"   :
+            import gdev_i2c_Sensor_BMM150       as BMM150
+            g.RaspiI2CSensor[sensor][I2CHNDL] = BMM150  .SensorBMM150   (address, RaspiI2CDongle)
+
+        # SCD30 - I2C sensor CO2 (by NDIR) + Temperature + Humidity
+        elif sensor == "SCD30"   :
+            import gdev_i2c_Sensor_SCD30        as SCD30
+            g.RaspiI2CSensor[sensor][I2CHNDL] = SCD30   .SensorSCD30    (address, RaspiI2CDongle)
+
+        # SCD41 - I2C sensor CO2 by Photoacoustic, Temperature, Humidity
+        elif sensor == "SCD41"   :
+            import gdev_i2c_Sensor_SCD41        as SCD41
+            g.RaspiI2CSensor[sensor][I2CHNDL] = SCD41   .SensorSCD41    (address, RaspiI2CDongle)
+
+        # GDK101 - I2C sensor Radioactivity
+        # --- ATTENTION:  it does need a 5V supply! ---
+        elif sensor == "GDK101"  :
+            import gdev_i2c_Sensor_GDK101       as GDK101
+            g.RaspiI2CSensor[sensor][I2CHNDL] = GDK101  .SensorGDK101   (address, RaspiI2CDongle)
+
+
+        # Init current sensor
+        found, msg = g.RaspiI2CSensor[sensor][I2CHNDL].SensorInit()
+        if found:
+            SensorCount += 1
+            g.RaspiI2CSensor[sensor][I2CCONN]  = True        # connected
+            msg = "Initialized and connected " + msg
+            fprint(msg)
+            dprint(msg)
+
+        else:
+            g.RaspiI2CSensor[sensor][I2CCONN]  = False       # NOT connected
+            msg1 = "Failed initializing sensor {};  response: ".format(sensor)
+            efprint(msg1 + "\n" + msg)
+            rdprint(msg1 + msg)
+
+        setIndent(0)
+
+    setIndent(0)
+    ###### end sensor-init loop ######################
+
+    if SensorCount == 0:
+        returnmsg = "No Sensors found"
+
+    else:
+        returnmsg = ""
+        g.Devices["RaspiI2C"][g.CONN]  = True
+        fprint("RaspiI2C device is connected with {} sensor(s)".format(SensorCount))
+
+        # get the variables from all sensors combined
+        allvars = []    # list to hold the vnames
+        for sensor in g.RaspiI2CSensor:
+            # rdprint(defname, "sensor: ", sensor, "   ",  g.RaspiI2CSensor[sensor])
+            if g.RaspiI2CSensor[sensor][I2CACTIV]:
+                temp = []
+                for vname in g.RaspiI2CSensor[sensor][I2CVARS]:
+                    cvname = correctVariableCaps(vname)
+                    if cvname != "" and cvname != "auto":   temp.append(cvname)
+
+                g.RaspiI2CSensor[sensor][I2CVARS] = temp[0 : g.RaspiI2CSensor[sensor][I2CVCNT]] # limit to configured number of vars
+                allvars += g.RaspiI2CSensor[sensor][I2CVARS]
+
+        g.RaspiI2CVariables = setLoggableVariables("RaspiI2C", ", ".join(allvars))      # RaspiI2CVariables is a string
+        g.RaspiI2Cvarlist   = g.RaspiI2CVariables.replace(" ", "").split(",")
+
+        for vname in g.RaspiI2CVariables.replace(" ", "").split(","):
+            # g.RaspiI2CDataStore[vname] = []
+            g.RaspiI2CDataStore[vname] = deque([], 60)
+
+    # burn-in
+    RaspiSensorsBurnIn()
+
+    # reset
+    resetRaspiI2C()
+
+    # setup thread
+    g.RaspiI2CThreadStopFlag = False
+    g.RaspiI2CThread         = threading.Thread(target = RaspiI2CThreadTarget)
+    g.RaspiI2CThread.daemon  = True
+    g.RaspiI2CThread.start()
+
+    # printout RaspiI2C Settings
+    ptmplt = "   {:27s} : {}"
+    dprint("RaspiI2C Settings:")
+    dprint(ptmplt.format("Raspi Computer Model"     , g.RaspiModel))
+    dprint(ptmplt.format("Raspi SW smbus2 Version"  , g.RaspiSmbus_Version))
+    dprint(ptmplt.format("RaspiI2C Sensors Defined" , ""))
+    for sensor in g.RaspiI2CSensor:
+        sadd = "None" if g.RaspiI2CSensor[sensor][I2CADDR] is None else hex(g.RaspiI2CSensor[sensor][I2CADDR])
+        scon = "connected"  if g.RaspiI2CSensor[sensor][I2CCONN] else "---"
+        dprint("   {:27s} : {:10s} address:{}  {}".format("   Sensor", sensor, sadd, scon))
+
+    dprint("   {:27s} : {}".format("RaspiI2CThread.daemon"      , g.RaspiI2CThread.daemon))
+    dprint("   {:27s} : {}".format("RaspiI2CThread.is_alive"    , g.RaspiI2CThread.is_alive()))
+
+    setIndent(0)
+    return returnmsg
 
 
 def terminateRaspiI2C():
-    """closes I2C handle"""
+    """closes RaspiI2C handle"""
 
-    fncname = "terminateRaspiI2C: "
-    dprint(fncname)
+    defname = "terminateRaspiI2C: "
+    dprint(defname)
     setIndent(1)
 
-    gglobs.RaspiI2CThreadStopFlag = True
+    g.RaspiI2CThreadStopFlag = True
 
-    if gglobs.RaspiI2CHandle is not None:
-        try:
-            gglobs.RaspiI2CHandle.close()
-        except Exception as e:
-            msg = "I2C connection is not available"
-            exceptPrint(e, msg)
+    time.sleep(0.5) # to let all I2C devices finish
 
-    gglobs.Devices["RaspiI2C"][CONN] = False
+    if g.RaspiI2CSmbusHandle is not None:
+        try:                   g.RaspiI2CSmbusHandle.close()
+        except Exception as e: exceptPrint(e, "RaspiI2C connection is not available")
 
-    dprint(fncname + "Terminated")
+    g.RaspiI2CSmbusHandle = None
+    g.Devices["RaspiI2C"][g.CONN] = False
+
+    dprint(defname + "Terminated")
     setIndent(0)
 
 
 def RaspiI2CThreadTarget():
     """The Target function for the RaspiI2C thread"""
 
-    fncname  = "RaspiI2CThreadTarget: "
+    global RaspiI2Calldata
 
-    nexttime = time.time() + 0.01                                   # allows to skip first 10 msec to let printouts finish
-    while not gglobs.RaspiI2CThreadStopFlag:
+    defname  = "THREAD_RaspiI2CThreadTarget: "
+
+    nexttime = time.time() + 1                                  # give it some delay before starting
+    if g.nextnexttime is None:  g.nextnexttime = nexttime + 1   # weil g.logging früher gesetzt wird als g.nextnexttime :-/
+    while not g.RaspiI2CThreadStopFlag:
         if time.time() >= nexttime:
-            nexttime += 1
-            if gglobs.RaspiI2CHandle is None:
-                # NOT running on the Raspi, just fudge some normal random numbers
-                Temp = np.random.normal(33, 0.5)
-            else:
-                # running on Raspi
-                Temp = getRaspiTempLM75B()
+            RaspiI2Calldata = RaspiI2CThreadgetData(g.RaspiI2Cvarlist)
 
-            gglobs.RaspiI2CTempDeque.append(Temp)    # advance the position for storing value, or shift left when full
+            if not g.logging: nexttime += 1
+            # else:             nexttime  = g.nextnexttime - 0.1   # start 100 ms before next after next logcycle starts
+            # else:             nexttime  = g.nextnexttime - 0.4   # start 400 ms before next after next logcycle starts
+            #                                                      # TSL2591 braucht 380 ms !!!
+            else:             nexttime  = g.nextnexttime - g.RaspiI2CCumDur
 
-        time.sleep(0.010)                            # gives a 10 ms precision of calling the log call
+        dt = max(0.001, nexttime - time.time())
+        time.sleep(dt)
 
 
-def getRaspiTempLM75B():
-    """get Temp from Raspi I2C connected LM75B"""
+def RaspiI2CThreadgetData(varlist):
+    """collect all I2C data"""
 
-    # NOTE: TIMINGS
-    # on Raspi: read_i2c_block_data ( 2 bytes):  < 0.6 ms
-    # on Raspi: read_i2c_block_data (32 bytes):  < 8.0 ms
+    gDstart = time.time()
 
-    fncname = "getRaspiTempLM75B: "
+    defname = "THREAD_RaspiI2CThreadgetData: "
+    # rdprint(defname, varlist)
+    setIndent(1)
 
-    try:
-        # read 2 bytes (2 must be given or it will return 32 bytes!)
-        raw = gglobs.RaspiI2CHandle.read_i2c_block_data(gglobs.RaspiI2CAdress, gglobs.RaspiI2CSensorRegister, 2)
-    except Exception as e:
-        exceptPrint(e, "Raspi I2C Reading failed")
-        return gglobs.NAN
+    # set sensor values for all vars to NAN
+    SensorValues = {}
+    for vname in g.VarsCopy:    SensorValues[vname] = g.NAN
 
-    msb, lsb = raw
-    temp1    = ((msb << 8 | lsb ) >> 5)            # assuming LM75B with 11bit Temp resolution
-    if temp1 & 0x400: temp1 = temp1 - 0x800        # 0x400 == 0b0100 0000 0000 == 1024, 0x800 == 0b1000 0000 0000 == 2048
-    Temp     = temp1 * 0.125                       # deg Celsius for LM75B; +/- 128°C @11 bit => 0.125 °C per step
+    # get the data from each sensor
+    tsstart  = time.time()
+    cdur     = 100
+    for sensor in g.RaspiI2CSensor:
+        if g.RaspiI2CSensor[sensor][I2CCONN]:
+            sstart     = time.time()
+            dur1st     = 0
+            avglen     = g.RaspiI2CSensor[sensor][7]                            # avglen = the number of 1 sec values to average
+            SensorVals = g.RaspiI2CSensor[sensor][I2CHNDL].SensorgetValues()    # SensorVals is tuple with 1 ... 3 values
+            # mdprint(defname + "sensor: ", sensor, "  values: ", SensorVals)
 
-    return Temp
+            # get data for each var in a sensor
+            for i in range(g.RaspiI2CSensor[sensor][I2CVCNT]):
+                vname = g.RaspiI2CSensor[sensor][I2CVARS][i]
+                if vname != "None":
+                    g.RaspiI2CDataStore[vname].append(SensorVals[i])
+
+                    liststore           = list(g.RaspiI2CDataStore[vname])      # make it a Python list to allow slicing
+                    lenliststore        = len(liststore)
+                    SensorValues[vname] = sum(liststore[-avglen : ]) / min(avglen, lenliststore)
+
+                    # durations
+                    sdur = 1000 * (time.time() - sstart) - dur1st
+                    cdur = 1000 * (time.time() - tsstart)
+
+                    # print only when logging
+                    if g.logging:
+                        if i == 0: dur1st = sdur
+                        rdprint(defname, "{:10s} {:6s} orig:{:<10.3f}  avg:{:<10.3f}  Navg:{:<2d}  storelen:{}  dur:{:5.1f} ms  cum:{:5.1f} ms".format(
+                                          sensor, vname, SensorVals[i], SensorValues[vname], avglen, lenliststore, sdur, cdur))
+
+    g.RaspiI2CCumDur = cdur / 1000 + 0.01
+
+    # scale values and save to alldata
+    alldata = {}
+    for vname in varlist:
+        scaled_SensorVals  = round(applyValueFormula(vname, SensorValues[vname], g.ValueScale[vname]), 3)
+        alldata.update({vname: scaled_SensorVals})
+
+    setIndent(0)
+    # vprintLoggedValues(defname, varlist, alldata, 1000 * (time.time() - gDstart))
+
+    return alldata
 
 
 def getValuesRaspiI2C(varlist):
-    """get the values. only first 2 variables get values"""
-
-    ##############################################
-    def getLastData():
-        """Last recorded value"""
-
-        return gglobs.RaspiI2CTempDeque[-1]
-
-
-    def getLastAvg():
-        """Last 1 min average"""
-
-        AvgTemp = 0
-        lenDT   = len(gglobs.RaspiI2CTempDeque)
-        for i in range(lenDT): AvgTemp += gglobs.RaspiI2CTempDeque[i]
-        return AvgTemp / lenDT
-
-
-    def getValueRaspiI2C(index):
-
-        if   index == 0:  val = getLastData()                  # Temperature
-        elif index == 1:  val = getLastAvg()                   # Average Temperature
-        else:             val = gglobs.NAN
-
-        return val
-    ##############################################
+    """return the within thread collected values"""
 
     start   = time.time()
-    fncname = "getValuesRaspiI2C: "
-    alldata = {}                        # dict for return data
+    defname = "getValuesRaspiI2C: "
 
-    for i, vname in enumerate(varlist):
-        getval = getValueRaspiI2C(i)
-        alldata.update({vname: getval})
-        # gdprint(fncname + "i={}, vname={}, getValueRaspiI2C={}".format(i, vname, getval))
+    vprintLoggedValues(defname, varlist, RaspiI2Calldata, 1000 * (time.time() - start))
 
-    vprintLoggedValues(fncname, varlist, alldata, (time.time() - start) * 1000)
-
-    return alldata
+    return RaspiI2Calldata
 
 
 def getInfoRaspiI2C(extended=False):
     """Info on the RaspiI2C Device"""
 
-    Info =          "Configured Connection:        GeigerLog RaspiI2C Device\n"
+    Info =          "Configured Connection:        GeigerLog PlugIn\n"
 
-    if not gglobs.Devices["RaspiI2C"][CONN]:
+    if not g.Devices["RaspiI2C"][g.CONN]:
         Info +=     "<red>Device is not connected</red>"
+
     else:
-        Info +=     "Connected Device:             {}\n".format(gglobs.Devices["RaspiI2C"][DNAME])
-        Info +=     "I2C Sensor:                   {}\n".format(gglobs.RaspiI2CSensor)
-        Info +=     "Configured Variables:         {}\n".format(gglobs.RaspiI2CVariables)
-        Info +=     getTubeSensitivities(gglobs.RaspiI2CVariables)
+        Info +=     "Connected Device:             {}\n".format(g.Devices["RaspiI2C"][g.DNAME])
+        Info +=     "Configured Variables:         {}\n".format(g.RaspiI2CVariables)
+        Info +=     getTubeSensitivities(g.RaspiI2CVariables)
+        Info +=     "\n"
+
+        Info +=     "Connected RaspiI2C Sensors:\n"
+        Info +=     "   {:<10s} {:15s} {}   {:2s}    {}\n".format("Sensor", "Function", "Adress", "Averaging", "Variables")
+        for sensor in g.RaspiI2CSensor:
+            if g.RaspiI2CSensor[sensor][I2CCONN]:
+                saddr = g.RaspiI2CSensor[sensor][I2CHNDL].addr
+                svars = ", ".join(g.RaspiI2CSensor[sensor][5])
+                sfunc = g.RaspiI2CSensor[sensor][I2CFUNC]
+                Info += "   {:<10s} {:<15s} 0x{:2X}     {:<2d}           {}\n".format(sensor, sfunc, saddr, g.RaspiI2CSensor[sensor][7], svars)
 
         if extended:
-            Info += "\n"
-            Info += "Raspi\n"
-            Info += "   Hardware Revision          {}\n".format(RaspiRevision)
-            Info += "   Software GPIO Version      {}\n".format(RaspiGPIOVersion)
+            Info += "Host Computer:\n"
+            Info += "   Computer Model             {}\n".format(g.RaspiModel)
+            Info += "   Software smbus2 Version    {}\n".format(g.RaspiSmbus_Version)
 
-            Info += "Configured I2C Sensor Settings:\n"
-            Info += "   I2C Address:               {}\n".format(hex(gglobs.RaspiI2CAdress))
+            Info += "RaspiI2C Scan Result:\n"
+            Info += scanRaspiI2C()
+            Info +=     "\n"
 
     return Info
 
 
-def resetRaspiI2C(cmd = ""):
-    """resets I2C device by emptying the deque"""
-    # NOTE: quiet on cmd=="init"
+def resetRaspiI2C():
+    """Reset the sensors"""
 
-    fncname  = "resetRaspiI2C: "
-
+    defname = "resetRaspiI2C: "
     setBusyCursor()
 
-    gglobs.RaspiI2CTempDeque = deque([], 60)                    # reset all datapoints; space for 60 sec data
+    dprint(defname + "---------------------------------------------------")
+    setIndent(1)
 
-    if gglobs.RaspiI2CHandle is None:
-        # NOT running on the Raspi, just fudge some normal random numbers
-        Temp = np.random.normal(33, 0.5)
-    else:
-        # running on Raspi
-        Temp = getRaspiTempLM75B()
+    fprint(header("Resetting RaspiI2C System"))
+    fprint("In progress ...")
+    QtUpdate()
 
-    gglobs.RaspiI2CTempDeque.append(Temp)
+    # reset the dongle
+    try:
+        msg = RaspiI2CDongle.DongleReset()
+        dprint(defname, "Dongle: {:12s} - {}".format(RaspiI2CDongle.name, msg))
+    except Exception as e:
+        exceptPrint(e, defname + "DongleReset failed")
 
-    if cmd != "init":
-        fprint(header("Resetting RaspiI2C"))
-        fprint ("Successful")
+    # reset all sensors
+    for sensor in g.RaspiI2CSensor:
+        # cdprint(defname, "sensor: ", sensor)
+        if g.RaspiI2CSensor[sensor][I2CCONN]:
+            try:
+                msg = g.RaspiI2CSensor[sensor][I2CHNDL].SensorReset()
+                dprint(defname, "Sensor: {:12s} - {}".format(sensor, msg))
+            except Exception as e:
+                exceptPrint(e, defname + "Resetting sensor {} failed".format(sensor))
+
+    fprint("RaspiI2C Reset done")
+    # dprint(defname, "Done")
 
     setNormalCursor()
+    setIndent(0)
+
+
+def RaspiSensorsBurnIn():
+    """Burn-in as First Values may be invalid"""
+
+    defname = "RaspiSensorsBurnIn: "
+    dprint(defname)
+    setIndent(1)
+
+    for sensor in g.RaspiI2CSensor:
+        # rdprint(defname + "sensor: ", sensor)
+        if g.RaspiI2CSensor[sensor][I2CCONN]:       # use connected sensors only
+            # make measurements and discard
+            for i in range(0, g.RaspiI2CSensor[sensor][I2CRUNS]):
+                # print(defname, sensor, i)
+                val = g.RaspiI2CSensor[sensor][I2CHNDL].SensorgetValues()
+                vprint(defname, "Sensor:{:10s}  Cycle:{}  Value:{}".format(sensor, i, val))
+                time.sleep(0.05)
+
+    setIndent(0)
+
+
+def scanRaspiI2C():
+    """scan all addresses by reading from them at register 0"""
+
+    defname = "scanRaspiI2C: "
+
+    response     = "   -- : 00 01 02 03 04 05 06 07 08 09 0A 0B 0C 0D 0E 0F\n"
+    response    += "   00 : .. "
+
+    if g.RaspiI2CSmbusHandle is None:
+        burp()
+        response = "<red>   Computer has no accessible I2C system"
+
+    else:
+        device_count = 0
+        for address in range(1, 128):
+            if (address % 16) == 0:
+                response += "\n   "
+                response += "{:02X} : ".format(address)
+
+            found = False
+            try:
+                # g.RaspiI2CSmbusHandle.write_byte(address, 0)       # by writing
+                g.RaspiI2CSmbusHandle.read_byte_data(address, 0)     # by reading
+                # print("{} Found {}".format(address, hex(address)))
+                device_count += 1
+                found = True
+
+            except IOError as e:
+                # exceptPrint(e, "device: {}  i2cscan IOError".format(address))
+                pass
+
+            except Exception as e: # exception if read_byte fails
+                exceptPrint(e, defname + "Exception")
+
+            if found: response += "{:02X} ".format(address)
+            else:     response += ".. "
+
+        response += "   Found {} I2C devices".format(device_count)
+
+    return response
+
+
+
+###
+### Raspi "Dongle"
+###
+class RaspiDongle():
+    """To make it similar to the Dongle I2C routines"""
+
+    name    = "RaspiDongle"
+
+
+    def __init__(self):
+        """Init RaspiDongle"""
+
+        pass
+
+
+    def DongleInit(self):
+        """just some formal init"""
+
+        defname = "DongleInit: " + self.name + ": "
+        # dprint(defname)
+        setIndent(1)
+        setIndent(1)
+
+        # reset
+        gdprint(defname, self.DongleReset())
+
+        dmsg     = "Dongle {:8s} initialized".format(self.name)
+        setIndent(0)
+        setIndent(0)
+
+        return (True,  dmsg)
+
+
+    def DongleWriteRead(self, addr, register, readbytes, data, addrScheme=1, msg="", wait=0):
+        """combines
+        def DongleWriteReg(self, addr, register, readbytes, data, addrScheme=1, msg=""):
+        def DongleGetData (self, addr, register, readbytes, data, addrScheme=1, msg=""):
+        into one, with error checking after write
+        wait is wait phase between write and read call
+        """
+
+        defname = "DongleWriteRead: "
+        # dprint(defname)
+
+        success = self.DongleWriteReg(addr, register, readbytes, data, addrScheme=addrScheme, msg=msg)
+        if not success: return [] # failure in writing - return empty list
+
+        # Write succeeded; wait as configured
+        # time.sleep(wait)
+        time.sleep(wait*30)
+
+        # now get data
+        answ = self.DongleGetData (addr, register, readbytes, data, addrScheme=addrScheme, msg=msg)
+
+        return answ
+
+
+    def DongleWriteByte(self, addr, register, readbytes, data, addrScheme=1, msg=""):
+        """write a single byte"""
+
+        defname = "DongleWriteByte: "
+        # dprint(defname)
+        # dprint(defname, "data: ", data)
+
+        try:
+            g.RaspiI2CSmbusHandle.write_byte_data(addr, register, data[0])
+            success = True
+        except Exception as e:
+            exceptPrint(e, defname + msg)
+            success = False
+
+        # if not success: rdprint(defname, "{}  {:15s} success:{}".format(hex(addr), msg, success))
+        # else:           cdprint(defname, "{}  {:15s} success:{}".format(hex(addr), msg, success))     # print only on failure
+
+        return success
+
+
+    def DongleWriteI2CDirect(self, addr, register, readbytes, data, addrScheme=1, msg=""):
+        """write a single byte"""
+
+        defname = "DongleWriteI2CDirect: "
+        # dprint(defname)
+        # dprint(defname, "data: ", data)
+
+        try:
+            g.RaspiI2CdirectHandle.write(addr, data)
+            success = True
+        except Exception as e:
+            exceptPrint(e, defname + msg)
+            success = False
+
+        # if not success: rdprint(defname, "{}  {:15s} success:{}".format(hex(addr), msg, success))
+        # else:           cdprint(defname, "{}  {:15s} success:{}".format(hex(addr), msg, success))     # print only on failure
+
+        return success
+
+
+    def DongleWriteReg(self, addr, register, readbytes, data, addrScheme=1, msg=""):
+        """Writes to register of dongle, perhaps with data"""
+
+        # addr     : the 7 bit address of sensor
+        # register : sensor internal register address, 1 byte or 2 byte, like 0x00, 0x3345
+        # readbytes: number of bytes to read (not relevant here)
+        # data     : any data bytes to write as list
+
+        defname = "DongleWriteReg: "
+        # dprint(defname, "data: ", data)
+
+        try:
+            # rdprint(defname, "addr:{} register:{} data:{} ".format(addr, register, data))
+            g.RaspiI2CSmbusHandle.write_i2c_block_data(addr, register, data)   # return is always None
+            success = True
+        except Exception as e:
+            exceptPrint(e, defname + msg)
+            success = False
+
+        # if not success: rdprint(defname, "{}  {:15s} success:{}".format(hex(addr), msg, success))   # print only on failure
+        # # else:         cdprint(defname, "{}  {:15s} success:{}".format(hex(addr), msg, success))
+
+        return success
+
+
+    def DongleGetData(self, addr, register, readbytes, data, addrScheme=1, msg=""):
+        """reads data as list"""
+
+        # addr     : the 7 bit address of sensor
+        # register : sensor internal register address, 1 byte or 2 byte, like 0x00, 0x3345 (not relevant here)
+        # readbytes: number of bytes to read
+        # data     : any data bytes to write (not relevant here)
+        # return   : list of bytes of len = readbytes, or empty list on failure
+
+        defname = "DongleGetData:  "
+        # dprint(defname)
+
+        try:
+            lrec  = g.RaspiI2CSmbusHandle.read_i2c_block_data(addr, register, readbytes)
+        except Exception as e:
+            exceptPrint(e, defname + msg)
+            lrec  = []
+
+        wprint(defname, "{}  {:15s} len(lrec):{:<2n}  {}".format(hex(addr), msg, len(lrec), lrec))
+
+        return lrec
+
+
+    def DongleIsSensorPresent(self, addr):
+        """reads from a single address register 0; if exception then no device at address 'addr'"""
+
+        # addr     : the 7 bit address of sensor
+        # register : hard coded for 0
+        # return   : True when found; False otherwise
+
+        defname = "DongleIsSensorPresent: "
+        # dprint(defname)
+        setIndent(1)
+
+        foundSensor = False
+        try:
+            ### testing with read from reg 0
+            g.RaspiI2CSmbusHandle.read_byte_data(addr, 0)
+            foundSensor = True
+
+        except IOError as e:
+            if g.devel: exceptPrint(e, defname + "Device NOT present. IOError reading address: 0x{:02X}".format(addr))
+
+        except Exception as e:
+            exceptPrint(e, "i2c_read Exception on address: 0x{:02X}".format(addr))
+
+        setIndent(0)
+
+        return foundSensor
+
+
+    def DongleReset(self):
+        """Reset the Raspi dongle - Dummy"""
+
+        defname = "DongleReset: "
+
+        return defname + "(dummy reset)"
+
 

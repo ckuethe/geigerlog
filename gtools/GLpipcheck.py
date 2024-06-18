@@ -3,6 +3,7 @@
 
 """
 GLpipcheck.py - To check Pip version status of GeigerLog requirements
+                is started by either 'PipCheck.sh' or 'PipCheck.bat'
 """
 
 ###############################################################################
@@ -22,145 +23,144 @@ GLpipcheck.py - To check Pip version status of GeigerLog requirements
 #    along with GeigerLog.  If not, see <http://www.gnu.org/licenses/>.
 ###############################################################################
 
-"""
-using pip venv in Windows: https://discuss.python.org/t/pip-missing-from-my-python-download/13750
 
-# requirements.txt
-# possible content of a requirements.txt file:
-# install with:
-#       python -m pip install -r requirements.txt
-# requirements.txt:
-    pip         >=  21.0.1
-    setuptools  >=  54.0.0
-    pyqt5       >=  5.15.3
-    PyQt5-Qt    >=  5.15.2
-    pyqt5-sip   >=  12.8.1
-    matplotlib  >=  3.3.4
-    numpy       >=  1.20.1
-    scipy       >=  1.6.1
-    pyserial    >=  3.5
-    paho-mqtt   >=  1.5.1
-    sounddevice >=  0.4.1
-    soundfile   >=  0.10.3.post1
-    pip-check   >=  2.6
+# 2. Jan 2024:
+# GeigerLog installed 'REQUIRED, BASE' packages and their versions
+#    pip                 FOUND  : 23.3.2            REQUIRED, BASE
+#    setuptools          FOUND  : 69.0.3            REQUIRED, BASE
+#    PyQt5               FOUND  : 5.15.10           REQUIRED, BASE
+#    PyQt5-sip           FOUND  : 12.13.0           REQUIRED, BASE
+#    matplotlib          FOUND  : 3.8.2             REQUIRED, BASE
+#    numpy               FOUND  : 1.26.2            REQUIRED, BASE
+#    scipy               FOUND  : 1.11.4            REQUIRED, BASE
+#    soundfile           FOUND  : 0.12.1            REQUIRED, BASE
+#    sounddevice         FOUND  : 0.4.6             REQUIRED, BASE
+#    pyserial            FOUND  : 3.5               REQUIRED, BASE
+#    paho-mqtt           FOUND  : 1.6.1             REQUIRED, BASE
+#    psutil              FOUND  : 5.9.7             REQUIRED, BASE
+#    ntplib              FOUND  : 0.4.0             REQUIRED, BASE
+#    py-cpuinfo          FOUND  : 9.0.0             REQUIRED, BASE
 
+# GeigerLog installed 'OPTIONAL' packages and their versions
+#    RPi.GPIO            MISSING:                   OPTIONAL, required for RaspiPulse Series.         Install ONLY on Raspberry Pi Computer!
+#    smbus2              MISSING:                   OPTIONAL, required for RaspiI2C Series.           Install ONLY on Raspberry Pi Computer!
+#    LabJackPython       FOUND  : 2.1.0             OPTIONAL, required for LabJack Series
+#    pip-check           FOUND  : 2.8.1             OPTIONAL, recommended Pip tool
+#    python-telegram-bot FOUND  : 13.15             OPTIONAL, required for Telegram Messenger         MUST remain on version 13.15
+#    urllib3             FOUND  : 2.1.0             OPTIONAL, required for Telegram Messenger
 
-# February 2021:
-    GeigerLog installed REQUIRED packages and their version status
-       pip                21.0.1            OK
-       setuptools         53.0.0            OK
-       PyQt5              5.15.2            OK
-       PyQt5-sip          12.8.1            OK
-       numpy              1.20.0            OK
-       scipy              1.6.0             OK
-       matplotlib         3.3.4             OK
-       sounddevice        0.4.1             OK
-       SoundFile          0.10.3.post1      OK
+# Checking for available updates ...
 
-    GeigerLog installed OPTIONAL packages and their version status
-       pyserial           3.5               OK         REQUIRED for GMC, GS, I2C Series
-       paho-mqtt          1.5.1             OK         REQUIRED for RadMon Series
-       LabJackPython      2.0.0             OK         REQUIRED for LabJack Series
-       pip-check          2.6               OK         recommended Pip tool
+# GeigerLog installed 'REQUIRED, BASE' packages having upgrades available:
+#    Package             Version           Latest     Type
+#    <None>
 
-    GeigerLog REQUIRED packages having upgrades available:
-       Package            Version           Latest     Type
-       None
-
-    GeigerLog OPTIONAL packages having upgrades available:
-       Package            Version           Latest     Type
-       LabJackPython      2.0.0             2.0.4      wheel
-"""
+# GeigerLog installed 'OPTIONAL' packages having upgrades available:
+#    Package             Version           Latest     Type
+#    python-telegram-bot 13.15             20.7       wheel
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
-__version__         = "1.4"
+__version__         = "1.7.2"
 
 
-import sys, subprocess
-import getopt                       # parse command line for options and commands
+import sys, os, subprocess
+import getopt                                   # parse command line for options and commands
 
+pythonexec = sys.executable
+
+# colors
+TDEFAULT                = '\033[0m'             # default, i.e greyish
+TRED                    = '\033[91m'            # red
+BRED                    = '\033[91;1m'          # bold red
+TGREEN                  = '\033[92m'            # light green
+BGREEN                  = '\033[92;1m'          # bold green
+TYELLOW                 = '\033[93m'            # yellow
+
+# NOTE: re: Mini-HOWTO - "Find all ..."
 # Apparently this got reverted back to the original:
 # Find    all available versions of package 'anypackage':      python3 -m pip --use-deprecated=legacy-resolver install anypackage==
 # now again works as:
 # Find    all available versions of package 'anypackage':      python3 -m pip install anypackage==
 
 howto = """
-Mini-HOWTO: --------------------------------------------------------------------------------------------------------------------
-for using 'pip':
+Mini-HOWTO  for using 'pip': ----------------------------------------------------------------------------------------------
+
 NOTE:   when 'pip' itself or 'setuptools' can be upgraded, upgrade 'pip' first, then 'setuptools', then any others
 NOTE:   when using '=', '==', '>', '<' for version definition you need to use quotation marks around package designation
         like: "anypackage == 1.2.3",  "anypackage >=1, <2"
+NOTE:   On some Operating Systems you may have to use 'python3' in lieu of just 'python'
+NOTE:   If you want to see which modules have updates available, start with: './PipCheck.sh latest'.
+        CAUTION: updating to those latest versions may result in GeigerLog NOT WORKING !  If this
+                 happens, then you need to manually install the GeigerLog approved versions!
 
-Install and/or update package 'anypackage':                  python3 -m pip install -U anypackage
+Install and/or update package 'anypackage':                  python -m pip install -U anypackage
 
-Install and/or update multiple packages at once:             python3 -m pip install -U anypackage 2ndpackage 3rdpackage ...
-        NOTE:
-        If command fails, nothing at all may have been installed!
-        Continue with single-package installations.
+Install and/or update multiple packages at once:             python -m pip install -U anypackage 2ndpackage 3rdpackage ...
+        NOTE: On failure nothing at all may have been in-
+        stalled! Continue with single-package installations.
 
-Install package 'anypackage' in exactly version 1.2.3:       python3 -m pip install "anypackage == 1.2.3"
+Install package 'anypackage' in exactly version 1.2.3:       python -m pip install "anypackage == 1.2.3"
 
 Install package 'anypackage' in version of
-        at least 1 but not 2 or later:                       python3 -m pip install "anypackage >=1, <2"
+        at least 1 but not 2 or later:                       python -m pip install "anypackage >=1, <2"
 
-Install all packages as specified in GLrequirements.txt      python3 -m pip install -r GLrequirements.txt
-        Format of GLrequirements.txt is:
-            pip         ==  21.3.1
-            setuptools  ==  60.5.0
-            pyqt5       ==  5.15.6
-            pyqt5-sip   ==  12.9.0
-            ...
+Remove  package 'anypackage':                                python -m pip uninstall anypackage
 
-Remove  package 'anypackage':                                python3 -m pip uninstall anypackage
+Find    all available versions of package 'anypackage':      python -m pip install anypackage==
 
-Find    all available versions of package 'anypackage':      python3 -m pip install anypackage==
-
-
----------------------------------------------------------------------------------------------------------------------------------
+---------------------------------------------------------------------------------------------------------------------------
 """
+###############################################################################
 
-req_installs = {
-                "pip"           : ["latest"     , "", False],
-                "setuptools"    : ["latest"     , "", False],
-                "PyQt5"         : ["latest"     , "", False],
-                #"PyQt5-Qt"      : ["latest"     , "Missing is ok if PyQt5-Qt5 is present", False],
-                #"PyQt5-Qt5"     : ["latest"     , "", False],
-                "PyQt5-sip"     : ["latest"     , "", False],
-                "numpy"         : ["latest"     , "", False],
-                "scipy"         : ["latest"     , "", False],
-                "matplotlib"    : ["latest"     , "", False],
-                "sounddevice"   : ["latest"     , "", False],
-                "SoundFile"     : ["latest"     , "", False],
-                "pyserial"      : ["latest"     , "", False],
-               }
+class localvars():
+    req_installs = {
+                    "pip"                     : ["REQUIRED, BASE"],
+                    "setuptools"              : ["REQUIRED, BASE"],
+                    "PyQt5"                   : ["REQUIRED, BASE"],
+                    "PyQt5-sip"               : ["REQUIRED, BASE"],
+                    "matplotlib"              : ["REQUIRED, BASE"],
+                    "numpy"                   : ["REQUIRED, BASE"],
+                    "scipy"                   : ["REQUIRED, BASE"],
+                    "soundfile"               : ["REQUIRED, BASE"],    # in older versions it is 'SoundFile', in younger ones it is 'soundfile'
+                    "sounddevice"             : ["REQUIRED, BASE"],
+                    "pyserial"                : ["REQUIRED, BASE"],
+                    "paho-mqtt"               : ["REQUIRED, BASE"],
+                    "psutil"                  : ["REQUIRED, BASE"],
+                    "ntplib"                  : ["REQUIRED, BASE"],
+                    "py-cpuinfo"              : ["REQUIRED, BASE"],
+                    }
 
-opt_installs = {
-                "RPi.GPIO"              : ["latest"     , "REQUIRED for RaspiPulse Series"              , False],
-                "smbus"                 : ["latest"     , "REQUIRED for RaspiI2C Series"                , False],
-                "paho-mqtt"             : ["latest"     , "REQUIRED for RadMon Series"                  , False],
-                "LabJackPython"         : ["latest"     , "REQUIRED for LabJack Series"                 , False],
-                # "python-telegram-bot"   : ["latest"     , "REQUIRED for Telegram Messenger"           , False],
-                "psutil"                : ["latest"     , "REQUIRED for Devel Mode System monitoring"   , False],
-                "pip-check"             : ["latest"     , "Recommended Pip tool"                        , False],
-               }
+    opt_installs = {
+                    "RPi.GPIO"                : ["OPTIONAL, required for RaspiPulse Series.         Install ONLY on Raspberry Pi Computer Versions 1,2,3,4!"],
+                    "rpi-lgpio"               : ["OPTIONAL, required for RaspiPulse Series.         Install ONLY on Raspberry Pi Computer Versions 5!"],
+                    # "smbus"                 : ["OPTIONAL, required for RaspiI2C Series.           Install ONLY on Raspberry Pi Computer!"],
+                    "smbus2"                  : ["OPTIONAL, required for RaspiI2C Series.           Install ONLY on Raspberry Pi Computer!"],
+                    "LabJackPython"           : ["OPTIONAL, required for LabJack Series"            ],
+                    "pip-check"               : ["OPTIONAL, recommended Pip tool"                   ],
+                    # "python-telegram-bot"     : ["OPTIONAL, required for Telegram Messenger         MUST remain on version 13.15"          ],
+                    # "urllib3"                 : ["OPTIONAL, required for Telegram Messenger"        ],       # required only for Telegram
+                    }
 
-req_install             = []
-req_upgrade             = []
-opt_install             = []
-opt_upgrade             = []
-need_pip_upgrade        = False
-need_setuptools_upgrade = False
+    req_install             = []
+    opt_install             = []
+    pipdict                 = {}
+    pipODdict               = {}
+
+###############################################################################
+
+# instantiate vars for this script only
+lv = localvars
 
 
 def removeSpaces(text):
     """no more than single space allowed"""
 
     while True:
-        text2 = text.replace("  ", " ")           # replace 2 space with 1 space
+        text2 = text.replace("  ", " ")           # replace 2 spaces with 1 space
         if len(text2) < len(text): text = text2
         else:                      return text2
 
@@ -173,29 +173,22 @@ def showPipList(piplist):
     for pl in piplist:  print("  ", pl)
 
 
-def showPackages(ptype):    # ptype = "OPTIONAL" or "REQUIRED"
-    """call pip list and search for required or optional packages and their
-    version, and install status"""
+def showPackages(ptype):    # ptype = "OPTIONAL" or "REQUIRED, BASE"
+    """call pip list and search for required or optional packages and their version"""
 
-    global req_install, opt_install
+    print("\nGeigerLog installed '{}' packages and their versions".format(ptype))
 
-    print("\nGeigerLog installed {} packages and their version status".format(ptype))
+    if ptype == "REQUIRED, BASE":  installs = lv.req_installs
+    else:                          installs = lv.opt_installs
 
-    if ptype == "REQUIRED":  installs = req_installs
-    else:                    installs = opt_installs
-
-    pf = "   {:19s} {:16s}  {:10s} {}"
+    pf = "   {:19s} {:7s}: {:16s}  {}"
     for ins in installs:
         #print("ins: ", ins)
-        if ins in pipdict:
-            print(pf.format(ins, pipdict[ins], "OK",      installs[ins][1]))
-        else:
-            print(pf.format(ins, ""          , "MISSING", installs[ins][1]))
-            if ptype == "REQUIRED":     req_install.append(ins)
-            else:                       opt_install.append(ins)
+        if ins in lv.pipdict:   print(pf.format(ins, "FOUND",   lv.pipdict[ins],  installs[ins][0]))
+        else:                   print(pf.format(ins, "MISSING", "",               installs[ins][0]))
 
 
-def showVersionFromPipOutdatedList(ptype): # ptype = "OPTIONAL" or "REQUIRED"
+def showVersionFromPipOutdatedList(ptype): # ptype = "OPTIONAL" or "REQUIRED, BASE"
     """Call 'pip list --outdated' """
 
     """
@@ -206,31 +199,20 @@ def showVersionFromPipOutdatedList(ptype): # ptype = "OPTIONAL" or "REQUIRED"
     idna    2.10    3.1    wheel
     """
 
-    global req_upgrade, opt_upgrade, need_pip_upgrade, need_setuptools_upgrade
-
-    msg = "\nGeigerLog installed {} packages having upgrades available:".format(ptype)
-
-    if ptype == "REQUIRED":  installs = req_installs
-    else:                    installs = opt_installs
+    if ptype == "REQUIRED, BASE":  installs = lv.req_installs
+    else:                          installs = lv.opt_installs
 
     pf       = "   {:19s} {:16s}  {:10s} {}"
     counter  = 0
-    ins      = "Package"
-    print(msg)
-    #print("len(pipODdict): ", len(pipODdict), pipODdict)
-    if len(pipODdict) > 0:
-        print(pf.format(ins, pipODdict[ins][0], pipODdict[ins][1], pipODdict[ins][2]))
+
+    print("\nGeigerLog installed '{}' packages having upgrades available:".format(ptype))
+    if len(lv.pipODdict) > 0:
+        print("   Package             Version           Latest     Type")
         for ins in installs:
-            #print("ins: ", ins)
-            if ins in pipODdict:
-                print(pf.format(ins, pipODdict[ins][0], pipODdict[ins][1], pipODdict[ins][2]))
+            # print("ins: ", ins)       # ins: pip, setuptools, ...
+            if ins in lv.pipODdict:
+                print(pf.format(ins, lv.pipODdict[ins][0], lv.pipODdict[ins][1], lv.pipODdict[ins][2]))
                 counter += 1
-                if ptype == "REQUIRED":
-                    if      ins == "pip":           need_pip_upgrade = True
-                    elif    ins == "setuptools":    need_setuptools_upgrade = True
-                    else:                           req_upgrade.append(ins)
-                else:
-                    opt_upgrade.append(ins)
 
         if counter == 0: print("   <None>")
     else:
@@ -240,9 +222,10 @@ def showVersionFromPipOutdatedList(ptype): # ptype = "OPTIONAL" or "REQUIRED"
 
 def main():
 
-    global req_installs, opt_installs, pipdict, pipODdict, req_upgrade, req_install, opt_upgrade, opt_install
+    latest = False
 
-    print("\n---------------------- GLpipcheck.py ------------------------------------------")
+    # # header
+    # print("\n" + BGREEN + "*" * 150 + TDEFAULT)
 
     # parse command line options
     # sys.argv[0] is progname
@@ -250,7 +233,7 @@ def main():
         opts, args = getopt.getopt(sys.argv[1:], "hV", ["help", "Version"])
     except getopt.GetoptError as e :
         # print info like "option -a not recognized", then exit
-        msg = "\nFor Help use: 'GLpipcheck -h'"
+        msg = "\nFor Help use: ''PipCheck.sh -h' or 'PipCheck.bat -h'"
         print("ERROR: ", e, msg)
         return 1
 
@@ -262,54 +245,62 @@ def main():
 
         elif opt in ("-V", "--Version"):
             print("Version: ", __version__)
+            print()
             return 0
 
-    #print("************ Print Mini-HOWTO by starting with: 'GLpipcheck -h' ***************\n")
-    print("GLpipcheck Version: ", __version__)
-    print("Python Executable:  ", sys.executable)
-    print("Python Version:     ", sys.version.replace('\n', " "))
+    for arg in args:
+        arg = arg.lower()
+        if   arg == "latest":    latest = True  # set development mode
+
+
+    print("GLpipcheck.py Version: ", __version__)
+    print("Python Executable:     ", pythonexec)
+    print("Python Version:        ", sys.version.replace('\n', " "))
     print()
 
     # create the 'pip list'
-    pip_output = subprocess.check_output([sys.executable, '-m', 'pip', 'list'])
+    pip_output = subprocess.check_output([pythonexec, '-m', 'pip', 'list'])
     piplist    = pip_output.decode('UTF-8').strip().split("\n")
-    #print("piplist: \n", piplist)
     showPipList(piplist)
 
-    pipdict = {}
     for pl in piplist:
-        snr = removeSpaces(pl).split(" ", 1)
+        snr = pl.split(" ", 1)
         # print("snr: ", snr)
-        if len(snr) > 1: pipdict.update({snr[0].strip(): snr[1].strip()})
+        lv.pipdict.update({snr[0].strip(): snr[1].strip()})
+    # print("lv.pipdict: ", lv.pipdict)
 
-    showPackages("REQUIRED")
+    showPackages("REQUIRED, BASE")
     showPackages("OPTIONAL")
 
-    print()
-    print("Checking for updates ... ", end="", flush=True)
+    if latest:
+        print()
+        print("Checking for available updates ... ")
 
-    # create the OD:  'pip list --outdated'
-    pipOD_output = subprocess.check_output([sys.executable, '-m', 'pip', 'list', '--outdated'])
-    #print("pipOD_output:", len(pipOD_output), pipOD_output)
+        # create the OD:  'pip list --outdated'
+        pipOD_output = subprocess.check_output([pythonexec, '-m', 'pip', 'list', '--outdated'])
+        pipODlist    = pipOD_output.decode('UTF-8').strip().split("\n")
+        # print("pipODlist:", len(pipODlist), pipODlist)
 
-    pipODlist = pipOD_output.decode('UTF-8').strip().split("\n")
-    #print("pipODlist:", len(pipODlist), pipODlist)
+        for pl in pipODlist:
+            # print("pl: ", pl)
+            snr = removeSpaces(pl).split(" ", 4)
+            # print("snr: ", snr, "len(snr): ", len(snr))
+            lv.pipODdict.update({snr[0].strip(): [snr[1].strip(), snr[2].strip(), snr[3].strip()]})
+            # print("lv.pipODdict: ", lv.pipODdict)
 
-    pipODdict = {}
-    for pl in pipODlist:
-        snr = removeSpaces(pl).split(" ", 4)
-        #print("snr: ", snr, "len(snr): ", len(snr))
-        if len(snr) > 1:
-            pipODdict.update({snr[0].strip(): [snr[1].strip(), snr[2].strip(), snr[3].strip()]})
-
-    print("Done")
-
-    showVersionFromPipOutdatedList("REQUIRED")
-    showVersionFromPipOutdatedList("OPTIONAL")
+        showVersionFromPipOutdatedList("REQUIRED, BASE")
+        showVersionFromPipOutdatedList("OPTIONAL")
 
     print()
     print(howto)
 
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except KeyboardInterrupt:
+        print()
+        print("Exit by CTRL-C")
+        print()
+        os._exit(0)
+

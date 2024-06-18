@@ -24,12 +24,12 @@ I2C sensor module GDK101 - PIN Diode as Radiation sensor
 
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = [""]
 __license__         = "GPL3"
 
 
-from   gsup_utils       import *
+from gsup_utils   import *
 
 # Reference: http://allsmartlab.com/eng/294-2/
 # I2C Maximum Speed is 100 kHz.
@@ -43,46 +43,76 @@ from   gsup_utils       import *
 #   DS_GDK101_016, www.ftlab.co.kr, 0000564592100ETF8210, June 28, 2016
 
 ##
-## CAUTION: it looks like the GDK101 does need a 5V supply! At 3.3V it appears to
-## be working, but count rate comes out as way too high!
+## CAUTION: the GDK101 does need a 5V supply! At 3.3V it appears to be working,
+## but count rate comes out as way too high! The GDK101's SDA and SCL signals,
+## however, do remain at 3.3V levels, and can be fed directly to a Raspi!
 ##
+
+## Sensitivity:
+## NOTE: the sensor returns count rates reported as µSv/h values!
+##       These are converted here to CPM with Sensitivity value of 8.33 CPM/(µSv/h)
+##       instead of official value of 12! see my report article
+##
+## LOW COUNTRATE:   On a Raspi5 with RaspiPulse, SerialPulse, and GDK101 the background was recorded
+##                  on both the Ukrainian counter with SBM20, and the GDK101 overnight. All recordings
+##                  show proper Poisson.
+## RaspiPulse:      CPM=19.074
+## SerialPulse:     CPM=19.053
+## GDK101:          CPM=0.381   ==> 19.06 / 0.381 = 50.03 times less sensitive than a SBM20
+##                                  if SBM20 has Sensitivity 154 CPM/(µSv/h) then GDK101 has 3.08
+##                                  much less than what is used here as 8.33 CPM/(µSv/h), which
+##                                  is already less than official 12!
+##                                  But is it real? is there perhaps less electronic noise than in
+##                                  a real Geiger counter???
+##
+## High COUNTRATE:  On a Raspi5 with RaspiPulse, SerialPulse, and GDK101 some Uranium beads were put on both
+##                  the Ukrainian counter with SBM20, and the GDK101.
+## RaspiPulse:      CPM=1458
+## SerialPulse:     CPM=1455
+## GDK101:          CPM=45   ==> 1456 / 45 = 33 times less sensitive than a SBM20 (no good comparison as
+##                               same exposure cannot be assured, and GDK101 with metal enclosure might
+##                               be less sensitive to beta)
 
 
 class SensorGDK101:
     """Code for the SmartFTLab GDK101 sensor"""
 
-    addr       = 0x18       # Default option for the GDK101; all options: 0x18, 0x19, 0x1A, 0x1B
-    name       = "GDK101"
-    firmware   = "not set"  # my device: "0.6" (??? sollte 1.6 sein???)
+    addr        = 0x18           # Default option for the GDK101; all options: 0x18, 0x19, 0x1A, 0x1B
+    name        = "GDK101"
+    firmware    = "not set"      # my device: "0.6" (??? sollte 1.6 sein???)
+    handle      = g.I2CDongle    # default for use by 'I2C' device; RaspiI2C defines its own
+    sensitivity = 8.33           # instead of occicial value of 12, see NOTE above!
+    print2nd    = False          # Print secondary comments
 
 
-    def __init__(self, addr):
+    def __init__(self, addr, I2Chandle=None):
         """Init SensorGDK101 class"""
 
         self.addr       = addr
+        if I2Chandle is not None: self.handle = I2Chandle
 
 
     def SensorInit(self):
         """Scan for presence, do, Reset, get Firmware"""
 
-        fncname = "SensorInit: " + self.name + ": "
+        defname = "SensorInit: " + self.name + ": "
         dmsg    = "Sensor {:8s} at address 0x{:02X}".format(self.name, self.addr)
 
-        dprint(fncname)
+        # dprint(defname)
         setIndent(1)
 
         # check for presence of an I2C device at I2C address
         # takes ~0.6 ms
         # start = time.time()
-        presence = gglobs.I2CDongle.DongleIsSensorPresent(self.addr)
+        presence = self.handle.DongleIsSensorPresent(self.addr)
         # dur = 1000 * (time.time() - start)
-        # edprint(fncname + "dur: ", dur)
+        # edprint(defname + "dur: ", dur)
 
         if not presence:
             # no device found
             setIndent(0)
             msg = "Did not find any I2C device at address 0x{:02X}".format(self.addr)
-            edprint(fncname + msg)
+            edprint(defname + msg)
             return  False, msg
         else:
             # device found
@@ -90,23 +120,23 @@ class SensorGDK101:
 
 
         # soft reset
-        dprint(fncname + "Sensor Reset")
+        # dprint(defname + "Sensor Reset")
         gdprint(self.SensorReset())
 
         ## get status
-        dprint(fncname + "Get Status")
-        gdprint(self.GDK101getStatus())
+        # dprint(defname + "Get Status")
+        gdprint(self.SensorgetStatus())
 
         ## get firmware version
-        dprint(fncname + "Get Firmware")
-        gdprint(self.GDK101getFirmwareVersion())
+        # dprint(defname + "Get Firmware")
+        gdprint(self.SensorgetFirmwareVersion())
 
         setIndent(0)
 
         return (True,  "Initialized " + dmsg)
 
 
-    def GDK101getStatus(self):
+    def SensorgetStatus(self):
         """get Status Power and Vibration"""
 
         # Read the status of power and vibration
@@ -116,19 +146,19 @@ class SensorGDK101:
         #                                   2 - after 10 min
 
         # Duration:
-        # ISS: GDK101getStatus: duration: 1.5 ms
-        # ELV: GDK101getStatus: duration:
+        # ISS: SensorgetStatus: duration: 1.5 ms
+        # ELV: SensorgetStatus: duration:
 
         start   = time.time()
-        fncname = "GDK101getStatus: "
-        dprint(fncname)
+        defname = "SensorgetStatus: " + self.name + ": "
+        # dprint(defname)
 
         tmsg      = "Status"
         register  = 0xB0
         readbytes = 2
         data      = []
         wait      = 0   #0.01 # sec
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
 
         if len(answ) == readbytes:
             # ok
@@ -136,15 +166,15 @@ class SensorGDK101:
         else:
             # FAILURE
             status = "FAILURE reading Status"
-            edprint(fncname + status + ", reponse: ", answ)
+            edprint(defname + status + ", reponse: ", answ)
 
         duration = (time.time() - start) * 1000
-        msg = fncname + "got status: {}  in: {:0.1f} ms".format(status, duration)
+        msg = defname + "got status: {}  in: {:0.1f} ms".format(status, duration)
 
         return msg
 
 
-    def GDK101getFirmwareVersion(self):
+    def SensorgetFirmwareVersion(self):
         """get the Firmware Version as Major.Minor"""
 
         # Read firmware version
@@ -152,19 +182,19 @@ class SensorGDK101:
         # 0xB4  Read Firmware Version   Main of version     Sub of version
 
         # Duration:
-        # ISS: GDK101getFirmwareVersion: duration: 1.4 ms
-        # ELV: GDK101getFirmwareVersion: duration:
+        # ISS: SensorgetFirmwareVersion: duration: 1.4 ms
+        # ELV: SensorgetFirmwareVersion: duration:
 
         start     = time.time()
-        fncname   = "GDK101getFirmwareVersion: "
-        dprint(fncname)
+        defname   = "SensorgetFirmwareVersion: " + self.name + ": "
+        # dprint(defname)
 
         tmsg      = "FirmWr"
         register  = 0xB4
         readbytes = 2
         data      = []
         wait      = 0   #0.01
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
 
         if len(answ) == readbytes:
             # ok
@@ -172,51 +202,54 @@ class SensorGDK101:
         else:
             # FAILURE
             self.firmware = "Failure reading Firmware"
-            edprint(fncname + self.firmware + ", reponse: ", answ)
+            edprint(defname + self.firmware + ", reponse: ", answ)
 
         duration = (time.time() - start) * 1000
-        msg = fncname + "got firmware: {}  in: {:0.1f} ms".format(self.firmware, duration)
+        msg = defname + "got firmware: {}  in: {:0.1f} ms".format(self.firmware, duration)
 
         return msg
 
 
-    def GDK101getMeasuringTime(self):
+    def SensorgetMeasuringTime(self):
         """get the Measuring Time in minutes"""
 
         # Read Measuring Time
         # CMD   Description             Read Data 1         Read Data 2
         # 0xB1  Read Measuring Time     Minutes of time     Seconds of time
+        # NOTE: time increases up to 10 (min) and then goes up to 11 (min) and resets to 10 (min), and so on.
+        #       on return time is converted to seconds
 
         # Duration:
-        # ISS: GDK101getMeasuringTime: duration: 1.8 ms
-        # ELV: GDK101getMeasuringTime: duration:
+        # ISS:    duration: 1.8 ms
+        # ELV:    duration:
+        # Raspi5: duration: 0.8 ... 0.85 ms
 
         start     = time.time()
-        fncname   = "GDK101getMeasuringTime: "
-        dprint(fncname)
+        defname   = "SensorgetMeasuringTime: " + self.name + ": "
+        # dprint(defname)
 
         tmsg      = "mtime"
         register  = 0xB1        # Read measuring time
         readbytes = 2
         data      = []
         wait      = 0   #0.01
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
-        edprint(fncname + "answ: ", answ)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
 
         if len(answ) == readbytes:
-            value = (answ[0] * 60 + answ[1]) / 60                       # (minutes * 60 + seconds) / 60 ==> minutes
-            msg   = fncname + "{}:{:6.2f}".format(tmsg, value)
+            value = (answ[0] * 60 + answ[1])                        # (minutes * 60 + seconds) ==> seconds
+            msg   = defname + "answ: {}->{}:{:<3.0f} sec".format(answ, tmsg, value)
             bmsg  = True, msg
             value = (round(value, 5))
         else:
-            msg   = fncname + "Failure reading proper byte count"
+            msg   = defname + "Failure reading proper byte count"
             bmsg  = False, msg
-            value = gglobs.NAN
+            value = g.NAN
 
-        duration = (time.time() - start) * 1000
-        pmsg     = msg + "  dur:{:0.2f} ms".format(duration)
-        if bmsg[0]:  gdprint(pmsg)
-        else:        edprint(pmsg)
+        duration  = (time.time() - start) * 1000
+        pmsg      = msg + "  dur:{:0.2f} ms".format(duration)
+        if bmsg[0] and self.print2nd:  gdprint(pmsg)
+        # else:        edprint(pmsg)
+        if not bmsg[0]:                edprint(pmsg)
 
         return value
 
@@ -228,50 +261,36 @@ class SensorGDK101:
         # CMD   Description             Read Data 1         Read Data 2
         # 0xA0  Reset                   0 - Fail            Not used
         #                               1 - Pass
-        # NOTE: it is hard to believe that there is a return value sent by the device
-        # after it received a RESET command! I don't get one.
         #
         # Duration:
         # ISS: SensorReset:    duration: 1003 ms
         # ELV: SensorReset:    duration:
 
         start   = time.time()
-        fncname = "SensorReset: " + self.name + ": "
-        dprint(fncname)
+        defname = "SensorReset: " + self.name + ": "
+        # dprint(defname)
 
         tmsg      = "Reset"
         register  = 0xA0
         readbytes = 2
         data      = []
-        wrt       = gglobs.I2CDongle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
+        wrt       = self.handle.DongleWriteReg(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
         # time.sleep(2)
-        answ      = gglobs.I2CDongle.DongleGetData(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
-
-        # wait      = 2
-        # answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
-        edprint(fncname + "answ: ", answ)
+        answ      = self.handle.DongleGetData(self.addr, register, readbytes, data, addrScheme=1, msg=tmsg)
 
         duration = 1000 * (time.time() - start)
+        msg = defname + "answ: {}  took {:0.1f} ms".format(answ, duration)
 
-        return fncname + "took {:0.1f} ms".format(duration)
+        return msg
 
 
     def SensorgetValues(self):
         """Read the count rate values for 1 and 10 min"""
-        # NOTE: count rates are reported as µSv/h values,
-        #       converted here to CPM with Sensitivity
-        #       value of 8.33 CPM/(µSv/h) instead of official value of 12!
 
-        # Read Measured Value 10 min
-        # CMD   Description                 Read Data 1         Read Data 2
-        # 0xB2  Read Measured Value         Integer of value    Decimal of value
-        #       (10min avg. 1min update)
+# 1min  # Read Measured Value 1 min
+        # this is CPM over 1 min, which is updated every 1 min, and at this value constant for 1min
+        # First value after 1 min (CPM from 0 ... <1 min is == 0)
         #
-        # Duration:
-        # ISS: SensorgetValues: 10 min    duration: 4.2 ms
-        # ELV: SensorgetValues: 10 min    duration:
-        #
-        # Read Measured Value 1 min
         # CMD   Description                 Read Data 1         Read Data 2
         # 0xB3  Read Measured Value         Integer of value    Decimal of value
         #       (1min avg. 1min update)
@@ -282,69 +301,79 @@ class SensorGDK101:
         # ELV: SensorgetValues:  1 min    duration:
         #
 
-        start   = time.time()
-        fncname = "SensorgetValues: " + self.name + ": "
-        sgvdata = [gglobs.NAN] * 3
+# 10min # Read Measured Value 10 min
+        # this is CPM averaged over 10 min, which is updated every 1 min, and at this value constant for 1min
+        # First value after 1 min (this being the same as CPM 1 min value)
+        #
+        # CMD   Description                 Read Data 1         Read Data 2
+        # 0xB2  Read Measured Value         Integer of value    Decimal of value
+        #       (10min avg. 1min update)
+        #
+        # Duration:
+        # ISS: SensorgetValues: 10 min    duration: 4.2 ms
+        # ELV: SensorgetValues: 10 min    duration:
+        #
 
-        cdprint(fncname)
+
+        start   = time.time()
+        defname = "SensorgetValues: " + self.name + ": "
+        # cdprint(defname)
         setIndent(1)
 
+        cpm     = g.NAN
+        cpm10   = g.NAN
+        mtime   = g.NAN
 
-        # 1 min average
+# 1 min CPM
         tmsg      = "get1min"
-        register  = 0xB3        # get CPM
+        register  = 0xB3
         readbytes = 2
         data      = []
         wait      = 0   #0.01
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
-        edprint(fncname + "answ: ", answ)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
+        # edprint(defname + "answ: ", answ)
 
         if len(answ) == readbytes:
-            value = answ[0] + (answ[1] / 100)   # ist µSv value, not CPM
-            msg   = fncname + "{}:{:6.2f}".format(tmsg, value)
+            value = answ[0] + (answ[1] / 100)               # ist µSv value, not CPM
+            cpm   = round(value * self.sensitivity, 0)      # convert to CPM
+
+            msg   = defname + "answ:{}->{}:{:<6.2f}  CPM:{}".format(answ, tmsg, value, cpm)
             bmsg  = True, msg
-            sgvdata[0] = (round(value * 8.33, 2))
         else:
-            msg  = fncname + "Failure reading proper byte count"
-            bmsg = False, msg
+            msg   = defname + "Failure reading proper byte count"
+            bmsg  = False, msg
 
         duration = (time.time() - start) * 1000
-        if bmsg[0]:      gdprint(msg + "  dur:{:0.2f} ms".format(duration))
+        if bmsg[0] and self.print2nd:      gdprint(msg + "  dur:{:0.2f} ms".format(duration))
 
 
-        # 10 min average
-        tmsg      = "get10m"
-        register  = 0xB2        # get CPM over 10 min
+# 10 min CPM average
+        tmsg      = "get10m "
+        register  = 0xB2
         readbytes = 2
         data      = []
         wait      = 0   #0.01
-        answ      = gglobs.I2CDongle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
-        edprint(fncname + "answ: ", answ)
+        answ      = self.handle.DongleWriteRead (self.addr, register, readbytes, data, addrScheme=1, msg=tmsg, wait=wait)
 
         if len(answ) == readbytes:
-            value = answ[0] + (answ[1] / 100)   # ist µSv value, not CPM
-            msg  = fncname + "{}:{:6.2f}".format(tmsg, value)
+            value = answ[0] + (answ[1] / 100)               # ist µSv value, not CPM
+            cpm10 = round(value * self.sensitivity, 0)      # convert to CPM
+
+            msg  = defname + "answ:{}->{}:{:<6.2f}  CPM:{}".format(answ, tmsg, value, cpm10)
             bmsg = True, msg
-            sgvdata[1] = (round(value * 8.33, 2))
         else:
-            msg  = fncname + "Failure reading proper byte count"
+            msg  = defname + "Failure reading proper byte count"
             bmsg = False, msg
 
         duration = (time.time() - start) * 1000
-        if bmsg[0]:      gdprint(msg + "  dur:{:0.2f} ms".format(duration))
+        if bmsg[0] and self.print2nd:      gdprint(msg + "  dur:{:0.2f} ms".format(duration))
 
+# Measuring time
         # other
-        ydprint("Measuring Time")
-        sgvdata[2] = self.GDK101getMeasuringTime()
-
-        ydprint("Status:")
-        ydprint(self.GDK101getStatus())
-
-        ydprint("Firmware:")
-        ydprint(self.GDK101getFirmwareVersion())
+        mtime    = self.SensorgetMeasuringTime()
 
         setIndent(0)
-        return sgvdata
+        return (cpm, cpm10, mtime)
 
 
     def SensorGetInfo(self):
@@ -352,7 +381,7 @@ class SensorGDK101:
         info  = "{}\n"                             .format("Count Rate")
         info += "- Address:         0x{:02X}\n"    .format(self.addr)
         info += "- Firmware:        {}\n"          .format(self.firmware)
-        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in gglobs.Sensors["GDK101"][5]))
+        info += "- Variables:       {}\n"          .format(", ".join("{}".format(x) for x in g.Sensors["GDK101"][5]))
 
         return info.split("\n")
 

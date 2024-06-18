@@ -24,7 +24,7 @@ counter device or from file and create database.
 ###############################################################################
 
 __author__          = "ullix"
-__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022"
+__copyright__       = "Copyright 2016, 2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024"
 __credits__         = ["Phil Gillaspy"]
 __license__         = "GPL3"
 
@@ -34,7 +34,7 @@ __license__         = "GPL3"
 # and document 'GQ-RFC1201.txt'
 # (GQ-RFC1201,GQ Geiger Counter Communication Protocol, Ver 1.40 Jan-2015)
 
-from   gsup_utils       import *            # all utilities
+from gsup_utils   import *            # all utilities
 
 import gsup_sql                             # database handling
 import gdev_gmc                             # getGMC_SPIR, getExtrabyte are used here
@@ -44,7 +44,7 @@ def makeGMC_History(sourceHist):
     """make the History by reading data either from file or from device,
     parse them, sort them by date&time, and write into files"""
 
-    fncname = "makeGMC_History: "
+    defname = "makeGMC_History: "
 
     str_data_origin = u"Downloaded {} from device '{}'"
 
@@ -58,7 +58,7 @@ def makeGMC_History(sourceHist):
         return (0, "")
 
     elif sourceHist == "Binary File":
-        hist    = readBinaryFile(gglobs.binFilePath)
+        hist    = readBinaryFile(g.binFilePath)
 
         if b"ERROR" in hist[:6]: # hist contains error message
             error = -1
@@ -92,21 +92,21 @@ def makeGMC_History(sourceHist):
             fprint(msg)
 
     elif sourceHist == "Device":
-        data_origin   = str_data_origin.format(stime(), gglobs.GMCDeviceDetected)
-        data_originDB = (stime(), gglobs.GMCDeviceDetected)
-        fprint("Reading data from connected device: {}".format(gglobs.GMCDeviceDetected))
+        data_origin   = str_data_origin.format(stime(), g.GMC_DeviceDetected)
+        data_originDB = (stime(), g.GMC_DeviceDetected)
+        fprint("Reading data from connected device: {}".format(g.GMC_DeviceDetected))
 
         hist    = b""
-        page    = gglobs.GMC_SPIRpage       # 4096 or 2048, see: getGMC_DeviceProperties
+        page    = g.GMC_SPIRpage            # 4096 or 2048, see: getGMC_DeviceProperties
         FFpages = 0                         # number of successive pages having only FF
 
         # Cleaning pipeline BEFORE reading history
-        dprint(fncname + "Cleaning pipeline BEFORE reading history")
+        dprint(defname + "Cleaning pipeline BEFORE reading history")
         extra = gdev_gmc.getGMC_ExtraByte()
 
         start = time.time()
-        cdprint("makeGMC_History: gglobs.GMC_memory, page: ", gglobs.GMC_memory, " ", page)
-        for address in range(0, gglobs.GMC_memory, page): # prepare to read all memory
+        cdprint("makeGMC_History: g.GMC_memory, page: ", g.GMC_memory, " ", page)
+        for address in range(0, g.GMC_memory, page): # prepare to read all memory
             # time.sleep(0.1) # fails occasionally to read all data when
             #                 # sleep is only 0.1; still not ok at 0.2 sec
             #                 # wieder auf 0.1, da GQ Dataviewer deutlich scneller ist
@@ -116,7 +116,7 @@ def makeGMC_History(sourceHist):
             rec, error, errmessage = gdev_gmc.getGMC_SPIR(address, page)
             spirdur   = 1000 * (time.time() - spirstart)
             try:    spirbpsec = page / spirdur * 1000
-            except: spirbpsec = gglobs.NAN
+            except: spirbpsec = g.NAN
             fprint("Reading page of size {} @address:{:9n}  took {:6.1f} ms (Bytes/sec: {:6.1f})".format(page, address, spirdur, spirbpsec))
             QtUpdate()
 
@@ -130,7 +130,7 @@ def makeGMC_History(sourceHist):
                 else:
                     FFpages  = 0
 
-                if not gglobs.fullhist and FFpages * page >= 8192: # 8192 is 2 pages of 4096 byte each
+                if not g.fullhist and FFpages * page >= 8192: # 8192 is 2 pages of 4096 byte each
                     txt = "Found {} successive pages of {} B (total {} B), as 'FF' only - ending reading".format(FFpages, page, FFpages * page)
                     dprint(txt)
                     fprint(txt)
@@ -138,7 +138,7 @@ def makeGMC_History(sourceHist):
 
             else: # error = -1
                 # non-recovered error occured
-                dprint(fncname + "ERROR: ", errmessage, "; exiting from makeGMC_History")
+                dprint(defname + "ERROR: ", errmessage, "; exiting from makeGMC_History")
                 return (error, "ERROR: Cannot Get History: " + errmessage)
 
         stop = time.time()
@@ -146,21 +146,22 @@ def makeGMC_History(sourceHist):
         timing = "Total time: {:0.1f} sec, Total Bytes: {:1n} --> {:0.2f} kBytes/s ({:0.3f} MBits/s)".format(dtime, len(hist), len(hist) / dtime / 1000, len(hist) / dtime / 1E6 * 8)
         dprint(timing)
         fprint(timing)
+        QtUpdate()
 
         # Cleaning pipeline AFTER reading history
-        dprint(fncname + "Cleaning pipeline AFTER reading history")
+        dprint(defname + "Cleaning pipeline AFTER reading history")
         extra = gdev_gmc.getGMC_ExtraByte()
     ### end if   sourceHist== #################################################
 
     fprintHistDetails(hist)
 
     # parse HIST data
-    gglobs.HistoryDataList      = []
-    gglobs.HistoryParseList     = []
-    gglobs.HistoryCommentList   = []
+    g.HistoryDataList      = []
+    g.HistoryParseList     = []
+    g.HistoryCommentList   = []
 
 
-    # fprint("Parsing binary data", debug=gglobs.debug)
+    # Parsing binary data
     msg = "Parsing binary data"
     fprint(msg)
     dprint(msg)
@@ -169,18 +170,20 @@ def makeGMC_History(sourceHist):
 
     dbhisClines    = [None] * 2
     #                  ctype    jday, jday modifier to use time unmodified
-    dbhisClines[0] = ["HEADER", None, "0 hours", "File created from History Download Binary Data"]
-    dbhisClines[1] = ["ORIGIN", None, "0 hours", "{}".format(data_origin)]
+    # dbhisClines[0] = ["HEADER", None, "0 hours", "File created from History Download Binary Data"]
+    # dbhisClines[1] = ["ORIGIN", None, "0 hours", "{}".format(data_origin)]
+    dbhisClines[0] = ["HEADER", "0 hours", "File created from History Download Binary Data"]
+    dbhisClines[1] = ["ORIGIN", "0 hours", "{}".format(data_origin)]
 
 # write to database
-    gsup_sql.DB_insertBin           (gglobs.hisConn, hist)
-    gsup_sql.DB_insertDevice        (gglobs.hisConn, *data_originDB)
-    gsup_sql.DB_insertComments      (gglobs.hisConn, dbhisClines)
-    gsup_sql.DB_insertComments      (gglobs.hisConn, gglobs.HistoryCommentList)
-    gsup_sql.DB_insertData          (gglobs.hisConn, gglobs.HistoryDataList)
-    gsup_sql.DB_insertParse         (gglobs.hisConn, gglobs.HistoryParseList)
+    gsup_sql.DB_insertBin           (g.hisConn, hist)
+    gsup_sql.DB_insertDevice        (g.hisConn, *data_originDB)
+    gsup_sql.DB_insertComments      (g.hisConn, dbhisClines)
+    gsup_sql.DB_insertComments      (g.hisConn, g.HistoryCommentList)
+    gsup_sql.DB_insertData          (g.hisConn, g.HistoryDataList)
+    gsup_sql.DB_insertParse         (g.hisConn, g.HistoryParseList)
 
-    # fprint("Database is created", debug=gglobs.debug)
+    # Database is created
     msg = "Database is created"
     fprint(msg)
     dprint(msg)
@@ -194,15 +197,15 @@ def fprintHistDetails(hist=False):
 
     #print("fprintHistDetails: hist:", hist)
     if hist == False:
-        if gglobs.hisConn == None:
-            gglobs.exgg.showStatusMessage("No data available")
+        if g.hisConn is None:
+            g.exgg.showStatusMessage("No data available")
             return
 
         fprint(header("Show History Binary Data Details"))
-        fprint("from: {}\n".format(gglobs.hisDBPath))
+        fprint("from: {}\n".format(g.hisDBPath))
 
-        hist    = gsup_sql.DB_readBinblob(gglobs.hisConn)
-        if hist == None:
+        hist    = gsup_sql.DB_readBinblob(g.hisConn)
+        if hist is None:
             efprint("No binary data found in this database")
             return
 
@@ -230,7 +233,7 @@ def parseHIST(hist):
 
     global histCPSCum, tubeSelected
 
-    fncname = "parseHIST: "
+    defname = "parseHIST: "
 
     i               = 0     # counter for starting point byte number
     first           = 0     # byte index of first occurence of datetimetag
@@ -238,7 +241,7 @@ def parseHIST(hist):
     cpxValid        = 1     # for CPM data = 1, for CPS data = 60 (all is recorded as CPM!)
     tubeSelected    = 0     # the tube(s) selected for measurements: 00 = both, 1 = tube1, and 2 is tube2.
 
-    # search for first occurence of a Date&Time tag
+    # search for first occurence of a DateTime tag
     # must include re.DOTALL, otherwise a \x0a as in time 10h20:30 will
     # be considered as newline characters and ignored!
     DateTimeTag      = re.compile(b"\x55\xaa\x00......\x55\xaa[\x00\x01\x02\x03]", re.DOTALL)
@@ -249,7 +252,7 @@ def parseHIST(hist):
         break
 
     i = first                       # the new start point for the parse
-    dprint(fncname + "byte index of first Date&Time tag: {}".format(first))
+    dprint(defname + "byte index of first DateTime tag: {}".format(first))
 
     hist = hist + hist[:i]          # concat with the part missed due to overflow
 
@@ -285,79 +288,82 @@ def parseHIST(hist):
         if r == 0x55:
             if rec[i+1] == 0xaa:
                 if rec[i+2] == 0:   # timestamp coming
-                    YY = rec[i+3]
-                    MM = rec[i+4]
-                    DD = rec[i+5]
-                    hh = rec[i+6]
-                    mm = rec[i+7]
-                    ss = rec[i+8]
-                    # rec[i+ 9] = 0x55 end marker bytes; always fixed
-                    # rec[i+10] = 0xAA (actually unnecessary since length is fixed too)
-                    rectime = "20{:02d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format( YY, MM, DD, hh, mm, ss)
-                    rectimestamp = datestr2num(rectime)
+                    ### testing
+                    # clockisdead = True
+                    if not g.GMC_ClockIsDead:
+                        YY = rec[i+3]
+                        MM = rec[i+4]
+                        DD = rec[i+5]
+                        hh = rec[i+6]
+                        mm = rec[i+7]
+                        ss = rec[i+8]
+                        # rec[i+ 9] = 0x55 end marker bytes; always fixed
+                        # rec[i+10] = 0xAA (actually unnecessary since length is fixed too)
+                        rectime = "20{:02d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format( YY, MM, DD, hh, mm, ss)
+                        rectimestamp = datestr2num(rectime)
 
-                    dd = rec[i+11]   # saving tag
-                    if   dd == 0:
-                        savetext      = "history saving off"
-                        saveinterval = 0
-                        cpxValid     = 1
-                        CPSmode      = True         # though there won't be any data
-                        cpms         = 0
+                        dd = rec[i+11]   # saving tag
+                        if   dd == 0:
+                            savetext      = "history saving off"
+                            saveinterval = 0
+                            cpxValid     = 1
+                            CPSmode      = True         # though there won't be any data
+                            cpms         = 0
 
-                    elif dd == 1:
-                        savetext     = "CPS, save every second"
-                        saveinterval = 1
-                        cpxValid     = 1
-                        CPSmode      = True
-                        cpms         = 1
+                        elif dd == 1:
+                            savetext     = "CPS, save every second"
+                            saveinterval = 1
+                            cpxValid     = 1
+                            CPSmode      = True
+                            cpms         = 1
 
-                    elif dd == 2:
-                        # it looks like there is a ~30sec delay before the new
-                        # timing loop sets in. NOT taken into account!
-                        savetext     = "CPM, save every minute"
-                        saveinterval = 60
-                        cpxValid     = 1
-                        CPSmode      = False
-                        cpms         = 0
+                        elif dd == 2:
+                            # it looks like there is a ~30sec delay before the new
+                            # timing loop sets in. NOT taken into account!
+                            savetext     = "CPM, save every minute"
+                            saveinterval = 60
+                            cpxValid     = 1
+                            CPSmode      = False
+                            cpms         = 0
 
-                    elif dd == 3:
-                        # after changing to hourly saving the next value is saved an hour later
-                        # so cpms must be set to plus 1!
-                        savetext     = "CPM, save every hour as hourly average"
-                        saveinterval = 3600
-                        cpxValid     = 1
-                        CPSmode      = False
-                        cpms         = 1
+                        elif dd == 3:
+                            # after changing to hourly saving the next value is saved an hour later
+                            # so cpms must be set to plus 1!
+                            savetext     = "CPM, save every hour as hourly average"
+                            saveinterval = 3600
+                            cpxValid     = 1
+                            CPSmode      = False
+                            cpms         = 1
 
 
-                    elif dd == 4:
-                        # save only if exceeding threshold
-                        savetext     = "CPS, save every second if exceeding threshold"
-                        saveinterval = 1
-                        cpxValid     = 1
-                        CPSmode      = True
-                        cpms         = 1
+                        elif dd == 4:
+                            # save only if exceeding threshold
+                            savetext     = "CPS, save every second if exceeding threshold"
+                            saveinterval = 1
+                            cpxValid     = 1
+                            CPSmode      = True
+                            cpms         = 1
 
-                    elif dd == 5:
-                        # save only if exceeding threshold
-                        savetext     = "CPM, save every minute if exceeding threshold"
-                        saveinterval = 60
-                        cpxValid     = 1
-                        CPSmode      = False
-                        cpms         = 0
+                        elif dd == 5:
+                            # save only if exceeding threshold
+                            savetext     = "CPM, save every minute if exceeding threshold"
+                            saveinterval = 60
+                            cpxValid     = 1
+                            CPSmode      = False
+                            cpms         = 0
 
-                    else:
-                        # ooops. you were not supposed to be here
-                        savetext     = "ERROR: FALSE READING OF HISTORY SAVE-INTERVALL = {:3d} (allowed is: 0,1,2,3,4,5)".format(dd)
-                        dprint(savetext, debug=True)
-                        saveinterval = 0        # do NOT advance the time
-                        cpxValid     = -1       # make all counts negative to mark illegitimate data
-                        CPSmode      = True     # just to define the mode
-                        cpms         = 0
+                        else:
+                            # ooops. you were not supposed to be here
+                            savetext     = "ERROR: FALSE READING OF HISTORY SAVE-INTERVALL = {:3d} (allowed is: 0,1,2,3,4,5)".format(dd)
+                            dprint(savetext, debug=True)
+                            saveinterval = 0        # do NOT advance the time
+                            cpxValid     = -1       # make all counts negative to mark illegitimate data
+                            CPSmode      = True     # just to define the mode
+                            cpms         = 0
 
-                    rs     = "#{:5d}, {:19s}, Date&Time Stamp; Type:'{:}', Interval:{:} sec".format(i, rectime, savetext, saveinterval)
-                    dbtype = "Date&Time Stamp; Type:'{:}', Interval:{:} sec".format(savetext, saveinterval)
-                    parseCommentAdder(i, rectime, dbtype)
+                        rs     = "#{:5d}, {:19s}, DateTime Stamp; Type:'{:}', Interval:{:} sec".format(i, rectime, savetext, saveinterval)
+                        dbtype = "DateTime Stamp; Type:'{:}', Interval:{:} sec".format(savetext, saveinterval)
+                        parseCommentAdder(i, rectime, dbtype)
 
                     i   += 12
 
@@ -427,20 +433,20 @@ def parseHIST(hist):
 
                 else:
                     # workaround for the mess created by GQ
-                    # gglobs.GMC_locationBug: default: "GMC-500+Re 1.18", "GMC-500+Re 1.21"
-                    if gglobs.GMCDeviceDetected in gglobs.GMC_locationBug:
+                    # g.GMC_locationBug: default: "GMC-500+Re 1.18", "GMC-500+Re 1.21"
+                    if g.GMC_DeviceDetected in g.GMC_locationBug:
                         histMess = {"ASCII" : 4,
                                     "Triple": 2,
                                     "Quad"  : 3,
                                    }
-                    else: # 300series and else
+                    else: # 300 series and else
                         histMess = {"ASCII" : 2,
                                     "Triple": 3,
                                     "Quad"  : 4,
                                    }
 
                     if  rec[i+2] == histMess["ASCII"]: #ascii bytes coming
-                        cpmtime = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
+                        cpmtime = dt.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
                         count   = rec[i+3]
                         #print("i:", i, "count:", count)
 
@@ -494,7 +500,7 @@ def parseHIST(hist):
                 cpms   += 1
 
         elif r == 0xff: # real count or 'empty' value?
-            if gglobs.keepFF:
+            if g.keepFF:
                 cpx     = r * cpxValid
 
                 parsecomment = "---real count or 'empty' value?---"
@@ -511,13 +517,14 @@ def parseHIST(hist):
             cpms   += 1
 
 
+# code for julianday w/o localtime
 def parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext):
     """Add the parse results to the *.his list and commented *.his.parse list"""
 
     global histCPSCum, tubeSelected
 
     cpxValid = 1
-    cpmtime  = datetime.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
+    cpmtime  = dt.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
 
     if CPSmode: # measurement is CPS
         histCPSCum.append(cpx)          # add new data as 61st element (= #60)
@@ -529,58 +536,104 @@ def parseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomm
 
     # create the data for the database
     # Index, DateTime, CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  Temp, Press, Humid, RMCPM
-    datalist     = [None] * (gglobs.datacolsDefault + 2) # 13 x None
+    # datalist     = [None] * (g.datacolsDefault + 2) # 13 x None
+    datalist     = [None] * (g.datacolsDefault + 1) # 13 x None
     datalist[0]  = i
     datalist[1]  = cpmtime
-    datalist[2]  = "0 hours"
+    # datalist[2]  = "0 hours"
 
-    if   tubeSelected == 0: pointer = 3
-    elif tubeSelected == 1: pointer = 5
-    elif tubeSelected == 2: pointer = 7
+    # if   tubeSelected == 0: pointer = 3
+    # elif tubeSelected == 1: pointer = 5
+    # elif tubeSelected == 2: pointer = 7
+    if   tubeSelected == 0: pointer = 2
+    elif tubeSelected == 1: pointer = 4
+    elif tubeSelected == 2: pointer = 6
     else:
         efprint("ERROR: detected tubeSelected={}, but only 0,1,2 is permitted".format(tubeSelected), debug=True)
-        pointer  = 3
+        # pointer  = 3
+        pointer  = 2
         cpxValid = -1
 
     if CPSmode: # CPS mode
         datalist[pointer]       = int(cpm) * cpxValid
         datalist[pointer + 1]   = cpx * cpxValid
-
     else:        # CPM mode
         datalist[pointer]       = cpx * cpxValid
 
-    gglobs.HistoryDataList.append (datalist)
-    gglobs.HistoryParseList.append([i, parsecomment + savetext])
+    g.HistoryDataList.append (datalist)
+    g.HistoryParseList.append([i, parsecomment + savetext])
+
+
+
+# code for julianday with localtime
+# def xxxparseValueAdder(i, cpx, CPSmode, rectimestamp, cpms, saveinterval, parsecomment, savetext):
+#     """Add the parse results to the *.his list and commented *.his.parse list"""
+
+#     global histCPSCum, tubeSelected
+
+#     cpxValid = 1
+#     cpmtime  = dt.datetime.fromtimestamp(rectimestamp + cpms * saveinterval).strftime('%Y-%m-%d %H:%M:%S')
+
+#     if CPSmode: # measurement is CPS
+#         histCPSCum.append(cpx)          # add new data as 61st element (= #60)
+#         histCPSCum  = histCPSCum[1:]    # ignore element #0, get only 1...60
+#         cpm         = sum(histCPSCum)
+
+#     else: # CPM mode
+#         histCPSCum  = [0] * 60
+
+#     # create the data for the database
+#     # Index, DateTime, CPM, CPS, CPM1st, CPS1st, CPM2nd, CPS2nd,  Temp, Press, Humid, RMCPM
+#     datalist     = [None] * (g.datacolsDefault + 2) # 13 x None
+#     datalist[0]  = i
+#     datalist[1]  = cpmtime
+#     datalist[2]  = "0 hours"
+
+#     if   tubeSelected == 0: pointer = 3
+#     elif tubeSelected == 1: pointer = 5
+#     elif tubeSelected == 2: pointer = 7
+#     else:
+#         efprint("ERROR: detected tubeSelected={}, but only 0,1,2 is permitted".format(tubeSelected), debug=True)
+#         pointer  = 3
+#         cpxValid = -1
+
+#     if CPSmode: # CPS mode
+#         datalist[pointer]       = int(cpm) * cpxValid
+#         datalist[pointer + 1]   = cpx * cpxValid
+#     else:        # CPM mode
+#         datalist[pointer]       = cpx * cpxValid
+
+#     g.HistoryDataList.append (datalist)
+#     g.HistoryParseList.append([i, parsecomment + savetext])
 
 
 def parseCommentAdder(i, rectime, dbtype):
 
-    datalist     = [None] * 4  # 4 x None
+    datalist     = [None] * 3   # 3 x None
     datalist[0]  = i            # byte index
-    datalist[1]  = rectime      # Date&Time
-    datalist[2]  = "0 hours"    # the modifier for julianday; here: no modification
-    datalist[3]  = dbtype       # Date&Time Stamp Info
+    datalist[1]  = rectime      # DateTime
+    datalist[2]  = dbtype       # DateTime Stamp Info
     #print("#{:5d}, {:19s}, {:}".format(i, rectime, dbtype))
 
-    gglobs.HistoryCommentList.append(datalist)
+    g.HistoryCommentList.append(datalist)
 
 
 def saveHistBinaryData():
     """get the binary data from the database and save to *.bin file"""
 
-    if gglobs.hisConn == None:
-        gglobs.exgg.showStatusMessage("No data available")
+    if g.hisConn is None:
+        g.exgg.showStatusMessage("No data available")
         return
 
     fprint(header("Save History Binary Data to File"))
-    fprint("from: {}\n".format(gglobs.hisDBPath))
+    fprint("from: {}\n".format(g.hisDBPath))
 
-    hist    = gsup_sql.DB_readBinblob(gglobs.hisConn)
-    if hist == None:
+    hist    = gsup_sql.DB_readBinblob(g.hisConn)
+    if hist is None:
         efprint("No binary data found in this database")
         return
 
-    newpath = gglobs.hisDBPath + ".bin"
+    newpath = g.hisDBPath + ".bin"
     writeBinaryFile(newpath, hist)
 
     fprint("saved as file: " + newpath)
