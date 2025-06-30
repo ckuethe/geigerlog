@@ -2425,28 +2425,12 @@ class ggeiger(QMainWindow):
 #
 #========== BEGIN Class Functions =============================================
 
-    # from email: John Thornton <dev@gnipsel.com> to: pyqt@riverbankcomputing.com from: 13.12.2023, 22:54
     def excepthook(self, exc_type, exc_value, tb):
         # extract the stack summary
         summary = traceback.extract_tb(tb)
         for frame_summary in summary:
             filename = frame_summary.filename
             frame_summary.filename = os.path.relpath(filename)
-
-        # rebuild the traceback and build the error message
-        # msg = f'Mesact Version: {VERSION} Build Date: {BUILD_DATE}\n'
-        # msg += ''.join(traceback.format_list(StackSummary.from_list(summary)))
-        msg  = ""
-        msg += ''.join(traceback.format_list(summary))
-        msg += f'{exc_type.__name__}\n'
-        msg += f'{exc_value}\n'
-        msg += 'Please file an issue at\n'
-        msg += 'https://github.com/jethornton/mesact/issues'
-        print(msg)
-        # dialogs.errorMsgOk(msg, 'PROGRAM ERROR' )
-        error_dialog = QErrorMessage()
-        error_dialog.showMessage(msg)
-
 
     def deleteDataFromDB(self):
         """Delete data from Selected Variable in range selected in Graph"""
